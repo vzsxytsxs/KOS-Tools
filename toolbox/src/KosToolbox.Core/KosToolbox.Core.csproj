@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>KosToolbox.Core</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KosToolbox.Core.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- What a KOS install leaves on the system: a copy of KOS-W11's bin\2\kos-expected.json (a test checks they match). -->
+    <EmbeddedResource Include="KosState\kos-expected.json" LogicalName="kos-expected.json" />
+    <!-- Signed PawnIO modules (PawnIO.Modules 0.2.11, LGPL-2.1: SystemInfo\PawnIO\COPYING; source at github.com/namazso/PawnIO.Modules). -->
+    <EmbeddedResource Include="SystemInfo\PawnIO\IntelMSR.bin" LogicalName="PawnIO.IntelMSR.bin" />
+    <EmbeddedResource Include="SystemInfo\PawnIO\AMDFamily17.bin" LogicalName="PawnIO.AMDFamily17.bin" />
+  </ItemGroup>
+</Project>

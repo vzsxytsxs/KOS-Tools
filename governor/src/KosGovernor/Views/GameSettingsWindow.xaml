@@ -1,0 +1,36 @@
+<Window x:Class="KosGovernor.Views.GameSettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Windows settings for games" Width="1000" Height="560" MinWidth="640" MinHeight="300" WindowStartupLocation="CenterOwner" Icon="pack://application:,,,/KosGovernor;component/Assets/kos-governor.ico"
+        Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource UiFont}" FontSize="12" UseLayoutRounding="True">
+    <Window.Resources>
+        <DataTemplate x:Key="DscpCell">
+            <CheckBox IsChecked="{Binding Dscp, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" />
+        </DataTemplate>
+        <DataTemplate x:Key="FseCell">
+            <CheckBox IsChecked="{Binding Fse, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding HasFullPath}" HorizontalAlignment="Center" />
+        </DataTemplate>
+        <DataTemplate x:Key="GpuCell">
+            <CheckBox IsChecked="{Binding Gpu, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding HasFullPath}" HorizontalAlignment="Center" />
+        </DataTemplate>
+        <DataTemplate x:Key="RemoveCell">
+            <Button Style="{StaticResource Tiny}" Content="Remove" Click="OnRemove" ToolTip="Turns all three off for this program" HorizontalAlignment="Center" />
+        </DataTemplate>
+    </Window.Resources>
+    <DockPanel>
+        <Grid DockPanel.Dock="Top" Margin="10,8,10,6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,12,0"
+                       Text="Network priority marks the program's traffic DSCP 46 (a QoS policy by file name; routers that honor it send it first). Windows marks it through the QoS Packet Scheduler, so that binding must be on for the adapter (toolbox › Network). Fullscreen optimizations off also sets the high-DPI override, and the GPU choice is the one in Settings › Display › Graphics; both are kept per user by the program's full path." />
+            <Button Grid.Column="1" Style="{StaticResource Small}" Content="+ Add program…" Click="OnAdd" VerticalAlignment="Top" />
+        </Grid>
+        <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="10,5">
+            <TextBlock x:Name="Status" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+        </Border>
+        <ListView x:Name="List" Style="{StaticResource GridList}" SelectionMode="Single" />
+    </DockPanel>
+</Window>

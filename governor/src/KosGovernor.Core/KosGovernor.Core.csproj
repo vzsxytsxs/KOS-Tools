@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>KosGovernor.Core</RootNamespace>  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KosGovernor.Core.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Base list for automatic gamemode (CapFrameX process list format). -->
+    <EmbeddedResource Include="Resources\games.json" LogicalName="KosGovernor.Core.Resources.games.json" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Fan curve from the GPU page: the engine uses the same controller (NVML) as the toolbox. -->
+    <ProjectReference Include="..\..\..\toolbox\src\KosToolbox.Core\KosToolbox.Core.csproj" />
+  </ItemGroup>
+</Project>

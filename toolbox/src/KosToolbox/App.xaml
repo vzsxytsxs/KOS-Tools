@@ -1,0 +1,23 @@
+<Application x:Class="KosToolbox.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnMainWindowClose">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Themes/Theme.xaml" />
+                <ResourceDictionary Source="Views/Templates.xaml" />
+                <ResourceDictionary Source="Views/PageTemplates.xaml" />
+                <ResourceDictionary Source="Views/GpuTemplates.xaml" />
+                <ResourceDictionary Source="Views/StorageTemplates.xaml" />
+                <ResourceDictionary Source="Views/AppsTemplates.xaml" />
+                <ResourceDictionary Source="Views/NetworkTemplates.xaml" />
+                <ResourceDictionary Source="Views/DriversTemplates.xaml" />
+                <ResourceDictionary Source="Views/DisplayTemplates.xaml" />
+                <ResourceDictionary Source="Views/SetupTemplates.xaml" />
+                <ResourceDictionary Source="Views/BiosTemplates.xaml" />
+                <ResourceDictionary Source="Views/KosStateTemplates.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

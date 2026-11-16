@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>KosToolbox</RootNamespace>
+    <AssemblyName>KosToolbox</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\kos-toolbox.ico</ApplicationIcon>
+    <Title>KOS Toolbox</Title>
+    <StartupObject>KosToolbox.Program</StartupObject>
+  </PropertyGroup>
+  <ItemGroup>
+    <Resource Include="Assets\kos-logo.png" />
+    <Resource Include="Assets\kos.ico" />
+    <Resource Include="Assets\kos-toolbox.ico" />
+    <Resource Include="Assets\Setup\*.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\KosToolbox.Core\KosToolbox.Core.csproj" />
+  </ItemGroup>
+</Project>

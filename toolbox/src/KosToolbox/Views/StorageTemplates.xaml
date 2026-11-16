@@ -1,0 +1,166 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:vm="clr-namespace:KosToolbox.ViewModels"
+                    xmlns:v="clr-namespace:KosToolbox.Views"
+                    xmlns:t="clr-namespace:KosToolbox.Core.Text;assembly=KosToolbox.Core">
+
+    <!-- ===================== Storage ===================== -->
+    <DataTemplate DataType="{x:Type vm:FolderRowViewModel}">
+        <!-- Transparent background: the double click works on the whole row, not just the text. -->
+        <Grid Background="Transparent">
+            <Grid.InputBindings>
+                <MouseBinding Gesture="LeftDoubleClick" CommandParameter="{Binding}"
+                              Command="{Binding DataContext.OpenFolderCommand, RelativeSource={RelativeSource AncestorType=ListBox}}" />
+            </Grid.InputBindings>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="3*" />
+                <ColumnDefinition Width="1*" />
+                <ColumnDefinition Width="1.4*" />
+                <ColumnDefinition Width="0.8*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Node.Path}" Margin="0,0,10,0" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="1" Text="{Binding Size}" Margin="0,0,10,0" VerticalAlignment="Center" />
+            <DockPanel Grid.Column="2" Margin="0,0,10,0" VerticalAlignment="Center">
+                <TextBlock DockPanel.Dock="Right" Text="{Binding ShareText}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Width="52" TextAlignment="Right" />
+                <ProgressBar Value="{Binding Share, Mode=OneWay}" Maximum="100" Height="6" Margin="0,0,8,0" />
+            </DockPanel>
+            <TextBlock Grid.Column="3" Text="{Binding Files}" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
+        </Grid>
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vm:LargeFileRowViewModel}">
+        <Grid Background="Transparent" ToolTip="{Binding Path}">
+            <Grid.InputBindings>
+                <MouseBinding Gesture="LeftDoubleClick" CommandParameter="{Binding}"
+                              Command="{Binding DataContext.ShowFileCommand, RelativeSource={RelativeSource AncestorType=ListBox}}" />
+            </Grid.InputBindings>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Margin="0,0,10,0">
+                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="{Binding Folder}" TextTrimming="CharacterEllipsis" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" />
+            </StackPanel>
+            <TextBlock Grid.Column="1" Text="{Binding Size}" VerticalAlignment="Center" />
+        </Grid>
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vm:JunkRowViewModel}">
+        <Border Style="{StaticResource Card}" Padding="14,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <CheckBox IsChecked="{Binding IsChecked}" VerticalAlignment="Center" Margin="0,0,12,0" AutomationProperties.Name="{Binding Name}" />
+                <StackPanel Grid.Column="1" Margin="0,0,16,0" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Style="{StaticResource CardTitle}" FontSize="13.5" Text="{Binding Name}" />
+                        <Border Style="{StaticResource Pill}" Margin="10,0,0,0" Visibility="{Binding NeedsAdmin, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="{x:Static t:Txt.AdminBadge}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
+                        </Border>
+                    </StackPanel>
+                    <TextBlock Style="{StaticResource Secondary}" Text="{Binding Description}" Margin="0,3,0,0" />
+                </StackPanel>
+                <TextBlock Grid.Column="2" Text="{Binding SizeText}" VerticalAlignment="Center" MinWidth="150" TextAlignment="Right" />
+            </Grid>
+        </Border>
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vm:StoragePageViewModel}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <ItemsControl Style="{StaticResource Segmented}" ItemsSource="{Binding Tabs}" Tag="{Binding SelectTabCommand}" HorizontalAlignment="Left"
+                          Margin="0,0,0,10" AutomationProperties.Name="{x:Static t:Txt.Tabs}" />
+
+            <!-- Disk usage -->
+            <Grid Grid.Row="1" Visibility="{Binding ShowDisk, Converter={StaticResource BoolToVis}}" v:Motion.Transition="{Binding ShowDisk}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <DockPanel LastChildFill="False">
+                    <ComboBox ItemsSource="{Binding Drives}" ItemTemplate="{StaticResource OptionText}" SelectedItem="{Binding SelectedDrive, Mode=TwoWay}"
+                              MinWidth="340" MaxWidth="520" VerticalAlignment="Center" AutomationProperties.Name="{x:Static t:Txt.DriveOrFolder}" />
+                    <Button Content="{x:Static t:Txt.ChooseFolder}" Margin="8,0,0,0" Command="{Binding ChooseFolderCommand}" />
+                    <Button Style="{StaticResource PrimaryButton}" Content="{x:Static t:Txt.Scan}" MinWidth="92" Margin="8,0,0,0" Command="{Binding ScanCommand}" />
+                    <Button Content="{x:Static t:Txt.Cancel}" Margin="8,0,0,0" Command="{Binding CancelCommand}"
+                            Visibility="{Binding IsScanning, Converter={StaticResource BoolToVis}}" />
+                </DockPanel>
+                <StackPanel Grid.Row="1" Margin="0,8,0,8">
+                    <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.DiskNote}" />
+                    <TextBlock Style="{StaticResource Secondary}" Text="{Binding ProgressText}" Margin="0,4,0,0"
+                               Visibility="{Binding ProgressText, Converter={StaticResource NotEmptyToVis}}" />
+                    <TextBlock Style="{StaticResource PageMessage}" Margin="0,4,0,0" />
+                </StackPanel>
+
+                <Grid Grid.Row="2" Visibility="{Binding HasResult, Converter={StaticResource BoolToVis}}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="16" />
+                        <ColumnDefinition Width="360" />
+                    </Grid.ColumnDefinitions>
+                    <DockPanel>
+                        <DockPanel DockPanel.Dock="Top" LastChildFill="True" Margin="0,0,0,6">
+                            <Button DockPanel.Dock="Left" Content="{x:Static t:Txt.Up}" Command="{Binding UpCommand}" />
+                            <Button DockPanel.Dock="Right" Content="{x:Static t:Txt.ShowInExplorer}" Margin="8,0,0,0" Command="{Binding ShowFolderCommand}" />
+                            <Button DockPanel.Dock="Right" Content="Uncompress" Margin="8,0,0,0" Command="{Binding UncompressCommand}"
+                                    ToolTip="Uncompresses the selected folder (or the one shown)" />
+                            <Button DockPanel.Dock="Right" Content="Compress" Margin="8,0,0,0" Command="{Binding CompressCommand}"
+                                    ToolTip="Compresses the selected folder (or the one shown) with Windows' executable compression, like a game folder: files stay usable and take less space. Not for folders whose files change often." />
+                            <ComboBox DockPanel.Dock="Right" ItemsSource="{Binding Algorithms}" SelectedItem="{Binding Algorithm, Mode=TwoWay}" Margin="16,0,0,0" MinWidth="104"
+                                      AutomationProperties.Name="Compression algorithm"
+                                      ToolTip="XPRESS4K is fastest to read; LZX makes files smallest and costs the most CPU to read. XPRESS8K is the usual choice for games." />
+                            <Button DockPanel.Dock="Right" Content="{x:Static t:Txt.Open}" Margin="8,0,0,0" Command="{Binding OpenFolderCommand}" />
+                            <TextBlock Style="{StaticResource Secondary}" Text="{Binding CurrentText}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
+                                       ToolTip="{Binding CurrentText}" Margin="10,0,0,0" VerticalAlignment="Center" />
+                        </DockPanel>
+                        <Grid DockPanel.Dock="Top" Margin="10,4,20,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="3*" />
+                                <ColumnDefinition Width="1*" />
+                                <ColumnDefinition Width="1.4*" />
+                                <ColumnDefinition Width="0.8*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Style="{StaticResource SectionTitle}" FontSize="12" Text="{x:Static t:Txt.Folders}" />
+                            <TextBlock Grid.Column="1" Style="{StaticResource SectionTitle}" FontSize="12" Text="{x:Static t:Txt.ColSize}" />
+                            <TextBlock Grid.Column="3" Style="{StaticResource SectionTitle}" FontSize="12" Text="{x:Static t:Txt.ColFiles}" />
+                        </Grid>
+                        <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
+                            <ListBox Style="{StaticResource DataList}" ItemsSource="{Binding Folders}" SelectedItem="{Binding SelectedFolder, Mode=TwoWay}"
+                                     SelectionMode="Single" AutomationProperties.Name="{x:Static t:Txt.Folders}" />
+                        </Border>
+                    </DockPanel>
+                    <DockPanel Grid.Column="2">
+                        <TextBlock DockPanel.Dock="Top" Style="{StaticResource SectionTitle}" FontSize="12" Text="{x:Static t:Txt.LargestFiles}" Margin="10,10,0,8" />
+                        <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
+                            <ListBox Style="{StaticResource DataList}" ItemsSource="{Binding Largest}" SelectedItem="{Binding SelectedFile, Mode=TwoWay}"
+                                     SelectionMode="Single" AutomationProperties.Name="{x:Static t:Txt.LargestFiles}" />
+                        </Border>
+                    </DockPanel>
+                </Grid>
+            </Grid>
+
+            <!-- Cleanup -->
+            <DockPanel Grid.Row="1" Visibility="{Binding ShowCleanup, Converter={StaticResource BoolToVis}}" v:Motion.Transition="{Binding ShowCleanup}">
+                <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                    <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.CleanupNote}" />
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <Button Content="{x:Static t:Txt.Analyze}" MinWidth="92" Command="{Binding AnalyzeCommand}" />
+                        <Button Style="{StaticResource PrimaryButton}" Content="{x:Static t:Txt.CleanSelected}" Margin="8,0,0,0" Command="{Binding CleanCommand}" />
+                    </StackPanel>
+                    <TextBlock Style="{StaticResource PageMessage}" Margin="0,8,0,0" />
+                </StackPanel>
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+                    <ItemsControl ItemsSource="{Binding Junk}" Focusable="False" Margin="0,0,10,0" />
+                </ScrollViewer>
+            </DockPanel>
+        </Grid>
+    </DataTemplate>
+</ResourceDictionary>

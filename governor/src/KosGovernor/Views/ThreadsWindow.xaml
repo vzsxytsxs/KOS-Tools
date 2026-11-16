@@ -1,0 +1,27 @@
+<Window x:Class="KosGovernor.Views.ThreadsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Width="1180" Height="620" MinWidth="640" MinHeight="300" WindowStartupLocation="CenterOwner" Icon="/Assets/kos-governor.ico"
+        Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource UiFont}" FontSize="12" UseLayoutRounding="True">
+    <DockPanel>
+        <Grid DockPanel.Dock="Top" Margin="10,8,10,4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="200" />
+                <ColumnDefinition Width="200" />
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="Heading" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold" />
+            <TextBox x:Name="DescriptionSearch" Grid.Column="1" Tag="Search description" MinHeight="26" Margin="0,0,8,0" TextChanged="OnSearch" />
+            <TextBox x:Name="ModuleSearch" Grid.Column="2" Tag="Search module" MinHeight="26" TextChanged="OnSearch" />
+        </Grid>
+        <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="10,5">
+            <TextBlock x:Name="Status" Foreground="{StaticResource TextSecondaryBrush}" />
+        </Border>
+        <ListView x:Name="List" Style="{StaticResource GridList}" SelectionMode="Extended" ContextMenuOpening="OnMenu">
+            <ListView.ContextMenu>
+                <ContextMenu />
+            </ListView.ContextMenu>
+        </ListView>
+    </DockPanel>
+</Window>

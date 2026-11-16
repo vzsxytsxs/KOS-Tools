@@ -1,0 +1,162 @@
+<Window x:Class="KosToolbox.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:v="clr-namespace:KosToolbox.Views"
+        xmlns:vm="clr-namespace:KosToolbox.ViewModels"
+        xmlns:t="clr-namespace:KosToolbox.Core.Text;assembly=KosToolbox.Core"
+        Title="{Binding Title}" Icon="/Assets/kos-toolbox.ico"
+        Width="1180" Height="780" MinWidth="1000" MinHeight="500" WindowStartupLocation="CenterScreen"
+        Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource UiFont}" FontSize="13" UseLayoutRounding="True">
+    <Window.InputBindings>
+        <KeyBinding Key="F5" Command="{Binding RefreshCommand}" />
+    </Window.InputBindings>
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Side bar: a column that pushes the content, open with the names or collapsed to the icons (Collapse button, kept across runs). -->
+        <Border x:Name="SideBar" ClipToBounds="True" v:Motion.WidthTo="{Binding NavWidth}" Background="{StaticResource BgBrush}">
+            <DockPanel Margin="0,8,0,8">
+                <Button DockPanel.Dock="Bottom" Style="{StaticResource NavButton}" Command="{Binding ToggleNavCommand}" Margin="8,6,8,0"
+                        ToolTip="{Binding NavToggleTooltip}" AutomationProperties.Name="{Binding NavToggleTooltip}">
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="44" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <TextBlock FontSize="12" HorizontalAlignment="Center" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource Icon}">
+                                    <Setter Property="Text" Value="&#xE76B;" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding NavCollapsed}" Value="True"><Setter Property="Text" Value="&#xE76C;" /></DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <TextBlock Grid.Column="1" Text="{x:Static t:Txt.NavCollapse}" VerticalAlignment="Center" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                   Visibility="{Binding NavCollapsed, Converter={StaticResource InverseBoolToVis}}" />
+                    </Grid>
+                </Button>
+                <!-- With many pages the bar scrolls (mouse wheel). -->
+                <ScrollViewer VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+                    <ItemsControl ItemsSource="{Binding NavGroups}" Focusable="False">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel>
+                                    <!-- Open: the group's name over its pages; collapsed (and before Settings): a thin line instead. -->
+                                    <TextBlock Text="{Binding Header}" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextSecondaryBrush}" Margin="18,10,10,4">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding HasHeader}" Value="False"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
+                                                    <DataTrigger Binding="{Binding DataContext.NavCollapsed, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <Border Height="1" Background="{StaticResource BorderBrush}" Margin="14,8,14,8">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding HasHeader}" Value="False"><Setter Property="Visibility" Value="Visible" /></DataTrigger>
+                                                    <DataTrigger Binding="{Binding DataContext.NavCollapsed, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                    </Border>
+                                    <ListBox Style="{StaticResource NavList}" ItemsSource="{Binding Pages}" SelectedItem="{Binding Selected, Mode=TwoWay}"
+                                             AutomationProperties.Name="{Binding Title}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+
+        <!-- Notifications (toasts): at the bottom, over the content. -->
+        <ItemsControl Grid.Column="1" Panel.ZIndex="10" ItemsSource="{x:Static vm:Toasts.Items}" Focusable="False"
+                      HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,26">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Border Background="#161616" BorderBrush="#2E2E2E" BorderThickness="1" CornerRadius="6" Padding="14,9,8,9" Margin="0,6,0,0"
+                            HorizontalAlignment="Center" MaxWidth="640" v:Motion.Appear="True">
+                        <Border.Effect><DropShadowEffect BlurRadius="18" ShadowDepth="2" Opacity="0.5" Color="Black" /></Border.Effect>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock x:Name="Icon" Style="{StaticResource Icon}" Text="{Binding Icon}" FontSize="15" Foreground="#4DA3FF" Margin="0,0,10,0" />
+                            <TextBlock Text="{Binding Message}" TextWrapping="Wrap" MaxWidth="540" VerticalAlignment="Center" />
+                            <Button Style="{StaticResource IconButton}" Content="&#xE711;" FontSize="10" Width="26" Height="26" Margin="12,0,0,0"
+                                    Command="{Binding CloseCommand}" ToolTip="Close" AutomationProperties.Name="Close" />
+                        </StackPanel>
+                    </Border>
+                    <DataTemplate.Triggers>
+                        <DataTrigger Binding="{Binding Kind}" Value="{x:Static vm:ToastKind.Error}"><Setter TargetName="Icon" Property="Foreground" Value="{StaticResource ErrorBrush}" /></DataTrigger>
+                        <DataTrigger Binding="{Binding Kind}" Value="{x:Static vm:ToastKind.Warning}"><Setter TargetName="Icon" Property="Foreground" Value="{StaticResource WarningBrush}" /></DataTrigger>
+                        <DataTrigger Binding="{Binding Kind}" Value="{x:Static vm:ToastKind.Success}"><Setter TargetName="Icon" Property="Foreground" Value="#5CC98A" /></DataTrigger>
+                    </DataTemplate.Triggers>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <DockPanel Grid.Column="1">
+            <Grid DockPanel.Dock="Top" Margin="28,20,28,14">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Style="{StaticResource PageTitle}" Text="{Binding Current.Title}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Style="{StaticResource Secondary}" Text="{Binding Current.Subtitle}" Margin="0,2,0,0" />
+                </StackPanel>
+                <Grid Grid.Column="1" Width="260" VerticalAlignment="Center" Margin="16,0,6,0">
+                    <TextBox x:Name="Search" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged, Delay=200}"
+                             Tag="{x:Static t:Txt.SearchPlaceholder}" Padding="30,0,30,0" AutomationProperties.Name="{x:Static t:Txt.SearchSettings}" />
+                    <TextBlock Style="{StaticResource Icon}" Text="&#xE721;" FontSize="13" Margin="10,0,0,0" HorizontalAlignment="Left"
+                               Foreground="{StaticResource TextSecondaryBrush}" IsHitTestVisible="False" />
+                    <Button Style="{StaticResource IconButton}" Content="&#xE711;" Width="28" Height="28" FontSize="10" HorizontalAlignment="Right" Margin="0,0,2,0"
+                            Command="{Binding ClearSearchCommand}" ToolTip="{x:Static t:Txt.ClearSearch}" AutomationProperties.Name="{x:Static t:Txt.ClearSearch}"
+                            Visibility="{Binding SearchText, Converter={StaticResource NotEmptyToVis}}" />
+                </Grid>
+                <Button Grid.Column="2" Style="{StaticResource IconButton}" Content="{Binding Current.HeaderGlyph}" VerticalAlignment="Center" Margin="0,0,4,0"
+                        Command="{Binding Current.HeaderCommand}" ToolTip="{Binding Current.HeaderTooltip}" AutomationProperties.Name="{Binding Current.HeaderTooltip}"
+                        Visibility="{Binding Current.HeaderCommand, Converter={StaticResource NotEmptyToVis}}" />
+                <Button Grid.Column="3" Style="{StaticResource IconButton}" Content="&#xE72C;" VerticalAlignment="Center"
+                        Command="{Binding RefreshCommand}" ToolTip="{x:Static t:Txt.RefreshTooltip}" AutomationProperties.Name="{x:Static t:Txt.Refresh}" />
+            </Grid>
+
+            <ScrollViewer x:Name="Scroller" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+                <ScrollViewer.Style>
+                    <Style TargetType="ScrollViewer">
+                        <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
+                        <Style.Triggers>
+                            <!-- Pages with their own (virtualized) list get the window height and scroll on their own. -->
+                            <DataTrigger Binding="{Binding Current.ScrollsItself}" Value="True">
+                                <Setter Property="VerticalScrollBarVisibility" Value="Disabled" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </ScrollViewer.Style>
+                <ContentControl Content="{Binding Current}" Focusable="False" v:Motion.Transition="{Binding Current}">
+                    <ContentControl.Style>
+                        <Style TargetType="ContentControl">
+                            <Setter Property="Margin" Value="28,0,28,24" />
+                            <Style.Triggers>
+                                <!-- Home: its list and inspector run to the window's right and bottom edges. -->
+                                <DataTrigger Binding="{Binding Current.Key}" Value="home"><Setter Property="Margin" Value="28,0,0,0" /></DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ContentControl.Style>
+                </ContentControl>
+            </ScrollViewer>
+        </DockPanel>
+
+    </Grid>
+</Window>

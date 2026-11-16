@@ -1,0 +1,89 @@
+<Window x:Class="KosGovernor.Views.RuleDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Style="{StaticResource DialogWindow}" WindowStartupLocation="CenterOwner">
+    <Window.Resources>
+        <Style TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="Width" Value="230" />
+            <Setter Property="Margin" Value="0,3" />
+            <Setter Property="MaxDropDownHeight" Value="380" />
+        </Style>
+        <Style x:Key="Edit" TargetType="ComboBox" BasedOn="{StaticResource EditableCombo}">
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="Width" Value="230" />
+            <Setter Property="Margin" Value="0,3" />
+        </Style>
+    </Window.Resources>
+    <Border x:Name="Root" Style="{StaticResource DialogFrame}">
+        <StackPanel>
+            <StackPanel Margin="24,20,24,18">
+                <TextBlock x:Name="Heading" Style="{StaticResource CardTitle}" FontSize="17" Margin="0,0,0,14" MaxWidth="400" />
+                <Grid x:Name="Fields">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" MinWidth="120" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition />
+                        <RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition />
+                        <RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition />
+                    </Grid.RowDefinitions>
+                    <TextBlock x:Name="NameLabel" Style="{StaticResource FieldLabel}" />
+                    <ComboBox x:Name="NameBox" Grid.Column="1" Style="{StaticResource Edit}" />
+                    <TextBlock x:Name="ModuleLabel" Grid.Row="1" Style="{StaticResource FieldLabel}" Text="Start module:" />
+                    <ComboBox x:Name="ModuleBox" Grid.Row="1" Grid.Column="1" Style="{StaticResource Edit}" />
+                    <TextBlock x:Name="ActionLabel" Grid.Row="2" Style="{StaticResource FieldLabel}" Text="Action:" />
+                    <ComboBox x:Name="ActionBox" Grid.Row="2" Grid.Column="1" SelectionChanged="OnActionChanged" />
+                    <TextBlock x:Name="DelayLabel" Grid.Row="11" Style="{StaticResource FieldLabel}" Text="Delay:" />
+                    <ComboBox x:Name="DelayBox" Grid.Row="11" Grid.Column="1"
+                              ToolTip="Waits this long after the program starts, for games and anti-cheats that don't like changes while they load. Also the programs it opens, counted from their own start." />
+                    <TextBlock Grid.Row="3" Style="{StaticResource FieldLabel}" x:Name="PriorityLabel" Text="CPU Priority:" />
+                    <ComboBox x:Name="PriorityBox" Grid.Row="3" Grid.Column="1" />
+                    <TextBlock Grid.Row="4" Style="{StaticResource FieldLabel}" Text="I/O Priority:" />
+                    <ComboBox x:Name="IoBox" Grid.Row="4" Grid.Column="1" />
+                    <TextBlock Grid.Row="5" Style="{StaticResource FieldLabel}" Text="Memory Priority:" />
+                    <ComboBox x:Name="MemoryBox" Grid.Row="5" Grid.Column="1" />
+                    <TextBlock x:Name="EfficiencyLabel" Grid.Row="6" Style="{StaticResource FieldLabel}" Text="Efficiency Mode:" />
+                    <ComboBox x:Name="EfficiencyBox" Grid.Row="6" Grid.Column="1" />
+                    <TextBlock Grid.Row="7" Style="{StaticResource FieldLabel}" Text="Priority Boost:" />
+                    <ComboBox x:Name="BoostBox" Grid.Row="7" Grid.Column="1" />
+                    <TextBlock x:Name="IdealLabel" Grid.Row="8" Style="{StaticResource FieldLabel}" Text="Ideal Processor:" />
+                    <ComboBox x:Name="IdealBox" Grid.Row="8" Grid.Column="1" />
+                    <TextBlock Grid.Row="9" Style="{StaticResource FieldLabel}" Text="CPU Affinity:" />
+                    <ComboBox x:Name="AffinityBox" Grid.Row="9" Grid.Column="1" SelectionChanged="OnCpuChanged" />
+                    <TextBlock Grid.Row="10" Style="{StaticResource FieldLabel}" Text="CPU Sets:" />
+                    <ComboBox x:Name="CpuSetsBox" Grid.Row="10" Grid.Column="1" SelectionChanged="OnCpuChanged" />
+                    <TextBlock x:Name="PlanLabel" Grid.Row="13" Style="{StaticResource FieldLabel}" Text="Power Plan:" />
+                    <ComboBox x:Name="PlanBox" Grid.Row="13" Grid.Column="1"
+                              ToolTip="Switches to this plan while the program runs, and back to the previous one when its last copy closes. Gamemode's own plan wins while gamemode is on." />
+                    <TextBlock x:Name="LimitLabel" Grid.Row="14" Style="{StaticResource FieldLabel}" Text="CPU Limiter:" VerticalAlignment="Top" Margin="0,8,12,0" />
+                    <StackPanel x:Name="LimitPanel" Grid.Row="14" Grid.Column="1" Width="230" HorizontalAlignment="Left"
+                                ToolTip="When the program uses more than this share of the whole CPU for that long, it loses that many processors (the highest-numbered) for a while, then gets them back.">
+                        <ComboBox x:Name="LimitPercentBox" SelectionChanged="OnLimitChanged" />
+                        <StackPanel x:Name="LimitDetails" Orientation="Horizontal">
+                            <ComboBox x:Name="LimitOverBox" Width="72" Margin="0,3,4,3" ToolTip="For at least" />
+                            <ComboBox x:Name="LimitCoresBox" Width="70" Margin="0,3,4,3" ToolTip="Processors taken away" />
+                            <ComboBox x:Name="LimitForBox" Width="76" Margin="0,3" ToolTip="For" />
+                        </StackPanel>
+                    </StackPanel>
+                    <TextBlock x:Name="ScreenLabel" Grid.Row="15" Style="{StaticResource FieldLabel}" Text="Screen Mode:" />
+                    <ComboBox x:Name="ScreenBox" Grid.Row="15" Grid.Column="1"
+                              ToolTip="Main screen's resolution while the program runs (a stretched resolution for a game, for example); the saved mode comes back when it closes." />
+                    <TextBlock x:Name="GpuLabel" Grid.Row="16" Style="{StaticResource FieldLabel}" Text="GPU Priority:" />
+                    <ComboBox x:Name="GpuBox" Grid.Row="16" Grid.Column="1"
+                              ToolTip="The process's GPU scheduling priority (how the GPU scheduler orders its work against other programs'). Realtime needs administrator." />
+                    <CheckBox x:Name="ChildrenBox" Grid.Row="12" Grid.Column="1" Content="Also the programs it opens" Margin="0,8,0,0"
+                              ToolTip="A launcher's game, for example: programs this one opens get the same settings, unless they have a rule of their own." />
+                </Grid>
+                <TextBlock x:Name="Error" Style="{StaticResource Secondary}" Foreground="{StaticResource ErrorBrush}" Margin="0,10,0,0" MaxWidth="380" Visibility="Collapsed" />
+            </StackPanel>
+            <Border Style="{StaticResource DialogFooter}">
+                <UniformGrid Rows="1">
+                    <Button Style="{StaticResource PrimaryButton}" Content="Save" Margin="0,0,6,0" IsDefault="True" Click="OnSave" />
+                    <Button Content="Cancel" Margin="6,0,0,0" IsCancel="True" />
+                </UniformGrid>
+            </Border>
+        </StackPanel>
+    </Border>
+</Window>

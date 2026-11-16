@@ -1,0 +1,54 @@
+<Window x:Class="KosToolbox.Views.ChoiceDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:t="clr-namespace:KosToolbox.Core.Text;assembly=KosToolbox.Core"
+        Width="440" SizeToContent="Height" ResizeMode="NoResize" ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner" UseLayoutRounding="True"
+        Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource UiFont}" FontSize="13">
+    <StackPanel x:Name="Root">
+        <StackPanel Margin="24,20,24,18">
+            <TextBlock x:Name="Heading" Style="{StaticResource CardTitle}" FontSize="16" />
+            <TextBlock x:Name="Body" Style="{StaticResource Secondary}" Margin="0,6,0,0" />
+            <ItemsControl x:Name="Groups" Focusable="False">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Margin="0,14,0,0">
+                            <TextBlock Style="{StaticResource SectionTitle}" FontSize="12" Text="{Binding Title}" Margin="0,0,0,6" />
+                            <ItemsControl ItemsSource="{Binding Items}" Focusable="False">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Style="{StaticResource Card}" Padding="12,8" Margin="0,0,0,4">
+                                            <DockPanel>
+                                                <TextBlock DockPanel.Dock="Right" Style="{StaticResource Secondary}" FontSize="12" Text="{Binding Detail}"
+                                                           VerticalAlignment="Center" Margin="10,0,0,0" />
+                                                <CheckBox IsChecked="{Binding IsChecked}" VerticalAlignment="Center" AutomationProperties.Name="{Binding Label}">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <Image Source="{Binding Icon}" Width="20" Height="20" Margin="2,0,10,0" VerticalAlignment="Center"
+                                                               RenderOptions.BitmapScalingMode="HighQuality" />
+                                                        <TextBlock Text="{Binding Label}" VerticalAlignment="Center" />
+                                                    </StackPanel>
+                                                </CheckBox>
+                                            </DockPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+        <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="24,16">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Button x:Name="Ok" Style="{StaticResource PrimaryButton}" IsDefault="True" Click="OnOk" />
+                <Button Grid.Column="2" Content="{x:Static t:Txt.Cancel}" IsCancel="True" />
+            </Grid>
+        </Border>
+    </StackPanel>
+</Window>

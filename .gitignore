@@ -1,0 +1,14 @@
+# Build output
+bin/
+obj/
+publish/
+*.user
+*.suo
+.vs/
+TestResults/
+*.binlog
+
+# Crash dumps, logs and stray error output
+*.log
+*.dmp
+*.err.txt

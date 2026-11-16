@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>KosGovernor</RootNamespace>
+    <AssemblyName>KosGovernor</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\kos-governor.ico</ApplicationIcon>
+    <Title>KOS Governor</Title>
+    <StartupObject>KosGovernor.Program</StartupObject>
+  </PropertyGroup>
+  <ItemGroup>
+    <Resource Include="Assets\kos-logo.png" />
+    <Resource Include="Assets\kos.ico" />
+    <Resource Include="Assets\kos-governor.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\KosGovernor.Core\KosGovernor.Core.csproj" />
+  </ItemGroup>
+</Project>

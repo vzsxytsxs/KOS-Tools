@@ -1,0 +1,147 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:vm="clr-namespace:KosToolbox.ViewModels"
+                    xmlns:v="clr-namespace:KosToolbox.Views"
+                    xmlns:t="clr-namespace:KosToolbox.Core.Text;assembly=KosToolbox.Core">
+
+    <!-- ===================== KOS state ===================== -->
+    <DataTemplate DataType="{x:Type vm:KosSectionRow}">
+        <StackPanel Margin="0,14,0,4">
+            <CheckBox IsChecked="{Binding IsChecked}" VerticalAlignment="Center" AutomationProperties.Name="{Binding Title}">
+                <TextBlock Style="{StaticResource SectionTitle}" Text="{Binding Title}" />
+            </CheckBox>
+            <TextBlock Style="{StaticResource Secondary}" Text="{Binding Note}" Margin="26,2,0,0" />
+        </StackPanel>
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vm:KosItemRow}">
+        <Grid Margin="0,3" ToolTip="{Binding Tooltip}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Grid.Style>
+                <Style TargetType="Grid">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding CanCheck}" Value="False">
+                            <Setter Property="Opacity" Value="0.5" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Grid.Style>
+            <CheckBox IsChecked="{Binding IsChecked}" IsEnabled="{Binding CanCheck}" VerticalAlignment="Center" Margin="0,0,12,0"
+                      AutomationProperties.Name="{Binding Title}" />
+            <StackPanel Grid.Column="1" Margin="0,0,12,0">
+                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                <TextBlock Style="{StaticResource Secondary}" Text="{Binding Values}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                <TextBlock Style="{StaticResource Secondary}" Text="{Binding Path}" FontSize="11.5" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+            </StackPanel>
+            <Border Grid.Column="2" Style="{StaticResource Pill}" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Area}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
+            </Border>
+        </Grid>
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vm:RepairToolViewModel}">
+        <Border Style="{StaticResource Card}" Margin="0,0,0,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Margin="0,0,16,0">
+                    <TextBlock Style="{StaticResource CardTitle}" Text="{Binding Title}" />
+                    <TextBlock Style="{StaticResource Secondary}" Text="{Binding Command}" FontFamily="Consolas" FontSize="12" Margin="0,2,0,0" />
+                    <TextBlock Style="{StaticResource Secondary}" Text="{Binding Description}" Margin="0,4,0,0" />
+                    <ProgressBar Value="{Binding Percent, Mode=OneWay}" Maximum="100" Height="6" Margin="0,10,0,0" IsIndeterminate="{Binding Indeterminate}"
+                                 Visibility="{Binding IsRunning, Converter={StaticResource BoolToVis}}" />
+                    <TextBlock Style="{StaticResource Secondary}" Text="{Binding Status}" Margin="0,4,0,0" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
+                               Visibility="{Binding Status, Converter={StaticResource NotEmptyToVis}}" />
+                    <TextBlock Text="{Binding Result}" TextWrapping="Wrap" Margin="0,8,0,0" Visibility="{Binding Result, Converter={StaticResource NotEmptyToVis}}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsError}" Value="True">
+                                        <Setter Property="Foreground" Value="{StaticResource ErrorBrush}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </StackPanel>
+                <Button Grid.Column="1" Content="{x:Static t:Txt.RepairRun}" MinWidth="92" VerticalAlignment="Top" Command="{Binding RunCommand}"
+                        AutomationProperties.Name="{Binding Title}" />
+            </Grid>
+        </Border>
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vm:KosStatePageViewModel}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <ItemsControl Style="{StaticResource Segmented}" ItemsSource="{Binding Tabs}" Tag="{Binding SelectTabCommand}" HorizontalAlignment="Left"
+                          Margin="0,0,0,10" AutomationProperties.Name="{x:Static t:Txt.Tabs}" />
+
+            <!-- Repair Windows: sfc and DISM, one at a time -->
+            <StackPanel Grid.Row="1" Visibility="{Binding ShowRepair, Converter={StaticResource BoolToVis}}" v:Motion.Transition="{Binding ShowRepair}">
+                <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.RepairIntro}" Margin="0,0,0,10" />
+                <ItemsControl ItemsSource="{Binding RepairTools}" Focusable="False" />
+                <Border Style="{StaticResource Card}" Visibility="{Binding SuggestCheck, Converter={StaticResource BoolToVis}}">
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Content="{x:Static t:Txt.RepairCheckNow}" Margin="16,0,0,0"
+                                Command="{Binding CheckAfterRepairCommand}" />
+                        <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.RepairCheckSuggestion}" VerticalAlignment="Center" />
+                    </DockPanel>
+                </Border>
+            </StackPanel>
+
+            <!-- Check -->
+            <Grid Grid.Row="1" Visibility="{Binding ShowCheck, Converter={StaticResource BoolToVis}}" v:Motion.Transition="{Binding ShowCheck}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <StackPanel Margin="0,0,0,10">
+                    <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.KosStateIntro}" />
+                    <DockPanel Margin="0,10,0,0">
+                        <Button DockPanel.Dock="Left" Content="{x:Static t:Txt.KosCheckNow}" MinWidth="92" VerticalAlignment="Top" Command="{Binding CheckCommand}" />
+                        <Button DockPanel.Dock="Right" Content="{x:Static t:Txt.RestartAsAdmin}" VerticalAlignment="Top" Margin="12,0,0,0"
+                                Command="{Binding RestartAsAdminCommand}" Visibility="{Binding ShowRestartAsAdmin, Converter={StaticResource BoolToVis}}" />
+                        <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" />
+                            <TextBlock Style="{StaticResource Secondary}" Text="{Binding Reference}" Margin="0,2,0,0"
+                                       Visibility="{Binding Reference, Converter={StaticResource NotEmptyToVis}}" />
+                            <TextBlock Style="{StaticResource Secondary}" Text="{Binding Unreadable}" Foreground="{StaticResource WarningBrush}" Margin="0,2,0,0"
+                                       Visibility="{Binding Unreadable, Converter={StaticResource NotEmptyToVis}}" />
+                        </StackPanel>
+                    </DockPanel>
+                    <ProgressBar Value="{Binding Progress, Mode=OneWay}" Maximum="100" Height="4" Margin="0,10,0,0" IsIndeterminate="{Binding Applying}"
+                                 Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" />
+                </StackPanel>
+
+                <Border Grid.Row="1" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
+                    <ListBox Style="{StaticResource DataList}" ItemsSource="{Binding Rows}" AutomationProperties.Name="{x:Static t:Txt.PageKosState}" />
+                </Border>
+
+                <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,10,0,0">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.KosApplyNote}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,16,0" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Style="{StaticResource Secondary}" Text="{Binding CheckedText}" VerticalAlignment="Center" Margin="0,0,12,0" />
+                            <Button Style="{StaticResource PrimaryButton}" Content="{x:Static t:Txt.KosApplyChecked}" Command="{Binding ApplyCommand}" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Grid>
+    </DataTemplate>
+</ResourceDictionary>

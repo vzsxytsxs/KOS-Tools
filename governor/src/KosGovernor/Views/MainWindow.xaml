@@ -1,0 +1,684 @@
+<Window x:Class="KosGovernor.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:v="clr-namespace:KosGovernor.Views"
+        Title="KOS Governor" Icon="/Assets/kos-governor.ico"
+        Width="1440" Height="880" MinWidth="1180" MinHeight="640" WindowStartupLocation="CenterScreen"
+        Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource UiFont}" FontSize="12" UseLayoutRounding="True">
+    <Window.Resources>
+        <v:VisibleIf x:Key="VisibleIf" />
+        <DataTemplate x:Key="NameCell">
+            <StackPanel Orientation="Horizontal">
+                <Image Source="{Binding Icon}" Width="16" Height="16" Margin="2,0,6,0" RenderOptions.BitmapScalingMode="HighQuality"
+                       Visibility="{Binding ShowIcon, Converter={StaticResource BoolToVis}}" />
+                <TextBlock Text="{Binding DisplayName, Mode=OneWay}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                <ToggleButton Style="{StaticResource Expander}" IsChecked="{Binding IsExpanded}" VerticalAlignment="Center"
+                              Visibility="{Binding HasServices, Converter={StaticResource BoolToVis}}" ToolTip="Show the services in this process" />
+            </StackPanel>
+        </DataTemplate>
+        <Style x:Key="SectionLabel" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Margin" Value="0,0,0,10" />
+        </Style>
+        <!-- Details panel: column titles (NOW, PRIORITY...), small labels and the value cards. -->
+        <Style x:Key="PanelLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+        </Style>
+        <Style x:Key="PanelSub" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+            <Setter Property="Margin" Value="0,2,0,4" />
+        </Style>
+        <Style x:Key="StatCard" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource ControlBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="Margin" Value="0,0,8,8" />
+        </Style>
+        <Style x:Key="StatValue" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <DataTemplate x:Key="Option">
+            <Button Style="{StaticResource OptionButton}" />
+        </DataTemplate>
+        <!-- Gamemode on the top strip: a pill with a switch (same look as the Switch style) and its state. -->
+        <Style x:Key="GamemodePill" TargetType="Button">
+            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusVisual}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid Height="30">
+                            <Border CornerRadius="15" Background="{StaticResource ControlBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" />
+                            <Border CornerRadius="15" Margin="1" Background="{StaticResource HoverBrush}" Opacity="0" v:Motion.ShowWhen="{TemplateBinding IsMouseOver}" />
+                            <StackPanel Orientation="Horizontal" Margin="8,0,12,0">
+                                <Grid Width="34" Height="18" VerticalAlignment="Center">
+                                    <Border x:Name="Track" CornerRadius="9" Background="{StaticResource ControlBrush}" BorderBrush="{StaticResource BorderStrongBrush}" BorderThickness="1" />
+                                    <Ellipse x:Name="Knob" Width="12" Height="12" Margin="3,0" HorizontalAlignment="Left" Fill="{StaticResource TextSecondaryBrush}" />
+                                </Grid>
+                                <TextBlock x:Name="Label" Text="Gamemode off" Margin="10,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" />
+                            </StackPanel>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <DataTrigger Binding="{Binding GamemodeOn}" Value="True">
+                                <Setter TargetName="Track" Property="Background" Value="#1E9BE0" />
+                                <Setter TargetName="Track" Property="BorderBrush" Value="#1E9BE0" />
+                                <Setter TargetName="Knob" Property="Fill" Value="#FFFFFF" />
+                                <Setter TargetName="Knob" Property="HorizontalAlignment" Value="Right" />
+                                <Setter TargetName="Label" Property="Text" Value="Gamemode on" />
+                                <Setter TargetName="Label" Property="Foreground" Value="{StaticResource TextBrush}" />
+                                <Setter TargetName="Label" Property="FontWeight" Value="SemiBold" />
+                            </DataTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <DockPanel>
+        <!-- ===== Status bar ===== -->
+        <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="10,4">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding CpuText}" />
+                    <TextBlock Text="{Binding CountsText}" Margin="22,0,0,0" />
+                    <TextBlock Text="{Binding MemoryText}" Margin="22,0,0,0" />
+                </StackPanel>
+                <TextBlock Grid.Column="1" Text="{Binding Message}" Margin="24,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                           ToolTip="{Binding Message}">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding MessageIsError}" Value="True">
+                                    <Setter Property="Foreground" Value="{StaticResource ErrorBrush}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="Engine stopped: rules aren't applied" Foreground="{StaticResource WarningBrush}" VerticalAlignment="Center" Margin="0,0,14,0"
+                               Visibility="{Binding EngineRunning, Converter={StaticResource VisibleIf}, ConverterParameter=false}" />
+                    <TextBlock Text="KOS" FontWeight="Bold" VerticalAlignment="Center" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="196" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- ===== Sidebar: the views, and the engine at the bottom ===== -->
+            <DockPanel Margin="8,8,8,10">
+                <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="12,10">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse Width="8" Height="8" VerticalAlignment="Center">
+                                <Ellipse.Style>
+                                    <Style TargetType="Ellipse">
+                                        <Setter Property="Fill" Value="{StaticResource TextBrush}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding EngineRunning}" Value="False">
+                                                <Setter Property="Fill" Value="{StaticResource WarningBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Ellipse.Style>
+                            </Ellipse>
+                            <TextBlock FontWeight="SemiBold" Margin="8,0,0,0">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Text" Value="Engine running" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding EngineRunning}" Value="False">
+                                                <Setter Property="Text" Value="Engine stopped" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
+                        <TextBlock Text="{Binding EngineNote}" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                    </StackPanel>
+                </Border>
+                <!-- Profile and gamemode, above the engine: no strip under the title bar. -->
+                <StackPanel DockPanel.Dock="Bottom" Margin="0,0,0,8">
+                    <Button x:Name="ProfileButton" Style="{StaticResource Small}" Click="OnProfileMenu" MinHeight="30" Padding="10,0"
+                            ToolTip="Switch, add, rename or delete profiles">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Right" Style="{StaticResource Icon}" Text="&#xE70D;" FontSize="9" Margin="8,1,0,0" />
+                            <TextBlock Text="Profile" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding Config.ProfileName}" FontWeight="SemiBold" Margin="8,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                        </DockPanel>
+                    </Button>
+                    <Button Style="{StaticResource GamemodePill}" Command="{Binding ToggleGamemodeCommand}" Margin="0,6,0,0"
+                            AutomationProperties.Name="Gamemode" ToolTip="{Binding Config.HotkeyText}" ToolTipService.InitialShowDelay="300" />
+                </StackPanel>
+                <ListBox Style="{StaticResource NavList}" ItemsSource="{Binding Sections}" SelectedItem="{Binding SelectedSection}" AutomationProperties.Name="Views" />
+            </DockPanel>
+
+            <Border Grid.Column="1" Margin="0,8,0,0" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,1,0,0" CornerRadius="10,0,0,0">
+                <DockPanel>
+                    <Grid DockPanel.Dock="Top" Margin="16,12">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding SelectedSection.Title}" FontSize="20" FontWeight="SemiBold" />
+                            <TextBlock Text="Click a process to open its details below." Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="14,3,0,0">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <MultiDataTrigger>
+                                                <MultiDataTrigger.Conditions>
+                                                    <Condition Binding="{Binding ShowConfig}" Value="False" />
+                                                    <Condition Binding="{Binding Panel.IsOpen}" Value="False" />
+                                                </MultiDataTrigger.Conditions>
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </MultiDataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
+                        <TextBox x:Name="Search" Width="280" HorizontalAlignment="Right" MinHeight="30" Tag="Search name, PID or service"
+                                 Text="{Binding Search, UpdateSourceTrigger=PropertyChanged, Delay=150}"
+                                 Visibility="{Binding ShowConfig, Converter={StaticResource VisibleIf}, ConverterParameter=false}" />
+                    </Grid>
+
+                    <Grid>
+                        <!-- ===== Processes ===== -->
+                        <DockPanel Visibility="{Binding ShowConfig, Converter={StaticResource VisibleIf}, ConverterParameter=false}">
+                            <!-- Details of the selected processes, docked under the list; X or Esc closes it (unselects). -->
+                            <Border DockPanel.Dock="Bottom" Height="322" DataContext="{Binding Panel}" Visibility="Collapsed" v:Motion.RevealWhen="{Binding IsOpen}"
+                                    Background="{StaticResource BgBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
+                                <DockPanel>
+                                    <DockPanel DockPanel.Dock="Top" Margin="16,12,16,10">
+                                        <Button DockPanel.Dock="Right" Style="{StaticResource Small}" Click="OnClosePanel" Margin="6,0,0,0" Width="28" MinHeight="28" Padding="0"
+                                                ToolTip="Close (Esc)" AutomationProperties.Name="Close the details">
+                                            <TextBlock Style="{StaticResource Icon}" Text="&#xE711;" FontSize="11" />
+                                        </Button>
+                                        <Button DockPanel.Dock="Right" Style="{StaticResource Small}" Content="Open file location" Command="{Binding OpenLocationCommand}" Margin="6,0,0,0" />
+                                        <Button DockPanel.Dock="Right" Style="{StaticResource Small}" Content="{Binding ThreadsText}" Click="OnPanelThreads"
+                                                Visibility="{Binding CanOpenThreads, Converter={StaticResource VisibleIf}}" />
+                                        <Image Source="{Binding Icon}" Width="24" Height="24" Margin="0,0,10,0" RenderOptions.BitmapScalingMode="HighQuality" VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding Subtitle}" ToolTip="{Binding Subtitle}" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"
+                                                   Margin="12,2,12,0" TextTrimming="CharacterEllipsis" />
+                                    </DockPanel>
+                                    <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <!-- Now: the row's own values (the sum with several selected) and the program's file. -->
+                                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0" Padding="16,12,8,12">
+                                                <StackPanel>
+                                                    <TextBlock Style="{StaticResource PanelLabel}" Text="NOW" />
+                                                    <UniformGrid Columns="2">
+                                                        <Border Style="{StaticResource StatCard}">
+                                                            <StackPanel><TextBlock Style="{StaticResource PanelSub}" Text="CPU" Margin="0" /><TextBlock Style="{StaticResource StatValue}" Text="{Binding CpuNow}" /></StackPanel>
+                                                        </Border>
+                                                        <Border Style="{StaticResource StatCard}">
+                                                            <StackPanel><TextBlock Style="{StaticResource PanelSub}" Text="Memory" Margin="0" /><TextBlock Style="{StaticResource StatValue}" Text="{Binding MemoryNow}" /></StackPanel>
+                                                        </Border>
+                                                        <Border Style="{StaticResource StatCard}">
+                                                            <StackPanel><TextBlock Style="{StaticResource PanelSub}" Text="GPU" Margin="0" /><TextBlock Style="{StaticResource StatValue}" Text="{Binding GpuNow}" /></StackPanel>
+                                                        </Border>
+                                                        <Border Style="{StaticResource StatCard}">
+                                                            <StackPanel><TextBlock Style="{StaticResource PanelSub}" Text="Threads" Margin="0" /><TextBlock Style="{StaticResource StatValue}" Text="{Binding ThreadsNow}" /></StackPanel>
+                                                        </Border>
+                                                    </UniformGrid>
+                                                    <TextBlock Text="{Binding PathText}" ToolTip="{Binding Path}" FontFamily="Cascadia Mono, Consolas" FontSize="11" Margin="0,2,8,0"
+                                                               Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                                                </StackPanel>
+                                            </Border>
+                                            <!-- Priority: applied now; the filled button is what the process reports. -->
+                                            <Border Grid.Column="1" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0" Padding="16,12,12,12">
+                                                <StackPanel>
+                                                    <TextBlock Style="{StaticResource PanelLabel}" Text="PRIORITY" />
+                                                    <TextBlock Style="{StaticResource PanelSub}" Text="CPU priority" />
+                                                    <ItemsControl ItemsSource="{Binding CpuPriorities}" ItemTemplate="{StaticResource Option}" Focusable="False">
+                                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="3" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                                    </ItemsControl>
+                                                    <TextBlock Style="{StaticResource PanelSub}" Text="I/O priority" />
+                                                    <ItemsControl ItemsSource="{Binding IoPriorities}" ItemTemplate="{StaticResource Option}" Focusable="False">
+                                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="4" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                                    </ItemsControl>
+                                                    <TextBlock Style="{StaticResource PanelSub}" Text="Memory priority" />
+                                                    <ItemsControl ItemsSource="{Binding MemoryPriorities}" ItemTemplate="{StaticResource Option}" Focusable="False">
+                                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="5" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                                    </ItemsControl>
+                                                </StackPanel>
+                                            </Border>
+                                            <!-- Processors: affinity or CPU sets, one button per logical processor; the last one can't be turned off. -->
+                                            <Border Grid.Column="2" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0" Padding="16,12,12,12">
+                                                <DockPanel>
+                                                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                                                        <ItemsControl DockPanel.Dock="Right" ItemsSource="{Binding Modes}" Focusable="False">
+                                                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate><Button Style="{StaticResource OptionButton}" Height="22" MinWidth="64" Margin="4,0,0,0" FontSize="12" /></DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                        <TextBlock Style="{StaticResource PanelLabel}" Text="PROCESSORS" VerticalAlignment="Center" Margin="0" />
+                                                    </DockPanel>
+                                                    <TextBlock DockPanel.Dock="Bottom" Text="{Binding ProcessorsText}" ToolTip="{Binding ProcessorsText}" Foreground="{StaticResource TextSecondaryBrush}"
+                                                               Margin="0,6,0,0" TextTrimming="CharacterEllipsis" />
+                                                    <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,6,0,0">
+                                                        <ItemsControl ItemsSource="{Binding Cpus}" Focusable="False">
+                                                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate><Button Style="{StaticResource OptionButton}" Width="40" Height="28" FontSize="12" /></DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </ScrollViewer>
+                                                </DockPanel>
+                                            </Border>
+                                            <!-- Rule: keeps the panel's values for every start of the program (or only while gamemode is on). -->
+                                            <DockPanel Grid.Column="3" Margin="16,12,16,12">
+                                                <TextBlock DockPanel.Dock="Top" Style="{StaticResource PanelLabel}" Text="RULE" />
+                                                <Button DockPanel.Dock="Bottom" Style="{StaticResource LinkButton}" Content="See it in Rules" Command="{Binding SeeRulesCommand}"
+                                                        HorizontalAlignment="Left" Visibility="{Binding RuleOn, Converter={StaticResource VisibleIf}}" />
+                                                <StackPanel>
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                                        <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding RuleOn, Mode=OneWay}" Command="{Binding ToggleRuleCommand}"
+                                                                  VerticalAlignment="Top" AutomationProperties.Name="{Binding RuleLabel}" />
+                                                        <TextBlock Grid.Column="1" Text="{Binding RuleLabel}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="10,2,0,0" />
+                                                    </Grid>
+                                                    <Grid Margin="0,10,0,0" IsEnabled="{Binding CanGamemode}">
+                                                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                                        <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding GamemodeOnly, Mode=OneWay}" Command="{Binding ToggleGamemodeOnlyCommand}"
+                                                                  VerticalAlignment="Top" AutomationProperties.Name="Only while gamemode is on" />
+                                                        <TextBlock Grid.Column="1" Text="Only while gamemode is on" TextWrapping="Wrap" Margin="10,2,0,0">
+                                                            <TextBlock.Style>
+                                                                <Style TargetType="TextBlock">
+                                                                    <Style.Triggers>
+                                                                        <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.4" /></Trigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </TextBlock.Style>
+                                                        </TextBlock>
+                                                    </Grid>
+                                                    <TextBlock Text="{Binding RuleNote}" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,12,0,0" LineHeight="18" />
+                                                </StackPanel>
+                                            </DockPanel>
+                                        </Grid>
+                                    </Border>
+                                </DockPanel>
+                            </Border>
+                            <ListView x:Name="List" Style="{StaticResource GridList}" ItemsSource="{Binding View}" SelectionMode="Extended"
+                                      BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
+                                      ContextMenuOpening="OnMenu" MouseDoubleClick="OnDoubleClick" SelectionChanged="OnSelectionChanged">
+                                <ListView.ContextMenu>
+                                    <ContextMenu />
+                                </ListView.ContextMenu>
+                            </ListView>
+                        </DockPanel>
+
+                        <!-- ===== Rules, Gamemode, CPU masks and Settings (ConfigViewModel's tabs) ===== -->
+                        <DockPanel DataContext="{Binding Config}" Visibility="{Binding DataContext.ShowConfig, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVis}}">
+                            <TextBlock DockPanel.Dock="Top" Text="{Binding LoadProblem}" Foreground="{StaticResource ErrorBrush}" Margin="12,0,12,8" TextWrapping="Wrap"
+                                       Visibility="{Binding LoadProblem, Converter={StaticResource VisibleIf}, ConverterParameter=text}" />
+
+                            <Grid>
+                                <!-- Rules -->
+                                <DockPanel Visibility="{Binding IsRules, Converter={StaticResource BoolToVis}}">
+                                    <Grid DockPanel.Dock="Top" Margin="10,8">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Button Style="{StaticResource Small}" Content="+ Add Process Rule" Command="{Binding AddRuleCommand}" />
+                                            <Button Style="{StaticResource Small}" Content="+ Add From Open Programs" Margin="6,0,0,0" Command="{Binding AddFromOpenCommand}" />
+                                            <TextBlock Text="Rules apply every time the program starts (and right away when you save)." Foreground="{StaticResource TextSecondaryBrush}"
+                                                       VerticalAlignment="Center" Margin="14,0,0,0" />
+                                        </StackPanel>
+                                        <TextBox Width="220" HorizontalAlignment="Right" MinHeight="26" Tag="Search" Text="{Binding RuleSearch, UpdateSourceTrigger=PropertyChanged}" />
+                                    </Grid>
+                                    <TextBlock DockPanel.Dock="Top" Text="No rules yet. Add one here or right-click a process › Always." Foreground="{StaticResource TextSecondaryBrush}" Margin="22,10"
+                                               Visibility="{Binding RuleRows, Converter={StaticResource VisibleIf}, ConverterParameter=empty}" />
+                                    <ListBox Style="{StaticResource DataList}" ItemsSource="{Binding RuleRows}" ItemTemplate="{StaticResource RuleRowTemplate}" Margin="4,0" />
+                                </DockPanel>
+
+                                <!-- Masks -->
+                                <DockPanel Visibility="{Binding IsMasks, Converter={StaticResource BoolToVis}}">
+                                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="10,8">
+                                        <Button Style="{StaticResource Small}" Content="+ Add Mask" Command="{Binding AddMaskCommand}" />
+                                        <TextBlock Text="Named groups of processors to use in CPU Affinity and CPU Sets." Foreground="{StaticResource TextSecondaryBrush}"
+                                                   VerticalAlignment="Center" Margin="14,0,0,0" />
+                                    </StackPanel>
+                                    <ListBox Style="{StaticResource DataList}" ItemsSource="{Binding MaskRows}" Margin="4,0">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="220" />
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Margin="12,0,0,0" VerticalAlignment="Center" />
+                                                    <TextBlock Grid.Column="1" Text="{Binding Cpus, StringFormat=Processors {0}}" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                                                    <StackPanel Grid.Column="2" Orientation="Horizontal">
+                                                        <Button Style="{StaticResource Tiny}" Content="Edit" Command="{Binding EditCommand}" />
+                                                        <Button Style="{StaticResource Tiny}" Content="Delete" Command="{Binding DeleteCommand}" />
+                                                    </StackPanel>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </DockPanel>
+
+                                <!-- Gamemode -->
+                                <DockPanel Visibility="{Binding IsGamemode, Converter={StaticResource BoolToVis}}">
+                                    <Border DockPanel.Dock="Top" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="12,8">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="Toggle hotkey:" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                            <TextBlock Text="{Binding HotkeyText}" VerticalAlignment="Center" Margin="10,0,0,0" MinWidth="150" />
+                                            <Button Style="{StaticResource Small}" Content="Change" Margin="12,0,0,0" Command="{Binding ChangeHotkeyCommand}" />
+                                            <Button Style="{StaticResource Small}" Content="Reset" Margin="6,0,0,0" Command="{Binding ResetHotkeyCommand}" />
+                                            <TextBlock Text="Timer resolution:" FontWeight="SemiBold" VerticalAlignment="Center" Margin="36,0,0,0" />
+                                            <ComboBox ItemsSource="{Binding TimerModeOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding TimerMode}"
+                                                      Width="170" Margin="10,0,0,0" VerticalAlignment="Center"
+                                                      ToolTip="The engine asks Windows for a finer system timer: only while gamemode is on, or all the time. Games also keep their own timer requests while minimized." />
+                                            <ComboBox ItemsSource="{Binding TimerResolutionOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding TimerResolution}"
+                                                      Width="110" Margin="6,0,0,0" VerticalAlignment="Center" IsEnabled="{Binding TimerOn}" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Border DockPanel.Dock="Top" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="12,6"
+                                            Visibility="{Binding TimerNote, Converter={StaticResource VisibleIf}, ConverterParameter=text}">
+                                        <TextBlock Text="{Binding TimerNote}" Foreground="{StaticResource WarningBrush}" FontSize="11.5" TextWrapping="Wrap" />
+                                    </Border>
+                                    <!-- Automatic gamemode: turns on when a game from the list is open and turns off after the last one closes. -->
+                                    <Border DockPanel.Dock="Top" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="12,8">
+                                        <StackPanel>
+                                            <StackPanel Orientation="Horizontal">
+                                                <CheckBox Content="Turn on automatically when a game starts" IsChecked="{Binding AutoGamemode}" VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding Value, ElementName=OffDelaySlider, StringFormat=Turn off {0} s after the last game closes}" Margin="24,0,10,0"
+                                                           VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" IsEnabled="{Binding AutoGamemode}" />
+                                                <Slider x:Name="OffDelaySlider" Minimum="0" Maximum="120" TickFrequency="5" SmallChange="5" LargeChange="15" IsSnapToTickEnabled="True" Width="160"
+                                                        VerticalAlignment="Center" Value="{Binding AutoOffDelay, Delay=400}" IsEnabled="{Binding AutoGamemode}" />
+                                            </StackPanel>
+                                            <CheckBox Content="Also open this profile's programs (below) when it switches automatically" IsChecked="{Binding AutoOpensPrograms}" Margin="0,8,0,0"
+                                                      IsEnabled="{Binding AutoGamemode}" />
+                                            <TextBlock Text="Turned on by hand stays on until you turn it off; turned off by hand while a game runs stays off until that game closes."
+                                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" Margin="0,6,0,0" TextWrapping="Wrap" />
+                                            <DockPanel Margin="0,8,0,0">
+                                                <Button DockPanel.Dock="Right" Style="{StaticResource Small}" Content="+ Add Game" Command="{Binding AddGameCommand}" VerticalAlignment="Top" Margin="6,0,0,0" />
+                                                <Button DockPanel.Dock="Right" Style="{StaticResource Small}" Content="Windows settings" Command="{Binding ShowGameSettingsCommand}" VerticalAlignment="Top" Margin="6,0,0,0"
+                                                        ToolTip="Network priority (DSCP 46), fullscreen optimizations and GPU choice per game" />
+                                                <Button DockPanel.Dock="Right" Style="{StaticResource Small}" Content="Show list" Command="{Binding ShowGameListCommand}" VerticalAlignment="Top"
+                                                        ToolTip="Every game and every program that never counts, with search" />
+                                                <TextBlock Text="{Binding GameListText}" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0" />
+                                            </DockPanel>
+                                            <ItemsControl ItemsSource="{Binding GameRows}" Margin="0,4,0,0">
+                                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="8,2,2,2" Margin="0,4,6,0">
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                                                <TextBlock Text="{Binding Kind}" Foreground="{StaticResource TextSecondaryBrush}" Margin="6,0,0,0" VerticalAlignment="Center" />
+                                                                <Button Style="{StaticResource Tiny}" Content="Remove" Margin="6,0,0,0" Command="{Binding RemoveCommand}"
+                                                                        ToolTip="Back to what the built-in list says" />
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </Border>
+                                    <!-- Windows changes while gamemode is on (active profile). -->
+                                    <Border DockPanel.Dock="Top" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="12,8,12,10">
+                                        <StackPanel>
+                                            <TextBlock Text="While gamemode is on (this profile)" FontWeight="SemiBold" />
+                                            <TextBlock Text="Applied when gamemode turns on, by hand or automatically, and undone when it turns off, when the engine exits, or the next time it starts after a crash. Only what is still as gamemode left it is undone. Changes here count from the next time gamemode turns on."
+                                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" TextWrapping="Wrap" Margin="0,2,0,4" />
+                                            <ScrollViewer MaxHeight="330" VerticalScrollBarVisibility="Auto">
+                                            <UniformGrid Columns="2">
+                                                <StackPanel Orientation="Horizontal" Margin="0,8,24,0">
+                                                    <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysPowerPlan}">
+                                                        <StackPanel>
+                                                            <TextBlock Text="Power plan" />
+                                                            <TextBlock Text="Switches to this plan, then back to the previous one." Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" />
+                                                        </StackPanel>
+                                                    </CheckBox>
+                                                    <ComboBox ItemsSource="{Binding PowerPlanOptions}" DisplayMemberPath="Name" SelectedValuePath="Id" SelectedValue="{Binding SysPowerPlanId}"
+                                                              Width="220" Margin="14,0,0,0" VerticalAlignment="Center" IsEnabled="{Binding SysPowerPlan}" />
+                                                </StackPanel>
+                                                <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysStopUpdate}" Margin="0,8,24,0" HorizontalAlignment="Left">
+                                                    <StackPanel>
+                                                        <TextBlock Text="Stop Windows Update" />
+                                                        <TextBlock Text="Stops Windows Update, Update Orchestrator and Delivery Optimization (startup type unchanged); stopped again if Windows restarts them."
+                                                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" TextWrapping="Wrap" MaxWidth="440" />
+                                                    </StackPanel>
+                                                </CheckBox>
+                                                <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysStopSearch}" Margin="0,8,24,0" HorizontalAlignment="Left">
+                                                    <StackPanel>
+                                                        <TextBlock Text="Stop Windows Search indexing" />
+                                                        <TextBlock Text="Stops the indexer (WSearch); searching files still works, without the index." Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5"
+                                                                   TextWrapping="Wrap" MaxWidth="440" />
+                                                    </StackPanel>
+                                                </CheckBox>
+                                                <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysTransparency}" Margin="0,8,24,0" HorizontalAlignment="Left">
+                                                    <StackPanel>
+                                                        <TextBlock Text="Turn off transparency effects" />
+                                                        <TextBlock Text="Same as Personalization › Colors › Transparency effects." Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" />
+                                                    </StackPanel>
+                                                </CheckBox>
+                                                <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysCStates}" Margin="0,8,24,0" HorizontalAlignment="Left">
+                                                    <StackPanel>
+                                                        <TextBlock Text="Disable processor idle states (C-states)" />
+                                                        <TextBlock Text="On the active power plan. Lower latency; higher power use and temperature, even when idle." Foreground="{StaticResource TextSecondaryBrush}"
+                                                                   FontSize="11.5" TextWrapping="Wrap" MaxWidth="440" />
+                                                    </StackPanel>
+                                                </CheckBox>
+                                                <StackPanel Margin="0,8,24,0">
+                                                    <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysCleanMemory}" HorizontalAlignment="Left">
+                                                        <StackPanel>
+                                                            <TextBlock Text="Clean memory when gamemode turns on" />
+                                                            <TextBlock Text="Once: trims the memory of open programs and purges the standby list. Left alone: Windows processes like Explorer, the games, what they opened, their launcher and anti-cheats."
+                                                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" TextWrapping="Wrap" MaxWidth="440" />
+                                                        </StackPanel>
+                                                    </CheckBox>
+                                                    <StackPanel Orientation="Horizontal" Margin="50,4,0,0" IsEnabled="{Binding SysCleanMemory}">
+                                                        <TextBlock Text="Wait after gamemode turns on" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                        <ComboBox ItemsSource="{Binding CleanDelayOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding SysCleanDelay}"
+                                                                  Width="120" Margin="8,0" ToolTip="So the clean doesn't run while the game is loading." />
+                                                    </StackPanel>
+                                                </StackPanel>
+                                                <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysBackgroundEfficiency}" Margin="0,8,24,0" HorizontalAlignment="Left">
+                                                    <StackPanel>
+                                                        <TextBlock Text="Efficiency mode for background programs" />
+                                                        <TextBlock Text="Programs behind the game run in efficiency mode (EcoQoS), back to automatic when gamemode turns off. Left alone: games, the program in front, Windows' own, voice and capture programs (Discord, OBS, Voicemeeter) and programs with a rule: add a rule to keep one out."
+                                                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" TextWrapping="Wrap" MaxWidth="440" />
+                                                    </StackPanel>
+                                                </CheckBox>
+                                                <StackPanel Margin="0,8,24,0">
+                                                    <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysPurgeStandby}" HorizontalAlignment="Left">
+                                                        <StackPanel>
+                                                            <TextBlock Text="Purge the standby list during the game" />
+                                                            <TextBlock Text="When the file cache grows past the first size while free memory is under the second (at most once a minute). Running programs keep their memory."
+                                                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" TextWrapping="Wrap" MaxWidth="440" />
+                                                        </StackPanel>
+                                                    </CheckBox>
+                                                    <StackPanel Orientation="Horizontal" Margin="50,4,0,0" IsEnabled="{Binding SysPurgeStandby}">
+                                                        <TextBlock Text="Standby over" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                        <ComboBox ItemsSource="{Binding MemoryMbOptions}" SelectedItem="{Binding SysPurgeStandbyMb}" ItemStringFormat="{}{0:N0} MB" Width="110" Margin="8,0" />
+                                                        <TextBlock Text="and free under" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                        <ComboBox ItemsSource="{Binding MemoryMbOptions}" SelectedItem="{Binding SysPurgeFreeMb}" ItemStringFormat="{}{0:N0} MB" Width="110" Margin="8,0" />
+                                                    </StackPanel>
+                                                </StackPanel>
+                                                <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysRestrain}" Margin="0,8,24,0" HorizontalAlignment="Left">
+                                                    <StackPanel>
+                                                        <TextBlock Text="Lower busy background programs" />
+                                                        <TextBlock Text="A background program that keeps using more than 15 % of the CPU for 6 s drops to Below normal priority until it has been quiet for 15 s. The same programs are left alone as for efficiency mode."
+                                                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" TextWrapping="Wrap" MaxWidth="440" />
+                                                    </StackPanel>
+                                                </CheckBox>
+                                                <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysKeepAwake}" Margin="0,8,24,0" HorizontalAlignment="Left">
+                                                    <StackPanel>
+                                                        <TextBlock Text="Keep the PC and the screen awake" />
+                                                        <TextBlock Text="For controller play and long loading screens, where nothing resets the idle timer."
+                                                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" TextWrapping="Wrap" MaxWidth="440" />
+                                                    </StackPanel>
+                                                </CheckBox>
+                                                <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysDwmMmcss}" Margin="0,8,24,0" HorizontalAlignment="Left">
+                                                    <StackPanel>
+                                                        <TextBlock Text="Desktop compositor in MMCSS" />
+                                                        <TextBlock Text="DWM (the desktop compositor) runs in the multimedia scheduling class while gamemode is on, for steadier frame pacing in windowed and borderless games."
+                                                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" TextWrapping="Wrap" MaxWidth="440" />
+                                                    </StackPanel>
+                                                </CheckBox>
+                                                <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysWifi}" Margin="0,8,24,0" HorizontalAlignment="Left">
+                                                    <StackPanel>
+                                                        <TextBlock Text="Wi-Fi without background scans" />
+                                                        <TextBlock Text="Connected Wi-Fi adapters stop scanning for other networks (ping spikes) and use the driver's streaming mode. No effect on wired connections."
+                                                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" TextWrapping="Wrap" MaxWidth="440" />
+                                                    </StackPanel>
+                                                </CheckBox>
+                                                <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysAudio}" Margin="0,8,24,0" HorizontalAlignment="Left">
+                                                    <StackPanel>
+                                                        <TextBlock Text="Low-latency audio" />
+                                                        <TextBlock Text="The default playback device runs at the driver's smallest buffer instead of 10 ms. Only if the driver supports it; can crackle under heavy CPU load."
+                                                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" TextWrapping="Wrap" MaxWidth="440" />
+                                                    </StackPanel>
+                                                </CheckBox>
+                                                <StackPanel Margin="0,8,24,0">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysGameCores}">
+                                                            <TextBlock Text="Cores for games" VerticalAlignment="Center" />
+                                                        </CheckBox>
+                                                        <ComboBox ItemsSource="{Binding GameCoresOptions}" DisplayMemberPath="Label" SelectedValuePath="Spec" SelectedValue="{Binding SysGameCoresSpec}"
+                                                                  Width="220" Margin="14,0,0,0" VerticalAlignment="Center" IsEnabled="{Binding SysGameCores}" />
+                                                    </StackPanel>
+                                                    <TextBlock Text="Listed games without a rule of their own get these cores as CPU sets; back to all cores when gamemode turns off."
+                                                               Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" TextWrapping="Wrap" MaxWidth="440" Margin="0,2,0,0" />
+                                                </StackPanel>
+                                                <StackPanel Margin="0,8,24,0">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysDirector}">
+                                                            <TextBlock Text="Thread director" VerticalAlignment="Center" />
+                                                        </CheckBox>
+                                                        <ComboBox ItemsSource="{Binding HeavyThreadOptions}" SelectedItem="{Binding SysHeavyThreads}" ItemStringFormat="{}{0} busiest thread(s)"
+                                                                  Width="170" Margin="14,0,0,0" VerticalAlignment="Center" IsEnabled="{Binding SysDirector}" />
+                                                    </StackPanel>
+                                                    <TextBlock Text="The game's busiest threads (by CPU cycles) get a core of their own that the rest of the game stays off; worker and pool threads, threads the game pinned and threads with a rule are left alone. Undone when the game closes."
+                                                               Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" TextWrapping="Wrap" MaxWidth="440" Margin="0,2,0,0" />
+                                                    <StackPanel Margin="50,4,0,0" IsEnabled="{Binding SysDirector}">
+                                                        <CheckBox IsChecked="{Binding SysMoveBackground}" Margin="0,2"><TextBlock Text="Move other programs off the game's cores" TextWrapping="Wrap" MaxWidth="390" /></CheckBox>
+                                                        <CheckBox IsChecked="{Binding SysNormalizePriorities}" Margin="0,2"><TextBlock Text="Lower other programs' Realtime priority and time-critical threads" TextWrapping="Wrap" MaxWidth="390" /></CheckBox>
+                                                        <CheckBox IsChecked="{Binding SysAvoidInterrupts}" Margin="0,2"><TextBlock Text="Avoid the processors with the most interrupt work (short trace once a minute outside gamemode)" TextWrapping="Wrap" MaxWidth="390" /></CheckBox>
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </UniformGrid>
+                                            </ScrollViewer>
+                                        </StackPanel>
+                                    </Border>
+                                    <Grid DockPanel.Dock="Top" Margin="10,8">
+                                        <StackPanel Orientation="Horizontal">
+                                            <RadioButton Style="{StaticResource Tab}" Content="On Enable" IsChecked="{Binding IsEnablePhase}" GroupName="Phase" />
+                                            <RadioButton Style="{StaticResource Tab}" Content="On Disable" IsChecked="{Binding IsDisablePhase}" GroupName="Phase" />
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                            <Button Style="{StaticResource Small}" Content="Start Process" Command="{Binding AddStartCommand}" />
+                                            <Button Style="{StaticResource Small}" Content="+ Add Process Rule" Margin="6,0,0,0" Command="{Binding AddGamemodeRuleCommand}" />
+                                        </StackPanel>
+                                    </Grid>
+                                    <TextBlock DockPanel.Dock="Top" Text="{Binding PhaseHint}" Foreground="{StaticResource TextSecondaryBrush}" Margin="12,0,12,8" TextWrapping="Wrap" />
+                                    <ListBox Style="{StaticResource DataList}" ItemsSource="{Binding GamemodeRows}" ItemTemplate="{StaticResource RuleRowTemplate}" Margin="4,0" />
+                                </DockPanel>
+
+                                <!-- General -->
+                                <ScrollViewer Visibility="{Binding IsGeneral, Converter={StaticResource BoolToVis}}" VerticalScrollBarVisibility="Auto">
+                                    <Grid Margin="14,12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="1.3*" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Style="{StaticResource SectionLabel}" Text="Process columns" />
+                                            <ItemsControl ItemsSource="{Binding ProcessColumnOptions}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate><CheckBox Content="{Binding Key}" IsChecked="{Binding IsVisible}" Margin="0,0,0,10" /></DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1">
+                                            <TextBlock Style="{StaticResource SectionLabel}" Text="Thread columns" />
+                                            <ItemsControl ItemsSource="{Binding ThreadColumnOptions}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate><CheckBox Content="{Binding Key}" IsChecked="{Binding IsVisible}" Margin="0,0,0,10" /></DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2" MaxWidth="420" HorizontalAlignment="Left">
+                                            <TextBlock Style="{StaticResource SectionLabel}" Text="Refresh intervals" />
+                                            <TextBlock Text="{Binding Value, ElementName=GuiSlider, StringFormat=Process list: {0} ms}" Foreground="{StaticResource TextSecondaryBrush}" />
+                                            <Slider x:Name="GuiSlider" Minimum="100" Maximum="2000" TickFrequency="100" SmallChange="100" LargeChange="500" Width="260" HorizontalAlignment="Left"
+                                                    Value="{Binding GuiInterval, Delay=400}" Margin="0,2,0,10" />
+                                            <TextBlock Text="{Binding Value, ElementName=EngineSlider, StringFormat=Engine (tray): {0} ms}" Foreground="{StaticResource TextSecondaryBrush}" />
+                                            <Slider x:Name="EngineSlider" Minimum="500" Maximum="10000" TickFrequency="500" SmallChange="500" LargeChange="1000" Width="260" HorizontalAlignment="Left"
+                                                    Value="{Binding EngineInterval, Delay=400}" Margin="0,2,0,4" />
+                                            <TextBlock Text="How often the engine looks for new programs. Lower reacts faster and uses a little more CPU." Style="{StaticResource Secondary}" FontSize="11.5" />
+
+                                            <TextBlock Style="{StaticResource SectionLabel}" Text="Engine" Margin="0,22,0,10" />
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock VerticalAlignment="Center" Margin="0,0,12,0">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Text" Value="Stopped: rules aren't applied." />
+                                                            <Setter Property="Foreground" Value="{StaticResource WarningBrush}" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding DataContext.EngineRunning, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                                                    <Setter Property="Text" Value="Running in the tray." />
+                                                                    <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                                <Button Style="{StaticResource Small}" Content="Start" Command="{Binding StartEngineCommand}" />
+                                                <Button Style="{StaticResource Small}" Content="Stop" Margin="6,0,0,0" Command="{Binding StopEngineCommand}" />
+                                            </StackPanel>
+                                            <CheckBox Content="Start with Windows (after sign-in)" Margin="0,14,0,0" IsChecked="{Binding StartWithWindows}"
+                                                      IsEnabled="{Binding CanStartWithWindows}" />
+                                            <TextBlock Text="{Binding SignInProblem}" Style="{StaticResource Secondary}" Foreground="{StaticResource WarningBrush}" Margin="26,6,0,0"
+                                                       Visibility="{Binding SignInProblem, Converter={StaticResource VisibleIf}, ConverterParameter=text}" />
+                                            <TextBlock Style="{StaticResource Secondary}" FontSize="11.5" Margin="0,14,0,0"
+                                                       Text="Closing this window keeps the rules running; exit from the tray icon to stop them. The engine needs no window and uses little memory." />
+
+                                            <TextBlock Style="{StaticResource SectionLabel}" Text="Profile file" Margin="0,22,0,10" />
+                                            <StackPanel Orientation="Horizontal">
+                                                <Button Style="{StaticResource Small}" Content="Import" Command="{Binding ImportCommand}" />
+                                                <Button Style="{StaticResource Small}" Content="Export" Margin="6,0,0,0" Command="{Binding ExportCommand}" />
+                                            </StackPanel>
+                                            <TextBlock Style="{StaticResource Secondary}" FontSize="11.5" Margin="0,6,0,0" TextWrapping="Wrap"
+                                                       Text="Export saves the active profile to a file; Import adds a profile from one." />
+                                        </StackPanel>
+                                    </Grid>
+                                </ScrollViewer>
+                            </Grid>
+                        </DockPanel>
+                    </Grid>
+                </DockPanel>
+            </Border>
+        </Grid>
+    </DockPanel>
+</Window>

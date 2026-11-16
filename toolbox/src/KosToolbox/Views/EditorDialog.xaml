@@ -1,0 +1,21 @@
+<Window x:Class="KosToolbox.Views.EditorDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:t="clr-namespace:KosToolbox.Core.Text;assembly=KosToolbox.Core"
+        Title="{Binding Title}" SizeToContent="Height" ResizeMode="NoResize" ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner" UseLayoutRounding="True"
+        Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource UiFont}" FontSize="13">
+    <!-- Hosts an editor view model; its DataTemplate (DisplayTemplates.xaml) is the body. -->
+    <StackPanel x:Name="Root" Margin="24,20,24,20">
+        <TextBlock Style="{StaticResource CardTitle}" FontSize="18" Text="{Binding Title}" Margin="0,0,0,12" />
+        <ContentControl Content="{Binding}" Focusable="False" />
+        <TextBlock Text="{Binding Error}" Foreground="{StaticResource ErrorBrush}" TextWrapping="Wrap" Margin="0,10,0,0"
+                   Visibility="{Binding Error, Converter={StaticResource NotEmptyToVis}}" />
+        <Grid Margin="0,20,0,0">
+            <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="10" /><ColumnDefinition /></Grid.ColumnDefinitions>
+            <Button Style="{StaticResource PrimaryButton}" Content="{x:Static t:Txt.Ok}" IsEnabled="{Binding IsValid}" IsDefault="True" Click="OnOk" />
+            <Button Grid.Column="2" Content="{x:Static t:Txt.Cancel}" IsCancel="True" />
+        </Grid>
+    </StackPanel>
+</Window>

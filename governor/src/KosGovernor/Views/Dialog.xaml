@@ -1,0 +1,21 @@
+<Window x:Class="KosGovernor.Views.Dialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Style="{StaticResource DialogWindow}" WindowStartupLocation="CenterOwner">
+    <Border x:Name="Root" Style="{StaticResource DialogFrame}" Width="460">
+        <StackPanel>
+            <StackPanel Margin="24,20,24,18">
+                <TextBlock x:Name="Heading" Style="{StaticResource CardTitle}" FontSize="17" Margin="0,0,0,10" />
+                <TextBox x:Name="Body" Style="{StaticResource ReadOnlyText}" MaxHeight="360" VerticalScrollBarVisibility="Auto" Foreground="{StaticResource TextSecondaryBrush}" />
+                <TextBox x:Name="Input" Margin="0,14,0,0" Visibility="Collapsed" TextChanged="OnInputChanged" />
+                <TextBlock x:Name="InputError" Style="{StaticResource Secondary}" Foreground="{StaticResource ErrorBrush}" Margin="0,6,0,0" Visibility="Collapsed" />
+            </StackPanel>
+            <Border Style="{StaticResource DialogFooter}">
+                <UniformGrid Rows="1">
+                    <Button x:Name="Ok" Style="{StaticResource PrimaryButton}" Margin="0,0,6,0" IsDefault="True" Click="OnOk" />
+                    <Button x:Name="Cancel" Content="Cancel" Margin="6,0,0,0" IsCancel="True" />
+                </UniformGrid>
+            </Border>
+        </StackPanel>
+    </Border>
+</Window>

@@ -1,0 +1,50 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{BE794319-902B-476D-95C6-9C92511DC746}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KosGovernor.Core", "src\KosGovernor.Core\KosGovernor.Core.csproj", "{5AB6425B-5D63-4AE2-8E84-9BD70405C452}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KosGovernor", "src\KosGovernor\KosGovernor.csproj", "{133A69E5-93B0-400E-A484-A0D81F4F14D6}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{22D2435B-0FB4-4913-B34E-A415E666A028}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KosGovernor.Core.Tests", "tests\KosGovernor.Core.Tests\KosGovernor.Core.Tests.csproj", "{97FE1D22-A2A6-45A7-A5E5-AB2CF6176C15}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KosGovernor.Engine", "src\KosGovernor.Engine\KosGovernor.Engine.csproj", "{55D92CD4-37E2-4294-B865-E53AE8E56B89}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{5AB6425B-5D63-4AE2-8E84-9BD70405C452}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5AB6425B-5D63-4AE2-8E84-9BD70405C452}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5AB6425B-5D63-4AE2-8E84-9BD70405C452}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5AB6425B-5D63-4AE2-8E84-9BD70405C452}.Release|Any CPU.Build.0 = Release|Any CPU
+		{133A69E5-93B0-400E-A484-A0D81F4F14D6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{133A69E5-93B0-400E-A484-A0D81F4F14D6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{133A69E5-93B0-400E-A484-A0D81F4F14D6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{133A69E5-93B0-400E-A484-A0D81F4F14D6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{97FE1D22-A2A6-45A7-A5E5-AB2CF6176C15}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{97FE1D22-A2A6-45A7-A5E5-AB2CF6176C15}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{97FE1D22-A2A6-45A7-A5E5-AB2CF6176C15}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{97FE1D22-A2A6-45A7-A5E5-AB2CF6176C15}.Release|Any CPU.Build.0 = Release|Any CPU
+		{55D92CD4-37E2-4294-B865-E53AE8E56B89}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{55D92CD4-37E2-4294-B865-E53AE8E56B89}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{55D92CD4-37E2-4294-B865-E53AE8E56B89}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{55D92CD4-37E2-4294-B865-E53AE8E56B89}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{5AB6425B-5D63-4AE2-8E84-9BD70405C452} = {BE794319-902B-476D-95C6-9C92511DC746}
+		{133A69E5-93B0-400E-A484-A0D81F4F14D6} = {BE794319-902B-476D-95C6-9C92511DC746}
+		{97FE1D22-A2A6-45A7-A5E5-AB2CF6176C15} = {22D2435B-0FB4-4913-B34E-A415E666A028}
+		{55D92CD4-37E2-4294-B865-E53AE8E56B89} = {BE794319-902B-476D-95C6-9C92511DC746}
+	EndGlobalSection
+EndGlobal

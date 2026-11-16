@@ -1,0 +1,30 @@
+<Window x:Class="KosGovernor.Views.GameListWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Gamemode games" Width="900" Height="620" MinWidth="560" MinHeight="300" WindowStartupLocation="CenterOwner" Icon="pack://application:,,,/KosGovernor;component/Assets/kos-governor.ico"
+        Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource UiFont}" FontSize="12" UseLayoutRounding="True">
+    <DockPanel>
+        <Grid DockPanel.Dock="Top" Margin="10,8,10,4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="260" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Orientation="Horizontal">
+                <RadioButton x:Name="All" Style="{StaticResource Tab}" Content="All" GroupName="GameFilter" IsChecked="True" Checked="OnFilter" />
+                <RadioButton x:Name="Games" Style="{StaticResource Tab}" Content="Games" GroupName="GameFilter" Checked="OnFilter" />
+                <RadioButton x:Name="Never" Style="{StaticResource Tab}" Content="Never a game" GroupName="GameFilter" Checked="OnFilter" />
+                <RadioButton x:Name="Mine" Style="{StaticResource Tab}" Content="Your changes" GroupName="GameFilter" Checked="OnFilter" />
+            </StackPanel>
+            <TextBox x:Name="Search" Grid.Column="1" Tag="Search program or game" MinHeight="26" TextChanged="OnSearch" />
+        </Grid>
+        <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="10,5">
+            <TextBlock x:Name="Status" Foreground="{StaticResource TextSecondaryBrush}" />
+        </Border>
+        <ListView x:Name="List" Style="{StaticResource GridList}" SelectionMode="Single" ContextMenuOpening="OnMenu">
+            <ListView.ContextMenu>
+                <ContextMenu />
+            </ListView.ContextMenu>
+        </ListView>
+    </DockPanel>
+</Window>

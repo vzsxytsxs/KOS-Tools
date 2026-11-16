@@ -1,0 +1,20 @@
+<Window x:Class="KosToolbox.Views.Dialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:t="clr-namespace:KosToolbox.Core.Text;assembly=KosToolbox.Core"
+        Width="520" SizeToContent="Height" ResizeMode="NoResize" ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner" UseLayoutRounding="True"
+        Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource UiFont}" FontSize="13">
+    <StackPanel x:Name="Root" Margin="24,20,24,20">
+        <TextBlock x:Name="Heading" Style="{StaticResource CardTitle}" FontSize="16" Margin="0,0,0,12" />
+        <TextBox x:Name="Body" Style="{StaticResource ReadOnlyText}" MaxHeight="420" VerticalScrollBarVisibility="Auto" />
+        <TextBox x:Name="Input" Margin="0,14,0,0" Visibility="Collapsed" TextChanged="OnInputChanged" />
+        <TextBlock x:Name="InputError" Style="{StaticResource Secondary}" Foreground="{StaticResource ErrorBrush}" Margin="0,6,0,0" Visibility="Collapsed" />
+        <CheckBox x:Name="Check" Margin="0,14,0,0" Visibility="Collapsed" />
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,22,0,0">
+            <Button x:Name="Ok" Style="{StaticResource PrimaryButton}" MinWidth="96" IsDefault="True" Click="OnOk" />
+            <Button x:Name="Cancel" Content="{x:Static t:Txt.Cancel}" MinWidth="96" Margin="8,0,0,0" IsCancel="True" />
+        </StackPanel>
+    </StackPanel>
+</Window>

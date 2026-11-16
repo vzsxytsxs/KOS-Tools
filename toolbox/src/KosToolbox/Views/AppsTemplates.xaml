@@ -1,0 +1,290 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:vm="clr-namespace:KosToolbox.ViewModels"
+                    xmlns:v="clr-namespace:KosToolbox.Views"
+                    xmlns:t="clr-namespace:KosToolbox.Core.Text;assembly=KosToolbox.Core">
+
+    <!-- ===================== Cleanup (Apps, Storage, Drivers, Ghost devices in tabs) ===================== -->
+    <DataTemplate DataType="{x:Type vm:CleanupPageViewModel}">
+        <Grid>
+            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+            <ItemsControl ItemsSource="{Binding Tabs}" Focusable="False" Margin="0,0,0,10">
+                <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Button Style="{StaticResource GpuTabButton}" Command="{Binding DataContext.SelectTabCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                CommandParameter="{Binding Key}" AutomationProperties.Name="{Binding Label}" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <ContentControl Grid.Row="1" Content="{Binding Current}" Focusable="False" v:Motion.Transition="{Binding Current}" />
+        </Grid>
+    </DataTemplate>
+
+    <!-- ===================== Apps ===================== -->
+    <DataTemplate DataType="{x:Type vm:ProgramRowViewModel}">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="28" />
+                <ColumnDefinition Width="3*" />
+                <ColumnDefinition Width="2*" />
+                <ColumnDefinition Width="1.2*" />
+                <ColumnDefinition Width="0.8*" />
+                <ColumnDefinition Width="0.9*" />
+            </Grid.ColumnDefinitions>
+            <CheckBox IsChecked="{Binding IsChecked}" VerticalAlignment="Center" ToolTip="Check to uninstall several programs in one run" AutomationProperties.Name="{Binding Name}" />
+            <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}" Margin="0,0,10,0" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="2" Text="{Binding Publisher}" TextTrimming="CharacterEllipsis" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,10,0" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="3" Text="{Binding Version}" TextTrimming="CharacterEllipsis" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,10,0" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="4" Text="{Binding Size}" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,10,0" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="5" Text="{Binding Installed}" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
+        </Grid>
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vm:StoreAppRowViewModel}">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="3*" />
+                <ColumnDefinition Width="2*" />
+                <ColumnDefinition Width="1.2*" />
+                <ColumnDefinition Width="1*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip="{Binding App.FullName}" Margin="0,0,10,0" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="1" Text="{Binding Publisher}" TextTrimming="CharacterEllipsis" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,10,0" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="2" Text="{Binding Version}" TextTrimming="CharacterEllipsis" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,10,0" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="3" Text="{Binding Kind}" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
+        </Grid>
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vm:FeatureRowViewModel}">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="3*" />
+                <ColumnDefinition Width="1*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" Margin="0,0,10,0" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="1" Text="{Binding State}" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
+        </Grid>
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vm:AppsPageViewModel}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <DockPanel LastChildFill="False" Margin="0,0,0,10">
+                <ItemsControl Style="{StaticResource Segmented}" ItemsSource="{Binding Tabs}" Tag="{Binding SelectTabCommand}" VerticalAlignment="Center"
+                              AutomationProperties.Name="{x:Static t:Txt.Tabs}" />
+                <ContentPresenter Content="{Binding}" ContentTemplate="{StaticResource PageSearch}" Margin="10,0,0,0" VerticalAlignment="Center" />
+                <ComboBox ItemsSource="{Binding Kinds}" ItemTemplate="{StaticResource OptionText}" SelectedItem="{Binding SelectedKind, Mode=TwoWay}"
+                          Margin="10,0,0,0" MinWidth="160" VerticalAlignment="Center" AutomationProperties.Name="{x:Static t:Txt.ColKind}"
+                          Visibility="{Binding ShowStore, Converter={StaticResource BoolToVis}}" />
+                <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.Reading}" Margin="10,0,0,0" VerticalAlignment="Center"
+                           Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}" />
+                <TextBlock DockPanel.Dock="Right" Style="{StaticResource Secondary}" Text="{Binding CountText}" VerticalAlignment="Center" />
+            </DockPanel>
+
+            <!-- Installed programs -->
+            <StackPanel Grid.Row="1" Margin="0,0,0,6" Visibility="{Binding ShowPrograms, Converter={StaticResource BoolToVis}}">
+                <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.ProgramsNote}" />
+                <TextBlock Style="{StaticResource Secondary}" Text="{Binding ProgramsError}" Foreground="{StaticResource ErrorBrush}" Margin="0,4,0,0"
+                           Visibility="{Binding ProgramsError, Converter={StaticResource NotEmptyToVis}}" />
+            </StackPanel>
+            <DockPanel Grid.Row="2" Visibility="{Binding ShowPrograms, Converter={StaticResource BoolToVis}}" v:Motion.Transition="{Binding ShowPrograms}">
+                <Grid DockPanel.Dock="Top" Margin="10,4,20,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="28" />
+                        <ColumnDefinition Width="3*" />
+                        <ColumnDefinition Width="2*" />
+                        <ColumnDefinition Width="1.2*" />
+                        <ColumnDefinition Width="0.8*" />
+                        <ColumnDefinition Width="0.9*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="1" Style="{StaticResource SectionTitle}" FontSize="12" Text="{x:Static t:Txt.ColName}" />
+                    <TextBlock Grid.Column="2" Style="{StaticResource SectionTitle}" FontSize="12" Text="{x:Static t:Txt.ColPublisher}" />
+                    <TextBlock Grid.Column="3" Style="{StaticResource SectionTitle}" FontSize="12" Text="{x:Static t:Txt.ColVersion}" />
+                    <TextBlock Grid.Column="4" Style="{StaticResource SectionTitle}" FontSize="12" Text="{x:Static t:Txt.ColSize}" />
+                    <TextBlock Grid.Column="5" Style="{StaticResource SectionTitle}" FontSize="12" Text="{x:Static t:Txt.ColInstalled}" />
+                </Grid>
+                <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
+                    <ListBox Style="{StaticResource DataList}" ItemsSource="{Binding Programs}" SelectedItem="{Binding SelectedProgram, Mode=TwoWay}"
+                             SelectionMode="Single" AutomationProperties.Name="{x:Static t:Txt.TabPrograms}" />
+                </Border>
+            </DockPanel>
+
+            <!-- Store apps -->
+            <StackPanel Grid.Row="1" Margin="0,0,0,6" Visibility="{Binding ShowStore, Converter={StaticResource BoolToVis}}">
+                <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.StoreAppsNote}" />
+                <TextBlock Style="{StaticResource Secondary}" Text="{Binding StoreError}" Foreground="{StaticResource WarningBrush}" Margin="0,4,0,0"
+                           Visibility="{Binding StoreError, Converter={StaticResource NotEmptyToVis}}" />
+            </StackPanel>
+            <DockPanel Grid.Row="2" Visibility="{Binding ShowStore, Converter={StaticResource BoolToVis}}" v:Motion.Transition="{Binding ShowStore}">
+                <Grid DockPanel.Dock="Top" Margin="10,4,20,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="3*" />
+                        <ColumnDefinition Width="2*" />
+                        <ColumnDefinition Width="1.2*" />
+                        <ColumnDefinition Width="1*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Style="{StaticResource SectionTitle}" FontSize="12" Text="{x:Static t:Txt.ColName}" />
+                    <TextBlock Grid.Column="1" Style="{StaticResource SectionTitle}" FontSize="12" Text="{x:Static t:Txt.ColPublisher}" />
+                    <TextBlock Grid.Column="2" Style="{StaticResource SectionTitle}" FontSize="12" Text="{x:Static t:Txt.ColVersion}" />
+                    <TextBlock Grid.Column="3" Style="{StaticResource SectionTitle}" FontSize="12" Text="{x:Static t:Txt.ColKind}" />
+                </Grid>
+                <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
+                    <ListBox Style="{StaticResource DataList}" ItemsSource="{Binding Apps}" SelectedItem="{Binding SelectedApp, Mode=TwoWay}"
+                             SelectionMode="Single" AutomationProperties.Name="{x:Static t:Txt.TabStoreApps}" />
+                </Border>
+            </DockPanel>
+
+            <!-- Optional Windows features -->
+            <StackPanel Grid.Row="1" Margin="0,0,0,6" Visibility="{Binding ShowFeatures, Converter={StaticResource BoolToVis}}">
+                <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.FeaturesNote}" />
+                <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.FeaturesNeedAdmin}" Foreground="{StaticResource WarningBrush}" Margin="0,4,0,0"
+                           Visibility="{Binding FeaturesNeedAdmin, Converter={StaticResource BoolToVis}}" />
+                <TextBlock Style="{StaticResource Secondary}" Text="{Binding FeaturesError}" Foreground="{StaticResource ErrorBrush}" Margin="0,4,0,0"
+                           Visibility="{Binding FeaturesError, Converter={StaticResource NotEmptyToVis}}" />
+            </StackPanel>
+            <DockPanel Grid.Row="2" Visibility="{Binding ShowFeatures, Converter={StaticResource BoolToVis}}">
+                <TextBox DockPanel.Dock="Bottom" Style="{StaticResource ReadOnlyText}" Text="{Binding FeatureDetail, Mode=OneWay}" TextWrapping="Wrap" Margin="10,8,0,0"
+                         Visibility="{Binding FeatureDetail, Converter={StaticResource NotEmptyToVis}}" />
+                <Grid DockPanel.Dock="Top" Margin="10,4,20,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="3*" />
+                        <ColumnDefinition Width="1*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Style="{StaticResource SectionTitle}" FontSize="12" Text="{x:Static t:Txt.ColName}" />
+                    <TextBlock Grid.Column="1" Style="{StaticResource SectionTitle}" FontSize="12" Text="{x:Static t:Txt.ColState}" />
+                </Grid>
+                <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
+                    <ListBox Style="{StaticResource DataList}" ItemsSource="{Binding Features}" SelectedItem="{Binding SelectedFeature, Mode=TwoWay}"
+                             SelectionMode="Single" AutomationProperties.Name="{x:Static t:Txt.TabWindowsFeatures}" />
+                </Border>
+            </DockPanel>
+
+            <!-- Selection actions -->
+            <Border Grid.Row="3" Style="{StaticResource Card}" Margin="0,10,0,0">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Style="{StaticResource PageMessage}" VerticalAlignment="Center" Margin="0,0,16,0" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Visibility="{Binding ShowPrograms, Converter={StaticResource BoolToVis}}">
+                        <Button Content="{x:Static t:Txt.OpenLocation}" Command="{Binding OpenLocationCommand}" />
+                        <Button Content="{x:Static t:Txt.ForceRemoval}" Margin="8,0,0,0" Command="{Binding ForceRemoveCommand}" ToolTip="{x:Static t:Txt.ForceRemovalTooltip}" />
+                        <Button Content="{Binding UninstallCheckedText}" Margin="8,0,0,0" Command="{Binding UninstallCheckedCommand}" Visibility="{Binding HasChecked, Converter={StaticResource BoolToVis}}"
+                                ToolTip="Removes the checked programs one after another: silently when the uninstaller allows it (it can't be stopped midway), else with its own wizard. Then one leftovers search for all of them." />
+                        <Button Style="{StaticResource PrimaryButton}" Content="{x:Static t:Txt.Uninstall}" MinWidth="92" Margin="8,0,0,0" Command="{Binding UninstallCommand}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Visibility="{Binding ShowFeatures, Converter={StaticResource BoolToVis}}">
+                        <Button Content="{x:Static t:Txt.TurnOff}" MinWidth="92" Command="{Binding TurnOffCommand}" />
+                        <Button Style="{StaticResource PrimaryButton}" Content="{x:Static t:Txt.TurnOn}" MinWidth="92" Margin="8,0,0,0" Command="{Binding TurnOnCommand}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Visibility="{Binding ShowStore, Converter={StaticResource BoolToVis}}">
+                        <CheckBox Content="{x:Static t:Txt.RemoveForAllUsers}" ToolTip="{x:Static t:Txt.RemoveForAllUsersTip}" IsChecked="{Binding RemoveForAllUsers}" VerticalAlignment="Center" Margin="0,0,14,0" />
+                        <Button Content="{x:Static t:Txt.SearchStore}" Command="{Binding SearchStoreCommand}" />
+                        <Button Style="{StaticResource PrimaryButton}" Content="{x:Static t:Txt.RemoveApp}" MinWidth="92" Margin="8,0,0,0" Command="{Binding RemoveAppCommand}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Leftovers to review: covers the list and the buttons until "Delete checked" or "Close". -->
+            <Border Grid.Row="1" Grid.RowSpan="3" Background="{StaticResource BgBrush}" Panel.ZIndex="2"
+                    Visibility="{Binding Leftovers, Converter={StaticResource NotEmptyToVis}}">
+                <ContentControl Content="{Binding Leftovers}" Focusable="False" />
+            </Border>
+        </Grid>
+    </DataTemplate>
+
+    <!-- ===================== Program leftovers ===================== -->
+    <DataTemplate DataType="{x:Type vm:LeftoverRowViewModel}">
+        <Grid ToolTip="{Binding Tooltip}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="40" />
+                <ColumnDefinition Width="3*" />
+                <ColumnDefinition Width="1.6*" />
+                <ColumnDefinition Width="90" />
+            </Grid.ColumnDefinitions>
+            <Grid.Style>
+                <Style TargetType="Grid">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding CanRemove}" Value="False">
+                            <Setter Property="Opacity" Value="0.5" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Grid.Style>
+            <CheckBox IsChecked="{Binding IsChecked}" IsEnabled="{Binding CanRemove}" VerticalAlignment="Center" AutomationProperties.Name="{Binding Display}" />
+            <StackPanel Grid.Column="1" Margin="0,0,12,0" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Display}" TextTrimming="CharacterEllipsis" />
+                <TextBlock Style="{StaticResource Secondary}" FontSize="11.5" Text="{Binding Kind}" Margin="0,2,0,0" />
+            </StackPanel>
+            <TextBlock Grid.Column="2" Style="{StaticResource Secondary}" Text="{Binding Reason}" TextWrapping="Wrap" Margin="0,0,12,0" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="3" Style="{StaticResource Secondary}" Text="{Binding Size}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+        </Grid>
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vm:LeftoversViewModel}">
+        <DockPanel>
+            <Border DockPanel.Dock="Top" Style="{StaticResource Card}" Margin="0,0,0,10">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource CardTitle}" Text="{Binding Title}" />
+                    <TextBlock Style="{StaticResource Secondary}" Text="{Binding Note}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                    <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.LeftoverNeedsAdmin}" Foreground="{StaticResource WarningBrush}" TextWrapping="Wrap" Margin="0,4,0,0"
+                               Visibility="{Binding NeedsAdmin, Converter={StaticResource BoolToVis}}" />
+                </StackPanel>
+            </Border>
+            <Border DockPanel.Dock="Bottom" Style="{StaticResource Card}" BorderBrush="{StaticResource BorderStrongBrush}" Margin="0,10,0,0">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                        <TextBlock Text="{Binding Stats}" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding Status}" Margin="0,6,0,0" Visibility="{Binding HasStatus, Converter={StaticResource BoolToVis}}" />
+                        <ProgressBar IsIndeterminate="{Binding HasStatus}" Margin="0,6,0,0" Visibility="{Binding HasStatus, Converter={StaticResource BoolToVis}}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Content="{x:Static t:Txt.Close}" MinWidth="92" Command="{Binding CloseCommand}" />
+                        <Button Style="{StaticResource PrimaryButton}" Content="{x:Static t:Txt.DeleteChecked}" Margin="8,0,0,0" Command="{Binding DeleteCommand}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+            <DockPanel DockPanel.Dock="Top" LastChildFill="False" Margin="0,0,0,8">
+                <Button Content="{x:Static t:Txt.CheckAll}" Command="{Binding CheckAllCommand}" />
+                <Button Content="{x:Static t:Txt.UncheckAll}" Margin="8,0,0,0" Command="{Binding UncheckAllCommand}" />
+            </DockPanel>
+            <Grid DockPanel.Dock="Top" Margin="10,2,20,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="40" />
+                    <ColumnDefinition Width="3*" />
+                    <ColumnDefinition Width="1.6*" />
+                    <ColumnDefinition Width="90" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="1" Style="{StaticResource SectionTitle}" FontSize="12" Text="{x:Static t:Txt.ColItem}" />
+                <TextBlock Grid.Column="2" Style="{StaticResource SectionTitle}" FontSize="12" Text="{x:Static t:Txt.ColReason}" />
+                <TextBlock Grid.Column="3" Style="{StaticResource SectionTitle}" FontSize="12" Text="{x:Static t:Txt.ColSize}" HorizontalAlignment="Right" />
+            </Grid>
+            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
+                <ListBox Style="{StaticResource DataList}" ItemsSource="{Binding View}" AutomationProperties.Name="{Binding Title}">
+                    <ListBox.GroupStyle>
+                        <GroupStyle>
+                            <GroupStyle.HeaderTemplate>
+                                <DataTemplate>
+                                    <TextBlock Style="{StaticResource SectionTitle}" Margin="4,12,0,4">
+                                        <Run Text="{Binding Name, Mode=OneWay}" /><Run Text="{Binding ItemCount, Mode=OneWay, StringFormat=' ({0})'}" />
+                                    </TextBlock>
+                                </DataTemplate>
+                            </GroupStyle.HeaderTemplate>
+                        </GroupStyle>
+                    </ListBox.GroupStyle>
+                </ListBox>
+            </Border>
+        </DockPanel>
+    </DataTemplate>
+</ResourceDictionary>

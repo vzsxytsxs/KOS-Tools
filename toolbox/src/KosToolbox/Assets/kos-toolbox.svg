@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="KOS Toolbox">
+  <title>KOS Toolbox</title>
+  <defs>
+    <mask id="handle-hole">
+      <rect width="1024" height="1024" fill="#fff"/>
+      <circle cx="249" cy="789" r="39" fill="#000"/>
+    </mask>
+  </defs>
+  <rect x="80" y="80" width="864" height="864" rx="176" fill="#0b0b0b"/>
+  <path mask="url(#handle-hole)" fill="#fff" d="M736 158c-83-31-179-13-244 52-63 63-82 156-54 238L187 699c-50 50-50 132 0 182s132 50 182 0l251-251c82 28 175 9 238-54 65-65 83-161 52-244L752 490l-107-24-24-107 158-158c-13-17-27-31-43-43Z"/>
+</svg>

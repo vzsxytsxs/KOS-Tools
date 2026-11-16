@@ -1,0 +1,45 @@
+<Window x:Class="KosGovernor.Views.AddRulesDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Add rules from open programs" Style="{StaticResource DialogWindow}" WindowStartupLocation="CenterOwner">
+    <Border x:Name="Root" Style="{StaticResource DialogFrame}" Width="500">
+        <StackPanel>
+            <StackPanel Margin="24,20,24,18">
+                <TextBlock Style="{StaticResource CardTitle}" FontSize="17" Text="Add rules from open programs" />
+                <TextBlock Style="{StaticResource Secondary}" TextWrapping="Wrap" Margin="0,6,0,12"
+                           Text="Games get the cores as CPU sets: Windows can still use the other cores when it has to, and anti-cheats accept it better. Other programs get them as affinity." />
+                <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="10,6">
+                    <ScrollViewer MaxHeight="300" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl x:Name="Programs">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <CheckBox IsChecked="{Binding IsSelected}" Margin="0,3" Checked="OnTicked" Unchecked="OnTicked">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Image Source="{Binding Icon}" Width="16" Height="16" Margin="0,0,8,0" />
+                                            <TextBlock Text="{Binding Name}" />
+                                            <TextBlock Text="Game" Foreground="{StaticResource TextSecondaryBrush}" Margin="10,0,0,0"
+                                                       Visibility="{Binding IsGame, Converter={StaticResource BoolToVis}}" />
+                                        </StackPanel>
+                                    </CheckBox>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Border>
+                <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="Cores:" />
+                    <ComboBox x:Name="CoresBox" Width="230" />
+                </StackPanel>
+                <CheckBox x:Name="ChildrenBox" Content="Also the programs they open" Margin="0,10,0,0"
+                          ToolTip="A launcher's game, for example: programs these open get the same cores, unless they have a rule of their own." />
+                <TextBlock x:Name="Error" Style="{StaticResource Secondary}" Foreground="{StaticResource ErrorBrush}" Margin="0,10,0,0" Visibility="Collapsed" />
+            </StackPanel>
+            <Border Style="{StaticResource DialogFooter}">
+                <UniformGrid Rows="1">
+                    <Button x:Name="Ok" Style="{StaticResource PrimaryButton}" Content="Add" Margin="0,0,6,0" IsDefault="True" Click="OnAdd" />
+                    <Button Content="Cancel" Margin="6,0,0,0" IsCancel="True" />
+                </UniformGrid>
+            </Border>
+        </StackPanel>
+    </Border>
+</Window>
