@@ -32,12 +32,288 @@
         <Setter Property="Typography.NumeralAlignment" Value="Tabular" />
     </Style>
 
-    <!-- The selected device: name, Not supported, what that means beside Copy device report, Info and its HID collections. -->
+    <!-- Segmented choices that share the column's width (stages, rates, effects), so they fit the narrow controls column. -->
+    <Style x:Key="PeriSegmentButton" TargetType="Button" BasedOn="{StaticResource SegmentButton}">
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="Padding" Value="6,5" />
+    </Style>
+    <Style x:Key="PeriSegmented" TargetType="ItemsControl" BasedOn="{StaticResource Segmented}">
+        <Setter Property="ItemsPanel">
+            <Setter.Value>
+                <ItemsPanelTemplate><UniformGrid Rows="1" /></ItemsPanelTemplate>
+            </Setter.Value>
+        </Setter>
+        <Setter Property="ItemTemplate">
+            <Setter.Value>
+                <DataTemplate>
+                    <Button Style="{StaticResource PeriSegmentButton}" Content="{Binding Label}" AutomationProperties.Name="{Binding Label}"
+                            Command="{Binding Tag, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding Key}" />
+                </DataTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style x:Key="PeriLabel" TargetType="TextBlock" BasedOn="{StaticResource Secondary}">
+        <Setter Property="Margin" Value="0,0,0,4" />
+    </Style>
+    <Style x:Key="PeriField" TargetType="StackPanel">
+        <Setter Property="Margin" Value="0,0,0,12" />
+    </Style>
+
+    <!-- ===================== Device pictures ===================== -->
+    <!-- Drawn here (no product photos): one top view per model family; the light (LedBrush: the color and brightness the controls show,
+         null while off) glows where the device has it. Dark plastic on the dark stage whatever the theme. -->
+    <LinearGradientBrush x:Key="ArtBody" StartPoint="0,0" EndPoint="1,0">
+        <GradientStop Color="#141414" Offset="0" /><GradientStop Color="#2B2B2B" Offset="0.42" /><GradientStop Color="#232323" Offset="0.6" /><GradientStop Color="#101010" Offset="1" />
+    </LinearGradientBrush>
+    <RadialGradientBrush x:Key="ArtShine" Center="0.38,0.22" GradientOrigin="0.38,0.22" RadiusX="0.6" RadiusY="0.45">
+        <GradientStop Color="#1EFFFFFF" Offset="0" /><GradientStop Color="#00FFFFFF" Offset="1" />
+    </RadialGradientBrush>
+    <LinearGradientBrush x:Key="ArtWheel" StartPoint="0,0" EndPoint="1,0">
+        <GradientStop Color="#080808" Offset="0" /><GradientStop Color="#3A3A3A" Offset="0.5" /><GradientStop Color="#080808" Offset="1" />
+    </LinearGradientBrush>
+    <RadialGradientBrush x:Key="ArtStage" RadiusX="0.65" RadiusY="0.55">
+        <GradientStop Color="#1A1A1A" Offset="0" /><GradientStop Color="#0D0D0D" Offset="1" />
+    </RadialGradientBrush>
+    <SolidColorBrush x:Key="ArtEdge" Color="#3C3C3C" />
+    <SolidColorBrush x:Key="ArtSeam" Color="#070707" />
+    <SolidColorBrush x:Key="ArtDark" Color="#0A0A0A" />
+    <DropShadowEffect x:Key="ArtShadow" BlurRadius="34" ShadowDepth="10" Direction="270" Opacity="0.75" Color="#000000" />
+    <BlurEffect x:Key="ArtGlow" Radius="22" />
+
+    <!-- The light: a dark lens, the glow behind and the lit lens on top; Data is the lens shape. -->
+    <Style x:Key="ArtLens" TargetType="Path">
+        <Setter Property="Fill" Value="{StaticResource ArtDark}" />
+        <Setter Property="Stroke" Value="#262626" />
+        <Setter Property="StrokeThickness" Value="1" />
+        <Setter Property="Visibility" Value="{Binding HasLight, Converter={StaticResource BoolToVis}}" />
+    </Style>
+    <Style x:Key="ArtLit" TargetType="Path">
+        <Setter Property="Fill" Value="{Binding LedBrush}" />
+        <Setter Property="StrokeThickness" Value="0" />
+    </Style>
+    <!-- The glow: the lens drawn wider (a thick stroke in the light's color) and blurred, centered on the lens itself. -->
+    <Style x:Key="ArtGlowPath" TargetType="Path" BasedOn="{StaticResource ArtLit}">
+        <Setter Property="Stroke" Value="{Binding LedBrush}" />
+        <Setter Property="StrokeThickness" Value="18" />
+        <Setter Property="StrokeLineJoin" Value="Round" />
+        <Setter Property="Effect" Value="{StaticResource ArtGlow}" />
+    </Style>
+    <Style x:Key="ArtWheelRect" TargetType="Rectangle">
+        <Setter Property="Fill" Value="{StaticResource ArtWheel}" />
+        <Setter Property="Stroke" Value="{StaticResource ArtEdge}" />
+        <Setter Property="StrokeThickness" Value="1" />
+        <Setter Property="RadiusX" Value="9" />
+        <Setter Property="RadiusY" Value="9" />
+        <Setter Property="Width" Value="18" />
+        <Setter Property="Height" Value="48" />
+    </Style>
+    <Style x:Key="ArtLine" TargetType="Path">
+        <Setter Property="Stroke" Value="{StaticResource ArtSeam}" />
+        <Setter Property="StrokeThickness" Value="2.2" />
+        <Setter Property="StrokeStartLineCap" Value="Round" />
+        <Setter Property="StrokeEndLineCap" Value="Round" />
+    </Style>
+    <Style x:Key="ArtRibs" TargetType="Path">
+        <Setter Property="Stroke" Value="#151515" />
+        <Setter Property="StrokeThickness" Value="2" />
+        <Setter Property="Data" Value="M0,6 H14 M0,14 H14 M0,22 H14 M0,30 H14 M0,38 H14" />
+    </Style>
+
+    <!-- Viper: long, low and symmetric, side buttons on both sides, the logo light on the palm. -->
+    <DataTemplate x:Key="ArtViper">
+        <Canvas Width="200" Height="344">
+            <Path x:Name="body" Fill="{StaticResource ArtBody}" Stroke="{StaticResource ArtEdge}" StrokeThickness="1.2" Effect="{StaticResource ArtShadow}"
+                  Data="M100,8 C130,8 148,22 153,50 C158,80 155,116 157,152 C159,196 170,232 168,270 C165,314 136,336 100,336 C64,336 35,314 32,270 C30,232 41,196 43,152 C45,116 42,80 47,50 C52,22 70,8 100,8 Z" />
+            <Path Fill="{StaticResource ArtShine}" Data="{Binding Data, ElementName=body}" />
+            <Path Style="{StaticResource ArtLine}" Data="M100,11 L100,128 M45,129 C72,141 128,141 155,129" />
+            <Path Style="{StaticResource ArtLine}" Stroke="#2E2E2E" Data="M44.5,90 L43.5,114 M43.5,119 L44.5,143 M155.5,90 L156.5,114 M156.5,119 L155.5,143" />
+            <Rectangle Style="{StaticResource ArtWheelRect}" Canvas.Left="91" Canvas.Top="38" />
+            <Path Style="{StaticResource ArtRibs}" Canvas.Left="93" Canvas.Top="40" />
+            <Path Style="{StaticResource ArtLens}" Data="M100,222 L115,249 L85,249 Z" StrokeLineJoin="Round" StrokeThickness="6" Stroke="{StaticResource ArtDark}" />
+            <Path Style="{StaticResource ArtGlowPath}" Data="M100,222 L115,249 L85,249 Z" />
+            <Path Style="{StaticResource ArtLit}" Data="M100,222 L115,249 L85,249 Z" StrokeLineJoin="Round" StrokeThickness="6" Stroke="{Binding LedBrush}" />
+        </Canvas>
+    </DataTemplate>
+
+    <!-- DeathAdder: right-handed, a high back and the thumb side curving in, two side buttons on the left. -->
+    <DataTemplate x:Key="ArtDeathAdder">
+        <Canvas Width="200" Height="344">
+            <Path x:Name="body" Fill="{StaticResource ArtBody}" Stroke="{StaticResource ArtEdge}" StrokeThickness="1.2" Effect="{StaticResource ArtShadow}"
+                  Data="M98,8 C126,7 146,20 153,48 C160,78 166,114 170,154 C174,202 176,252 166,290 C156,324 128,336 100,334 C68,332 44,316 37,284 C31,254 39,224 35,198 C31,172 23,150 25,122 C27,88 40,58 55,36 C66,18 80,9 98,8 Z" />
+            <Path Fill="{StaticResource ArtShine}" Data="{Binding Data, ElementName=body}" />
+            <Path Style="{StaticResource ArtLine}" Data="M99,10 L101,126 M28,130 C70,146 130,146 168,134" />
+            <Path Style="{StaticResource ArtLine}" Stroke="#2E2E2E" StrokeThickness="3" Data="M28,142 C26.5,152 26.5,160 27,168 M27.5,174 C27.5,182 28.5,190 30.5,197" />
+            <Rectangle Style="{StaticResource ArtWheelRect}" Canvas.Left="92" Canvas.Top="38" />
+            <Path Style="{StaticResource ArtRibs}" Canvas.Left="94" Canvas.Top="40" />
+            <Path Style="{StaticResource ArtLens}" Data="M104,226 A13,13 0 1 1 103.9,226 Z" />
+            <Path Style="{StaticResource ArtGlowPath}" Data="M104,226 A13,13 0 1 1 103.9,226 Z" />
+            <Path Style="{StaticResource ArtLit}" Data="M104,226 A13,13 0 1 1 103.9,226 Z" />
+        </Canvas>
+    </DataTemplate>
+
+    <!-- Naga: a wide right-handed body with the side button plate (a 2 × 6 grid) on the left. -->
+    <DataTemplate x:Key="ArtNaga">
+        <Canvas Width="200" Height="344">
+            <Path x:Name="body" Fill="{StaticResource ArtBody}" Stroke="{StaticResource ArtEdge}" StrokeThickness="1.2" Effect="{StaticResource ArtShadow}"
+                  Data="M100,10 C132,8 152,24 160,52 C168,84 170,122 174,162 C178,214 178,264 168,296 C156,328 128,338 100,336 C70,334 44,320 36,292 C28,264 30,232 26,202 C22,170 24,134 30,100 C36,66 58,20 100,10 Z" />
+            <Path Fill="{StaticResource ArtShine}" Data="{Binding Data, ElementName=body}" />
+            <Path Style="{StaticResource ArtLine}" Data="M100,12 L100,130 M32,132 C70,148 130,148 170,136" />
+            <Rectangle Canvas.Left="15" Canvas.Top="146" Width="26" Height="94" RadiusX="9" RadiusY="9" Fill="#161616" Stroke="{StaticResource ArtEdge}" />
+            <Path Fill="#2C2C2C" Data="M20,154 h7 v7 h-7 Z M30,154 h7 v7 h-7 Z M20,167 h7 v7 h-7 Z M30,167 h7 v7 h-7 Z M20,180 h7 v7 h-7 Z M30,180 h7 v7 h-7 Z
+                                     M20,193 h7 v7 h-7 Z M30,193 h7 v7 h-7 Z M20,206 h7 v7 h-7 Z M30,206 h7 v7 h-7 Z M20,219 h7 v7 h-7 Z M30,219 h7 v7 h-7 Z" />
+            <Rectangle Style="{StaticResource ArtWheelRect}" Canvas.Left="91" Canvas.Top="40" />
+            <Path Style="{StaticResource ArtRibs}" Canvas.Left="93" Canvas.Top="42" />
+            <Path Style="{StaticResource ArtLens}" Data="M104,232 A13,13 0 1 1 103.9,232 Z" />
+            <Path Style="{StaticResource ArtGlowPath}" Data="M104,232 A13,13 0 1 1 103.9,232 Z" />
+            <Path Style="{StaticResource ArtLit}" Data="M104,232 A13,13 0 1 1 103.9,232 Z" />
+        </Canvas>
+    </DataTemplate>
+
+    <!-- Any other mouse: a plain symmetric shell. -->
+    <DataTemplate x:Key="ArtMouse">
+        <Canvas Width="200" Height="344">
+            <Path x:Name="body" Fill="{StaticResource ArtBody}" Stroke="{StaticResource ArtEdge}" StrokeThickness="1.2" Effect="{StaticResource ArtShadow}"
+                  Data="M100,12 C140,12 160,44 162,110 C164,190 160,268 140,308 C128,328 114,336 100,336 C86,336 72,328 60,308 C40,268 36,190 38,110 C40,44 60,12 100,12 Z" />
+            <Path Fill="{StaticResource ArtShine}" Data="{Binding Data, ElementName=body}" />
+            <Path Style="{StaticResource ArtLine}" Data="M100,14 L100,124 M40,126 C70,138 130,138 160,126" />
+            <Rectangle Style="{StaticResource ArtWheelRect}" Canvas.Left="91" Canvas.Top="38" />
+            <Path Style="{StaticResource ArtRibs}" Canvas.Left="93" Canvas.Top="40" />
+            <Path Style="{StaticResource ArtLens}" Data="M100,226 A12,12 0 1 1 99.9,226 Z" />
+            <Path Style="{StaticResource ArtGlowPath}" Data="M100,226 A12,12 0 1 1 99.9,226 Z" />
+            <Path Style="{StaticResource ArtLit}" Data="M100,226 A12,12 0 1 1 99.9,226 Z" />
+        </Canvas>
+    </DataTemplate>
+
+    <!-- Charging dock: a round base with the light ring and the charging contacts in the middle. -->
+    <DataTemplate x:Key="ArtDock">
+        <Canvas Width="260" Height="270">
+            <Rectangle Canvas.Left="120" Canvas.Top="240" Width="20" Height="30" RadiusX="4" RadiusY="4" Fill="#161616" Stroke="{StaticResource ArtEdge}" />
+            <Ellipse Canvas.Left="10" Canvas.Top="10" Width="240" Height="240" Stroke="{StaticResource ArtEdge}" StrokeThickness="1.2" Effect="{StaticResource ArtShadow}">
+                <Ellipse.Fill>
+                    <RadialGradientBrush Center="0.4,0.3" GradientOrigin="0.4,0.3" RadiusX="0.7" RadiusY="0.7">
+                        <GradientStop Color="#2C2C2C" Offset="0" /><GradientStop Color="#121212" Offset="1" />
+                    </RadialGradientBrush>
+                </Ellipse.Fill>
+            </Ellipse>
+            <Path Style="{StaticResource ArtLens}" Fill="{x:Null}" Stroke="{StaticResource ArtDark}" StrokeThickness="9" Data="M130,26 A104,104 0 1 1 129.9,26 Z" />
+            <Path Style="{StaticResource ArtLit}" Fill="{x:Null}" Stroke="{Binding LedBrush}" StrokeThickness="14" Effect="{StaticResource ArtGlow}" Data="M130,26 A104,104 0 1 1 129.9,26 Z" />
+            <Path Style="{StaticResource ArtLit}" Fill="{x:Null}" Stroke="{Binding LedBrush}" StrokeThickness="5" Data="M130,26 A104,104 0 1 1 129.9,26 Z" />
+            <Ellipse Canvas.Left="38" Canvas.Top="38" Width="184" Height="184" Stroke="#2A2A2A">
+                <Ellipse.Fill>
+                    <RadialGradientBrush><GradientStop Color="#1C1C1C" Offset="0" /><GradientStop Color="#0E0E0E" Offset="1" /></RadialGradientBrush>
+                </Ellipse.Fill>
+            </Ellipse>
+            <Ellipse Canvas.Left="114" Canvas.Top="114" Width="32" Height="32" Fill="{StaticResource ArtDark}" Stroke="{StaticResource ArtEdge}" />
+            <Ellipse Canvas.Left="122" Canvas.Top="127" Width="6" Height="6" Fill="#8A7A4A" />
+            <Ellipse Canvas.Left="132" Canvas.Top="127" Width="6" Height="6" Fill="#8A7A4A" />
+        </Canvas>
+    </DataTemplate>
+
+    <!-- Headset, from the front: the band, two cups (lit where the device has a light) and the mic. -->
+    <DataTemplate x:Key="ArtHeadset">
+        <Canvas Width="240" Height="250">
+            <Path Stroke="#303030" StrokeThickness="18" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Data="M50,136 C50,34 190,34 190,136" Effect="{StaticResource ArtShadow}" />
+            <Path Stroke="#1A1A1A" StrokeThickness="12" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Data="M50,136 C50,34 190,34 190,136" />
+            <Path Fill="{x:Null}" Stroke="#141414" StrokeThickness="5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Data="M34,212 C38,244 82,246 106,232" />
+            <Ellipse Canvas.Left="100" Canvas.Top="226" Width="13" Height="13" Fill="#1E1E1E" Stroke="{StaticResource ArtEdge}" />
+            <Rectangle Canvas.Left="20" Canvas.Top="128" Width="56" Height="92" RadiusX="26" RadiusY="26" Fill="{StaticResource ArtBody}" Stroke="{StaticResource ArtEdge}" Effect="{StaticResource ArtShadow}" />
+            <Rectangle Canvas.Left="164" Canvas.Top="128" Width="56" Height="92" RadiusX="26" RadiusY="26" Fill="{StaticResource ArtBody}" Stroke="{StaticResource ArtEdge}" Effect="{StaticResource ArtShadow}" />
+            <Rectangle Canvas.Left="70" Canvas.Top="138" Width="14" Height="72" RadiusX="7" RadiusY="7" Fill="#101010" />
+            <Rectangle Canvas.Left="156" Canvas.Top="138" Width="14" Height="72" RadiusX="7" RadiusY="7" Fill="#101010" />
+            <Path Style="{StaticResource ArtLens}" Data="M48,162 A12,12 0 1 1 47.9,162 Z M192,162 A12,12 0 1 1 191.9,162 Z" />
+            <Path Style="{StaticResource ArtGlowPath}" Data="M48,162 A12,12 0 1 1 47.9,162 Z M192,162 A12,12 0 1 1 191.9,162 Z" />
+            <Path Style="{StaticResource ArtLit}" Data="M48,162 A12,12 0 1 1 47.9,162 Z M192,162 A12,12 0 1 1 191.9,162 Z" />
+        </Canvas>
+    </DataTemplate>
+
+    <!-- Keyboard, from above: the case, a tiled key field and an underglow where the device has a light. -->
+    <DataTemplate x:Key="ArtKeyboard">
+        <Canvas Width="340" Height="150">
+            <Rectangle Style="{x:Null}" Canvas.Left="14" Canvas.Top="122" Width="312" Height="14" RadiusX="7" RadiusY="7" Fill="{Binding LedBrush}" Effect="{StaticResource ArtGlow}" />
+            <Rectangle Canvas.Left="4" Canvas.Top="10" Width="332" Height="122" RadiusX="10" RadiusY="10" Stroke="{StaticResource ArtEdge}" Effect="{StaticResource ArtShadow}">
+                <Rectangle.Fill>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#262626" Offset="0" /><GradientStop Color="#121212" Offset="1" /></LinearGradientBrush>
+                </Rectangle.Fill>
+            </Rectangle>
+            <Rectangle Canvas.Left="16" Canvas.Top="22" Width="308" Height="98">
+                <Rectangle.Fill>
+                    <DrawingBrush TileMode="Tile" Viewport="0,0,19.25,19.6" ViewportUnits="Absolute" Viewbox="0,0,19.25,19.6" ViewboxUnits="Absolute">
+                        <DrawingBrush.Drawing>
+                            <GeometryDrawing Brush="#1C1C1C">
+                                <GeometryDrawing.Pen><Pen Brush="#333333" Thickness="0.8" /></GeometryDrawing.Pen>
+                                <GeometryDrawing.Geometry><RectangleGeometry Rect="1.2,1.2,16.8,17.2" RadiusX="2.5" RadiusY="2.5" /></GeometryDrawing.Geometry>
+                            </GeometryDrawing>
+                        </DrawingBrush.Drawing>
+                    </DrawingBrush>
+                </Rectangle.Fill>
+            </Rectangle>
+        </Canvas>
+    </DataTemplate>
+
+    <!-- Controller, from the front: the grips, d-pad, four face buttons, two sticks and the light bar. -->
+    <DataTemplate x:Key="ArtController">
+        <Canvas Width="260" Height="190">
+            <Path Fill="{StaticResource ArtBody}" Stroke="{StaticResource ArtEdge}" StrokeThickness="1.2" Effect="{StaticResource ArtShadow}"
+                  Data="M70,30 C90,24 110,32 130,32 C150,32 170,24 190,30 C222,40 246,92 252,132 C256,162 236,176 218,162 C204,150 194,128 176,124 L84,124 C66,128 56,150 42,162 C24,176 4,162 8,132 C14,92 38,40 70,30 Z" />
+            <Path Fill="#101010" Stroke="#333333" Data="M64,70 h12 v-12 h12 v12 h12 v12 h-12 v12 h-12 v-12 h-12 Z" />
+            <Ellipse Canvas.Left="179" Canvas.Top="55" Width="14" Height="14" Fill="#101010" Stroke="#3A3A3A" />
+            <Ellipse Canvas.Left="165" Canvas.Top="69" Width="14" Height="14" Fill="#101010" Stroke="#3A3A3A" />
+            <Ellipse Canvas.Left="193" Canvas.Top="69" Width="14" Height="14" Fill="#101010" Stroke="#3A3A3A" />
+            <Ellipse Canvas.Left="179" Canvas.Top="83" Width="14" Height="14" Fill="#101010" Stroke="#3A3A3A" />
+            <Ellipse Canvas.Left="88" Canvas.Top="94" Width="32" Height="32" Fill="{StaticResource ArtDark}" Stroke="{StaticResource ArtEdge}" />
+            <Ellipse Canvas.Left="95" Canvas.Top="101" Width="18" Height="18" Fill="#1E1E1E" />
+            <Ellipse Canvas.Left="140" Canvas.Top="94" Width="32" Height="32" Fill="{StaticResource ArtDark}" Stroke="{StaticResource ArtEdge}" />
+            <Ellipse Canvas.Left="147" Canvas.Top="101" Width="18" Height="18" Fill="#1E1E1E" />
+            <Path Style="{StaticResource ArtLens}" Data="M112,36 h36 a3,3 0 0 1 0,6 h-36 a3,3 0 0 1 0,-6 Z" />
+            <Path Style="{StaticResource ArtGlowPath}" Data="M112,36 h36 a3,3 0 0 1 0,6 h-36 a3,3 0 0 1 0,-6 Z" />
+            <Path Style="{StaticResource ArtLit}" Data="M112,36 h36 a3,3 0 0 1 0,6 h-36 a3,3 0 0 1 0,-6 Z" />
+        </Canvas>
+    </DataTemplate>
+
+    <DataTemplate x:Key="ArtOther">
+        <TextBlock Style="{StaticResource Icon}" Text="{Binding Glyph}" FontSize="96" Foreground="{StaticResource TextSecondaryBrush}" Margin="40" />
+    </DataTemplate>
+
+    <!-- The picture beside the controls: the drawing for the device's family, its battery and what its light shows. -->
+    <DataTemplate x:Key="PeripheralPicture">
+        <Border Background="{StaticResource ArtStage}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="20,24,20,18">
+            <StackPanel>
+                <Viewbox Height="{Binding Tag, RelativeSource={RelativeSource AncestorType=ContentControl}, FallbackValue=330}" Stretch="Uniform">
+                    <ContentControl Content="{Binding}" Focusable="False" Margin="24">
+                        <ContentControl.Style>
+                            <Style TargetType="ContentControl">
+                                <Setter Property="ContentTemplate" Value="{StaticResource ArtOther}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Art}" Value="Viper"><Setter Property="ContentTemplate" Value="{StaticResource ArtViper}" /></DataTrigger>
+                                    <DataTrigger Binding="{Binding Art}" Value="DeathAdder"><Setter Property="ContentTemplate" Value="{StaticResource ArtDeathAdder}" /></DataTrigger>
+                                    <DataTrigger Binding="{Binding Art}" Value="Naga"><Setter Property="ContentTemplate" Value="{StaticResource ArtNaga}" /></DataTrigger>
+                                    <DataTrigger Binding="{Binding Art}" Value="Mouse"><Setter Property="ContentTemplate" Value="{StaticResource ArtMouse}" /></DataTrigger>
+                                    <DataTrigger Binding="{Binding Art}" Value="Dock"><Setter Property="ContentTemplate" Value="{StaticResource ArtDock}" /></DataTrigger>
+                                    <DataTrigger Binding="{Binding Art}" Value="Headset"><Setter Property="ContentTemplate" Value="{StaticResource ArtHeadset}" /></DataTrigger>
+                                    <DataTrigger Binding="{Binding Art}" Value="Keyboard"><Setter Property="ContentTemplate" Value="{StaticResource ArtKeyboard}" /></DataTrigger>
+                                    <DataTrigger Binding="{Binding Art}" Value="Controller"><Setter Property="ContentTemplate" Value="{StaticResource ArtController}" /></DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ContentControl.Style>
+                    </ContentControl>
+                </Viewbox>
+                <TextBlock Text="{Binding BatteryText}" FontSize="22" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,14,0,0"
+                           Visibility="{Binding HasBattery, Converter={StaticResource BoolToVis}}" />
+                <TextBlock Style="{StaticResource Secondary}" Text="{Binding LedText}" HorizontalAlignment="Center" Margin="0,4,0,0"
+                           Visibility="{Binding HasLight, Converter={StaticResource BoolToVis}}" />
+                <TextBlock Style="{StaticResource Secondary}" FontSize="11.5" Text="{x:Static t:Txt.PeripheralLivePreview}" HorizontalAlignment="Center" TextAlignment="Center"
+                           TextWrapping="Wrap" Margin="0,2,0,0" Visibility="{Binding CanLighting, Converter={StaticResource BoolToVis}}" />
+            </StackPanel>
+        </Border>
+    </DataTemplate>
+
+    <!-- The selected device's controls (the picture sits beside them, outside the scroll): name, status, Performance, Lighting,
+         Gamemode profile, Power, Info and the HID collections. A slider only moves its box and the picture; Apply writes once and reads back. -->
     <DataTemplate DataType="{x:Type vm:PeripheralRowViewModel}">
         <StackPanel>
             <TextBlock Style="{StaticResource Secondary}" FontSize="12" Text="{Binding KindText}" />
             <WrapPanel Margin="0,4,0,8">
-                <TextBlock Text="{Binding Name}" FontSize="24" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0" />
+                <TextBlock Text="{Binding Name}" FontSize="24" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0" TextWrapping="Wrap" />
                 <Border Style="{StaticResource Pill}" Margin="0,2,0,0">
                     <TextBlock Text="{Binding StatusText}" FontSize="11.5" Foreground="{StaticResource TextSecondaryBrush}" />
                 </Border>
@@ -47,43 +323,40 @@
                 <TextBlock Style="{StaticResource Secondary}" Text="{Binding Note}" Margin="0,0,16,0" VerticalAlignment="Center" />
                 <Button Grid.Column="1" Content="{x:Static t:Txt.CopyDeviceReport}" Command="{Binding CopyReportCommand}" VerticalAlignment="Center" />
             </Grid>
-            <TextBlock Style="{StaticResource Secondary}" Text="{Binding VendorNote}" Foreground="{StaticResource WarningBrush}" Margin="0,0,8,10"
+            <TextBlock Style="{StaticResource Secondary}" Text="{Binding VendorNote}" Foreground="{StaticResource WarningBrush}" Margin="0,0,0,10"
                        Visibility="{Binding VendorNote, Converter={StaticResource NotEmptyToVis}}" />
-            <TextBlock Style="{StaticResource Secondary}" Text="{Binding Error}" Foreground="{StaticResource ErrorBrush}" Margin="0,0,8,10"
+            <TextBlock Style="{StaticResource Secondary}" Text="{Binding Error}" Foreground="{StaticResource ErrorBrush}" Margin="0,0,0,10"
                        Visibility="{Binding Error, Converter={StaticResource NotEmptyToVis}}" />
-            <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.PeripheralReading}" Margin="0,0,8,10"
+            <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.PeripheralReading}" Margin="0,0,0,10"
                        Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" />
+
             <!-- Performance: DPI, stages, polling rate. A control shows only when the driver read its value; Apply only when it can write it. -->
             <Border Style="{StaticResource Card}" Margin="0,0,8,8" Visibility="{Binding HasPerformance, Converter={StaticResource BoolToVis}}">
                 <StackPanel>
-                    <TextBlock Style="{StaticResource CardTitle}" Text="{x:Static t:Txt.PeripheralPerformance}" Margin="0,0,0,10" />
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10" Visibility="{Binding Dpi, Converter={StaticResource NotEmptyToVis}}">
-                        <TextBlock Text="{x:Static t:Txt.PeripheralDpi}" Width="150" VerticalAlignment="Center" />
-                        <TextBox Text="{Binding DpiText, UpdateSourceTrigger=PropertyChanged}" Width="90" IsEnabled="{Binding CanDpi}" AutomationProperties.Name="{x:Static t:Txt.PeripheralDpi}" />
-                        <Button Content="{x:Static t:Txt.Apply}" Command="{Binding ApplyDpiCommand}" Margin="8,0,0,0" Visibility="{Binding CanDpi, Converter={StaticResource BoolToVis}}" />
-                        <TextBlock Style="{StaticResource Secondary}" Text="{Binding DpiRange}" Margin="12,0,0,0" VerticalAlignment="Center" />
+                    <TextBlock Style="{StaticResource CardTitle}" Text="{x:Static t:Txt.PeripheralPerformance}" Margin="0,0,0,12" />
+                    <StackPanel Style="{StaticResource PeriField}" Visibility="{Binding Dpi, Converter={StaticResource NotEmptyToVis}}">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Right" Style="{StaticResource PeriLabel}" Text="{Binding DpiRange}" />
+                            <TextBlock Style="{StaticResource PeriLabel}" Text="{x:Static t:Txt.PeripheralDpi}" />
+                        </DockPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="10" /><ColumnDefinition Width="76" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <Slider Style="{StaticResource GpuSlider}" Minimum="{Binding Dpi.Min}" Maximum="{Binding Dpi.Max}" TickFrequency="{Binding DpiStep}" SmallChange="{Binding DpiStep}"
+                                    LargeChange="{Binding DpiStep}" Value="{Binding DpiSlider, Mode=TwoWay}" IsEnabled="{Binding CanDpi}" AutomationProperties.Name="{x:Static t:Txt.PeripheralDpi}" />
+                            <TextBox Grid.Column="2" Text="{Binding DpiText, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CanDpi}" AutomationProperties.Name="{x:Static t:Txt.PeripheralDpi}" />
+                            <Button Grid.Column="3" Content="{x:Static t:Txt.Apply}" Command="{Binding ApplyDpiCommand}" Margin="8,0,0,0" Visibility="{Binding CanDpi, Converter={StaticResource BoolToVis}}" />
+                        </Grid>
                     </StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10" Visibility="{Binding HasStages, Converter={StaticResource BoolToVis}}">
-                        <TextBlock Text="{x:Static t:Txt.PeripheralDpiStages}" Width="150" VerticalAlignment="Center" />
-                        <ItemsControl Style="{StaticResource Segmented}" ItemsSource="{Binding Stages}" Tag="{Binding StageCommand}" IsEnabled="{Binding CanStage}"
+                    <StackPanel Style="{StaticResource PeriField}" Visibility="{Binding HasStages, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Style="{StaticResource PeriLabel}" Text="{x:Static t:Txt.PeripheralDpiStages}" />
+                        <ItemsControl Style="{StaticResource PeriSegmented}" ItemsSource="{Binding Stages}" Tag="{Binding StageCommand}" IsEnabled="{Binding CanStage}"
                                       AutomationProperties.Name="{x:Static t:Txt.PeripheralDpiStages}" />
                     </StackPanel>
-                    <StackPanel Orientation="Horizontal" Visibility="{Binding HasPolling, Converter={StaticResource BoolToVis}}">
-                        <TextBlock Text="{x:Static t:Txt.PeripheralPolling}" Width="150" VerticalAlignment="Center" />
-                        <ItemsControl Style="{StaticResource Segmented}" ItemsSource="{Binding Rates}" Tag="{Binding PollingCommand}" IsEnabled="{Binding CanPolling}"
+                    <StackPanel Style="{StaticResource PeriField}" Margin="0" Visibility="{Binding HasPolling, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Style="{StaticResource PeriLabel}" Text="{x:Static t:Txt.PeripheralPolling}" />
+                        <ItemsControl Style="{StaticResource PeriSegmented}" ItemsSource="{Binding Rates}" Tag="{Binding PollingCommand}" IsEnabled="{Binding CanPolling}"
                                       AutomationProperties.Name="{x:Static t:Txt.PeripheralPolling}" />
                     </StackPanel>
-                    <!-- Gamemode: the KOS Governor engine writes these live values while gamemode is on. -->
-                    <Grid Margin="0,12,0,0" Visibility="{Binding CanGamemode, Converter={StaticResource BoolToVis}}">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                        <TextBlock Text="{x:Static t:Txt.PeripheralGamemode}" VerticalAlignment="Center" ToolTip="{x:Static t:Txt.PeripheralGamemodeNote}" />
-                        <TextBlock Grid.Column="1" Style="{StaticResource Secondary}" Text="{Binding GamemodeText}" VerticalAlignment="Center" ToolTip="{x:Static t:Txt.PeripheralGamemodeNote}" />
-                        <StackPanel Grid.Column="2" Orientation="Horizontal">
-                            <Button Content="{x:Static t:Txt.PeripheralUseInGamemode}" Command="{Binding GamemodeCommand}" ToolTip="{x:Static t:Txt.PeripheralGamemodeNote}" />
-                            <Button Content="{x:Static t:Txt.PeripheralGamemodeClear}" Command="{Binding GamemodeClearCommand}" Margin="8,0,0,0"
-                                    Visibility="{Binding HasGamemode, Converter={StaticResource BoolToVis}}" />
-                        </StackPanel>
-                    </Grid>
                     <Grid Margin="0,12,0,0" Visibility="{Binding OnboardMode, Converter={StaticResource BoolToVis}}">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                         <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.PeripheralOnboardNote}" Margin="0,0,16,0" />
@@ -91,57 +364,124 @@
                     </Grid>
                 </StackPanel>
             </Border>
+
+            <!-- Lighting: brightness, effect and color, each written stored and live and read back (only effects the device reports back). -->
+            <Border Style="{StaticResource Card}" Margin="0,0,8,8" Visibility="{Binding HasLightingCard, Converter={StaticResource BoolToVis}}">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource CardTitle}" Text="{x:Static t:Txt.PeripheralLighting}" Margin="0,0,0,12" />
+                    <StackPanel Style="{StaticResource PeriField}" Visibility="{Binding HasBrightness, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Style="{StaticResource PeriLabel}" Text="{x:Static t:Txt.PeripheralBrightness}" />
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="10" /><ColumnDefinition Width="76" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <Slider Style="{StaticResource GpuSlider}" Minimum="0" Maximum="100" Value="{Binding BrightnessSlider, Mode=TwoWay}" IsEnabled="{Binding CanBrightness}"
+                                    AutomationProperties.Name="{x:Static t:Txt.PeripheralBrightness}" />
+                            <TextBox Grid.Column="2" Text="{Binding BrightnessText, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CanBrightness}" AutomationProperties.Name="{x:Static t:Txt.PeripheralBrightness}" />
+                            <Button Grid.Column="3" Content="{x:Static t:Txt.Apply}" Command="{Binding ApplyBrightnessCommand}" Margin="8,0,0,0" Visibility="{Binding CanBrightness, Converter={StaticResource BoolToVis}}" />
+                        </Grid>
+                    </StackPanel>
+                    <StackPanel Style="{StaticResource PeriField}" Visibility="{Binding HasLighting, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Style="{StaticResource PeriLabel}" Text="{x:Static t:Txt.PeripheralEffect}" />
+                        <ItemsControl Style="{StaticResource PeriSegmented}" ItemsSource="{Binding Effects}" Tag="{Binding EffectCommand}" IsEnabled="{Binding CanLighting}"
+                                      AutomationProperties.Name="{x:Static t:Txt.PeripheralEffect}" />
+                    </StackPanel>
+                    <StackPanel Style="{StaticResource PeriField}" Visibility="{Binding HasLighting, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Style="{StaticResource PeriLabel}" Text="{x:Static t:Txt.PeripheralColor}" />
+                        <ItemsControl ItemsSource="{Binding Swatches}" Focusable="False" Margin="0,0,0,8" IsEnabled="{Binding CanLighting}">
+                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Command="{Binding DataContext.SwatchCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}"
+                                            AutomationProperties.Name="{Binding}" ToolTip="{Binding}" Cursor="Hand" Margin="0,0,8,0" FocusVisualStyle="{StaticResource FocusVisual}">
+                                        <Button.Template>
+                                            <ControlTemplate TargetType="Button">
+                                                <Ellipse x:Name="dot" Width="22" Height="22" Fill="{Binding}" Stroke="{StaticResource BorderStrongBrush}" StrokeThickness="1" />
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="dot" Property="Stroke" Value="{StaticResource TextBrush}" /><Setter TargetName="dot" Property="StrokeThickness" Value="2" /></Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Button.Template>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBox Text="{Binding ColorText, UpdateSourceTrigger=PropertyChanged}" Width="96" IsEnabled="{Binding CanLighting}" AutomationProperties.Name="{x:Static t:Txt.PeripheralColor}" />
+                            <Button Content="{x:Static t:Txt.Apply}" Command="{Binding ApplyColorCommand}" Margin="8,0,0,0" Visibility="{Binding CanLighting, Converter={StaticResource BoolToVis}}" />
+                        </StackPanel>
+                    </StackPanel>
+                    <!-- Dock only: KOS Governor sets the ring's live color from the mouse battery. -->
+                    <StackPanel Visibility="{Binding IsDock, Converter={StaticResource BoolToVis}}">
+                        <DockPanel>
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                <Button Content="{x:Static t:Txt.PeripheralTurnOn}" Command="{Binding DockBatteryOnCommand}" />
+                                <Button Content="{x:Static t:Txt.PeripheralTurnOff}" Command="{Binding DockBatteryOffCommand}" Margin="8,0,0,0" />
+                            </StackPanel>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="{x:Static t:Txt.PeripheralDockBattery}" TextWrapping="Wrap" />
+                                <TextBlock Style="{StaticResource Secondary}" Text="{Binding DockBatteryText}" />
+                            </StackPanel>
+                        </DockPanel>
+                        <TextBlock Style="{StaticResource GpuHint}" Text="{x:Static t:Txt.PeripheralDockBatteryNote}" Margin="0,8,0,0" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Gamemode profile: KOS Governor writes these live (nothing stored) when gamemode turns on and puts back what was there. -->
+            <Border Style="{StaticResource Card}" Margin="0,0,8,8" Visibility="{Binding CanGamemode, Converter={StaticResource BoolToVis}}">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource CardTitle}" Text="{x:Static t:Txt.PeripheralGamemode}" />
+                    <TextBlock Style="{StaticResource GpuHint}" Text="{x:Static t:Txt.PeripheralGamemodeNote}" Margin="0,2,0,12" />
+                    <StackPanel Style="{StaticResource PeriField}" Visibility="{Binding CanGmDpi, Converter={StaticResource BoolToVis}}">
+                        <CheckBox Style="{StaticResource GpuSwitch}" Content="{x:Static t:Txt.PeripheralGamemodeSetDpi}" IsChecked="{Binding GmDpiOn}" HorizontalAlignment="Left" Margin="0,0,0,6" />
+                        <Grid IsEnabled="{Binding GmDpiOn}">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="10" /><ColumnDefinition Width="76" /></Grid.ColumnDefinitions>
+                            <Slider Style="{StaticResource GpuSlider}" Minimum="{Binding Dpi.Min}" Maximum="{Binding Dpi.Max}" TickFrequency="{Binding DpiStep}" SmallChange="{Binding DpiStep}"
+                                    LargeChange="{Binding DpiStep}" Value="{Binding GmDpiSlider, Mode=TwoWay}" AutomationProperties.Name="{x:Static t:Txt.PeripheralGamemodeSetDpi}" />
+                            <TextBox Grid.Column="2" Text="{Binding GmDpiText, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{x:Static t:Txt.PeripheralGamemodeSetDpi}" />
+                        </Grid>
+                    </StackPanel>
+                    <StackPanel Style="{StaticResource PeriField}" Visibility="{Binding CanGmPolling, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Style="{StaticResource PeriLabel}" Text="{x:Static t:Txt.PeripheralPolling}" />
+                        <ItemsControl Style="{StaticResource PeriSegmented}" ItemsSource="{Binding GmRates}" Tag="{Binding GmPollingCommand}" AutomationProperties.Name="{x:Static t:Txt.PeripheralPolling}" />
+                    </StackPanel>
+                    <CheckBox Style="{StaticResource GpuSwitch}" Content="{Binding GmLightText}" IsChecked="{Binding GmLightOff}" HorizontalAlignment="Left" Margin="0,0,0,12"
+                              Visibility="{Binding CanGmLight, Converter={StaticResource BoolToVis}}" />
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <Button Content="{x:Static t:Txt.PeripheralUseInGamemode}" Command="{Binding GamemodeCommand}" />
+                            <Button Content="{x:Static t:Txt.PeripheralGamemodeClear}" Command="{Binding GamemodeClearCommand}" Margin="8,0,0,0"
+                                    Visibility="{Binding HasGamemode, Converter={StaticResource BoolToVis}}" />
+                        </StackPanel>
+                        <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
+                            <TextBlock Style="{StaticResource PeriLabel}" Margin="0" Text="{x:Static t:Txt.PeripheralGamemodeSavedLabel}" />
+                            <TextBlock Text="{Binding GamemodeText}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </DockPanel>
+                </StackPanel>
+            </Border>
+
             <!-- Power: battery, sleep timer, low-battery threshold. -->
             <Border Style="{StaticResource Card}" Margin="0,0,8,8" Visibility="{Binding HasPower, Converter={StaticResource BoolToVis}}">
                 <StackPanel>
                     <TextBlock Style="{StaticResource CardTitle}" Text="{x:Static t:Txt.PeripheralPower}" Margin="0,0,0,10" />
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10" Visibility="{Binding HasBattery, Converter={StaticResource BoolToVis}}">
-                        <TextBlock Text="{x:Static t:Txt.PeripheralBatteryLabel}" Width="190" VerticalAlignment="Center" />
-                        <TextBlock Text="{Binding BatteryText}" FontWeight="SemiBold" VerticalAlignment="Center" />
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10" Visibility="{Binding HasSleep, Converter={StaticResource BoolToVis}}">
-                        <TextBlock Text="{x:Static t:Txt.PeripheralSleep}" Width="190" VerticalAlignment="Center" />
-                        <TextBox Text="{Binding SleepText, UpdateSourceTrigger=PropertyChanged}" Width="60" IsEnabled="{Binding CanSleep}" AutomationProperties.Name="{x:Static t:Txt.PeripheralSleep}" />
-                        <Button Content="{x:Static t:Txt.Apply}" Command="{Binding ApplySleepCommand}" Margin="8,0,0,0" Visibility="{Binding CanSleep, Converter={StaticResource BoolToVis}}" />
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" Visibility="{Binding HasLow, Converter={StaticResource BoolToVis}}">
-                        <TextBlock Text="{x:Static t:Txt.PeripheralLowBattery}" Width="190" VerticalAlignment="Center" />
-                        <TextBox Text="{Binding LowText, UpdateSourceTrigger=PropertyChanged}" Width="60" IsEnabled="{Binding CanLow}" AutomationProperties.Name="{x:Static t:Txt.PeripheralLowBattery}" />
-                        <Button Content="{x:Static t:Txt.Apply}" Command="{Binding ApplyLowCommand}" Margin="8,0,0,0" Visibility="{Binding CanLow, Converter={StaticResource BoolToVis}}" />
-                    </StackPanel>
-                </StackPanel>
-            </Border>
-            <!-- Lighting: brightness, effect and color, each written stored and live and read back (only effects the device reports back). -->
-            <Border Style="{StaticResource Card}" Margin="0,0,8,8" Visibility="{Binding HasLightingCard, Converter={StaticResource BoolToVis}}">
-                <StackPanel>
-                    <TextBlock Style="{StaticResource CardTitle}" Text="{x:Static t:Txt.PeripheralLighting}" Margin="0,0,0,10" />
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10" Visibility="{Binding HasBrightness, Converter={StaticResource BoolToVis}}">
-                        <TextBlock Text="{x:Static t:Txt.PeripheralBrightness}" Width="190" VerticalAlignment="Center" />
-                        <TextBox Text="{Binding BrightnessText, UpdateSourceTrigger=PropertyChanged}" Width="60" IsEnabled="{Binding CanBrightness}" AutomationProperties.Name="{x:Static t:Txt.PeripheralBrightness}" />
-                        <Button Content="{x:Static t:Txt.Apply}" Command="{Binding ApplyBrightnessCommand}" Margin="8,0,0,0" Visibility="{Binding CanBrightness, Converter={StaticResource BoolToVis}}" />
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10" Visibility="{Binding HasLighting, Converter={StaticResource BoolToVis}}">
-                        <TextBlock Text="{x:Static t:Txt.PeripheralEffect}" Width="190" VerticalAlignment="Center" />
-                        <ItemsControl Style="{StaticResource Segmented}" ItemsSource="{Binding Effects}" Tag="{Binding EffectCommand}" IsEnabled="{Binding CanLighting}"
-                                      AutomationProperties.Name="{x:Static t:Txt.PeripheralEffect}" />
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10" Visibility="{Binding HasLighting, Converter={StaticResource BoolToVis}}">
-                        <TextBlock Text="{x:Static t:Txt.PeripheralColor}" Width="190" VerticalAlignment="Center" />
-                        <TextBox Text="{Binding ColorText, UpdateSourceTrigger=PropertyChanged}" Width="90" IsEnabled="{Binding CanLighting}" AutomationProperties.Name="{x:Static t:Txt.PeripheralColor}" />
-                        <Button Content="{x:Static t:Txt.Apply}" Command="{Binding ApplyColorCommand}" Margin="8,0,0,0" Visibility="{Binding CanLighting, Converter={StaticResource BoolToVis}}" />
-                    </StackPanel>
-                    <!-- Dock only: KOS Governor sets the ring's live color from the mouse battery. -->
-                    <Grid Visibility="{Binding IsDock, Converter={StaticResource BoolToVis}}">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="190" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                        <TextBlock Text="{x:Static t:Txt.PeripheralDockBattery}" VerticalAlignment="Center" ToolTip="{x:Static t:Txt.PeripheralDockBatteryNote}" />
-                        <TextBlock Grid.Column="1" Style="{StaticResource Secondary}" Text="{Binding DockBatteryText}" VerticalAlignment="Center" />
-                        <StackPanel Grid.Column="2" Orientation="Horizontal">
-                            <Button Content="{x:Static t:Txt.PeripheralTurnOn}" Command="{Binding DockBatteryOnCommand}" ToolTip="{x:Static t:Txt.PeripheralDockBatteryNote}" />
-                            <Button Content="{x:Static t:Txt.PeripheralTurnOff}" Command="{Binding DockBatteryOffCommand}" Margin="8,0,0,0" />
+                    <DockPanel Margin="0,0,0,10" Visibility="{Binding HasBattery, Converter={StaticResource BoolToVis}}">
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding BatteryText}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <TextBlock Text="{x:Static t:Txt.PeripheralBatteryLabel}" VerticalAlignment="Center" />
+                    </DockPanel>
+                    <DockPanel Margin="0,0,0,10" Visibility="{Binding HasSleep, Converter={StaticResource BoolToVis}}">
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <TextBox Text="{Binding SleepText, UpdateSourceTrigger=PropertyChanged}" Width="60" IsEnabled="{Binding CanSleep}" AutomationProperties.Name="{x:Static t:Txt.PeripheralSleep}" />
+                            <Button Content="{x:Static t:Txt.Apply}" Command="{Binding ApplySleepCommand}" Margin="8,0,0,0" Visibility="{Binding CanSleep, Converter={StaticResource BoolToVis}}" />
                         </StackPanel>
-                    </Grid>
-                    <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.PeripheralDockBatteryNote}" TextWrapping="Wrap" Margin="0,8,0,0"
-                               Visibility="{Binding IsDock, Converter={StaticResource BoolToVis}}" />
+                        <TextBlock Text="{x:Static t:Txt.PeripheralSleep}" VerticalAlignment="Center" TextWrapping="Wrap" />
+                    </DockPanel>
+                    <DockPanel Visibility="{Binding HasLow, Converter={StaticResource BoolToVis}}">
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <TextBox Text="{Binding LowText, UpdateSourceTrigger=PropertyChanged}" Width="60" IsEnabled="{Binding CanLow}" AutomationProperties.Name="{x:Static t:Txt.PeripheralLowBattery}" />
+                            <Button Content="{x:Static t:Txt.Apply}" Command="{Binding ApplyLowCommand}" Margin="8,0,0,0" Visibility="{Binding CanLow, Converter={StaticResource BoolToVis}}" />
+                        </StackPanel>
+                        <TextBlock Text="{x:Static t:Txt.PeripheralLowBattery}" VerticalAlignment="Center" TextWrapping="Wrap" />
+                    </DockPanel>
                 </StackPanel>
             </Border>
             <ContentControl Content="{Binding Info}" Focusable="False" />
@@ -173,7 +513,7 @@
                                         <TextBlock Style="{StaticResource HidCell}" Text="{Binding Location}" />
                                         <WrapPanel Grid.Column="1" Margin="0,5,16,5">
                                             <TextBlock Text="{Binding Usage}" Margin="0,0,8,0" />
-                                            <TextBlock Text="{Binding UsageName}" Foreground="{StaticResource TextSecondaryBrush}" />
+                                            <TextBlock Text="{Binding UsageName}" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
                                         </WrapPanel>
                                         <TextBlock Grid.Column="2" Style="{StaticResource HidCell}" Text="{Binding Input}" TextAlignment="Right" />
                                         <TextBlock Grid.Column="3" Style="{StaticResource HidCell}" Text="{Binding Output}" TextAlignment="Right" />
@@ -183,17 +523,18 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
-                    <TextBlock Style="{StaticResource Secondary}" FontSize="11.5" Text="{x:Static t:Txt.HidLengthsNote}" Margin="0,8,0,0" />
+                    <TextBlock Style="{StaticResource Secondary}" FontSize="11.5" Text="{x:Static t:Txt.HidLengthsNote}" Margin="0,8,0,0" TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
         </StackPanel>
     </DataTemplate>
 
-    <!-- Peripherals: the device list (280 px, so the collections table fits beside it at the window's minimum width) and the selected
-         device, each scrolling on its own. -->
+    <!-- Peripherals: the device list (280 px), the selected device's controls (scrolling on their own) and its picture, which stays in
+         place while the controls scroll. Narrower than 940 px (the window near its minimum width) the picture goes above the controls, smaller. -->
+    <v:WidthAtLeast x:Key="PeriWide" />
     <DataTemplate DataType="{x:Type vm:PeripheralsPageViewModel}">
-        <Grid>
-            <Grid.ColumnDefinitions><ColumnDefinition Width="280" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+        <Grid x:Name="page">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="280" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
             <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
                     <StackPanel Margin="0,4,0,12">
@@ -211,8 +552,18 @@
                 </ScrollViewer>
             </Border>
             <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False" Margin="24,0,0,0">
-                <ContentControl Content="{Binding Selected}" Focusable="False" Margin="0,0,8,0" v:Motion.Transition="{Binding Selected}" />
+                <StackPanel Margin="0,0,4,0">
+                    <Grid Visibility="{Binding ActualWidth, ElementName=page, Converter={StaticResource PeriWide}, ConverterParameter=!940}">
+                        <ContentControl Content="{Binding Selected}" ContentTemplate="{StaticResource PeripheralPicture}" Tag="200" Focusable="False" Margin="0,0,0,12"
+                                        Visibility="{Binding Selected, Converter={StaticResource NotEmptyToVis}}" />
+                    </Grid>
+                    <ContentControl Content="{Binding Selected}" Focusable="False" v:Motion.Transition="{Binding Selected}" />
+                </StackPanel>
             </ScrollViewer>
+            <Grid Grid.Column="2" Visibility="{Binding ActualWidth, ElementName=page, Converter={StaticResource PeriWide}, ConverterParameter=940}">
+                <ContentControl Content="{Binding Selected}" ContentTemplate="{StaticResource PeripheralPicture}" Tag="330" Focusable="False" Width="250" Margin="12,0,0,0"
+                                VerticalAlignment="Top" Visibility="{Binding Selected, Converter={StaticResource NotEmptyToVis}}" />
+            </Grid>
         </Grid>
     </DataTemplate>
 </ResourceDictionary>

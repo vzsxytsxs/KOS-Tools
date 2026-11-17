@@ -6,7 +6,8 @@ namespace KosGovernor.Core;
 
 /// <summary>
 /// Mouse settings for gamemode (gamemode-peripheral.json, chosen on the toolbox's Peripherals page), modelled on
-/// <see cref="GamemodeGpuHost"/>. Gamemode on: reads what each listed device has, saves it, then writes the live DPI and polling rate.
+/// <see cref="GamemodeGpuHost"/>. Gamemode on: reads what each listed device has, saves it, then writes the live DPI, polling rate and
+/// light brightness (0 turns a mouse logo or a dock ring off).
 /// Gamemode off: writes the saved values back. Volatile settings only, never onboard flash; every write is read back by the driver.
 /// </summary>
 internal sealed class GamemodePeripheralHost
@@ -32,10 +33,17 @@ internal sealed class GamemodePeripheralHost
             foreach (var e in config.Devices)
                 if (Find(drivers, e) is { } d && Read(d) is { } s)
                     state.Before.Add(new GamemodePeripheralEntry { VendorId = e.VendorId, ProductId = e.ProductId, Name = e.Name,
-                        Dpi = e.Dpi is null ? null : s.Dpi?.X, PollingHz = e.PollingHz is null ? null : s.Polling?.Hz });
+                        Dpi = e.Dpi is null ? null : s.Dpi?.X, PollingHz = e.PollingHz is null ? null : s.Polling?.Hz,
+                        Brightness = e.Brightness is null ? null : LiveBrightness(d) });
         state.Applying = true;
         GamemodePeripheral.SaveState(state); // a crash while writing leaves Applying behind: suspended at the next start
-        foreach (var e in config.Devices) Write(drivers, e, $"gamemode values for {e.Name}");
+        // Only what was read before is written: a value that couldn't be read couldn't be put back
+        foreach (var e in config.Devices)
+            if (state.Before.FirstOrDefault(b => b.VendorId == e.VendorId && b.ProductId == e.ProductId) is { } b)
+                Write(drivers, new GamemodePeripheralEntry { VendorId = e.VendorId, ProductId = e.ProductId, Name = e.Name,
+                    Dpi = b.Dpi is null ? null : e.Dpi, PollingHz = b.PollingHz is null ? null : e.PollingHz, Brightness = b.Brightness is null ? null : e.Brightness },
+                    $"gamemode values for {e.Name}");
+            else Log.Warn($"Gamemode mouse: {e.Name} wasn't read before gamemode (not connected or asleep): left as it is.");
         state.Applying = false;
         GamemodePeripheral.SaveState(state);
     }
@@ -74,7 +82,13 @@ internal sealed class GamemodePeripheralHost
 
     static PeripheralState? Read(PeripheralDriver d)
     {
-        try { return d.Read() is { Battery.Asleep: not true } s ? s : null; }
+        try { return d.Read() is { } s && s.Battery?.Asleep != true ? s : null; } // a dock reports no battery
+        catch (Exception ex) when (ex is PeripheralException or System.ComponentModel.Win32Exception or IOException or TimeoutException) { return null; }
+    }
+
+    static int? LiveBrightness(PeripheralDriver d)
+    {
+        try { return d.HasLiveBrightness ? d.ReadLiveBrightness() : null; }
         catch (Exception ex) when (ex is PeripheralException or System.ComponentModel.Win32Exception or IOException or TimeoutException) { return null; }
     }
 
@@ -90,6 +104,7 @@ internal sealed class GamemodePeripheralHost
         {
             if (e.Dpi is { } dpi && now.Dpi?.X != dpi && d.HasLiveDpi && d.Writable.Contains(PeripheralSetting.Dpi)) d.SetDpiLive(dpi, dpi);
             if (e.PollingHz is { } hz && now.Polling?.Hz != hz && d.Writable.Contains(PeripheralSetting.PollingRate)) d.SetPollingRate(hz);
+            if (e.Brightness is { } br && d.HasLiveBrightness && LiveBrightness(d) != br) d.SetBrightnessLive(br);
             Log.Info($"Gamemode mouse: {what} written and read back.");
             return true;
         }
@@ -114,6 +129,8 @@ internal sealed class PeripheralBatteryMonitor
     readonly Dictionary<string, PeripheralDriver> _drivers = new();
     readonly Dictionary<string, DateTime> _warned = new();
     readonly Action<string, string> _balloon;
+    readonly Action _changed;
+    readonly Dictionary<string, TrayDevice> _shown = new();
     readonly ManualResetEvent _stop = new(false);
     readonly AutoResetEvent _poke = new(false);
     Thread? _thread;
@@ -121,10 +138,15 @@ internal sealed class PeripheralBatteryMonitor
     /// <summary>A config change (the toolbox saved): scan now rather than at the next interval.</summary>
     public void Poke() => _poke.Set();
 
-    public PeripheralBatteryMonitor(Action<string, string> balloon) => _balloon = balloon;
+    public PeripheralBatteryMonitor(Action<string, string> balloon, Action changed) => (_balloon, _changed) = (balloon, changed);
 
     /// <summary>The tray tooltip's line ("Viper Ultimate 72 %"), empty when nothing reports a battery.</summary>
     public static volatile string Line = "";
+
+    /// <summary>One tray icon per device with a battery; a device asleep keeps the last reading it gave.</summary>
+    /// <param name="Id">VID and PID: the icon's id, which Windows keys "show in the taskbar" on, so the user's choice sticks.</param>
+    public sealed record TrayDevice(string Key, uint Id, string Name, TrayGlyph Glyph, int Percent, bool Charging);
+    public static volatile IReadOnlyList<TrayDevice> Devices = Array.Empty<TrayDevice>();
 
     public void Start()
     {
@@ -152,7 +174,7 @@ internal sealed class PeripheralBatteryMonitor
     bool Scan()
     {
         var present = HidDevices.List();
-        foreach (var gone in _drivers.Keys.Except(present.Select(d => d.Key)).ToList()) _drivers.Remove(gone);
+        foreach (var gone in _drivers.Keys.Except(present.Select(d => d.Key)).ToList()) { _drivers.Remove(gone); _shown.Remove(gone); }
         var parts = new List<string>();
         var asleep = false;
         RazerDriver? dock = null;
@@ -173,6 +195,7 @@ internal sealed class PeripheralBatteryMonitor
             if (b.Asleep) { asleep = true; continue; }
             if (b.Percent is not { } p) continue;
             if (driver is RazerDriver) mouse = b;
+            _shown[device.Key] = new TrayDevice(device.Key, (uint)device.VendorId << 16 | device.ProductId, driver.Model ?? device.Product ?? "Device", Glyph(driver.Kind), p, b.Charging == true);
             parts.Add($"{name} {p} %{(b.Charging == true ? "+" : "")}");
             if (p <= Threshold && b.Charging != true && (!_warned.TryGetValue(device.Key, out var at) || DateTime.UtcNow - at > Cooldown))
             {
@@ -181,8 +204,16 @@ internal sealed class PeripheralBatteryMonitor
             }
         }
         Line = string.Join(", ", parts);
+        var devices = _shown.Values.OrderBy(d => d.Key, StringComparer.Ordinal).ToList();
+        if (!devices.SequenceEqual(Devices)) { Devices = devices; _changed(); }
         return ShowOnDock(dock, mouse) || asleep;
     }
+
+    static TrayGlyph Glyph(PeripheralKind kind) => kind switch
+    {
+        PeripheralKind.Mouse => TrayGlyph.Mouse, PeripheralKind.Headset => TrayGlyph.Headset, PeripheralKind.Keyboard => TrayGlyph.Keyboard,
+        PeripheralKind.Controller => TrayGlyph.Controller, _ => TrayGlyph.Other,
+    };
 
     /// <summary>
     /// The mouse battery as the dock's live color, written only when the ring shows something else (read each time: a replugged dock or

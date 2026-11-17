@@ -116,6 +116,12 @@ public abstract class PeripheralDriver
     public virtual PeripheralState SetSleep(int seconds) => throw Unsupported();
     public virtual PeripheralState SetLowBattery(int percent) => throw Unsupported();
     public virtual PeripheralState SetBrightness(int percent) => throw Unsupported();
+    /// <summary>Whether the live brightness can be read and set on its own (gamemode turns the lights off live only).</summary>
+    public virtual bool HasLiveBrightness => false;
+    /// <summary>The brightness the light has now, in percent; null when unreadable. Getters only.</summary>
+    public virtual int? ReadLiveBrightness() => null;
+    /// <summary>The live brightness only, nothing stored; returns what it reads back.</summary>
+    public virtual int SetBrightnessLive(int percent) => throw Unsupported();
     /// <summary>The effect and color (0xRRGGBB; ignored by Off and Spectrum). Off, Static, Breathing and Spectrum only.</summary>
     public virtual PeripheralState SetLighting(LightingEffect effect, int color) => throw Unsupported();
     public virtual PeripheralState SetHostMode() => throw Unsupported();

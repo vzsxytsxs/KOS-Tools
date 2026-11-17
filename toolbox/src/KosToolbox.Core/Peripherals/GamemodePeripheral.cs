@@ -64,6 +64,8 @@ public sealed class GamemodePeripheralEntry
     public string Name { get; set; } = "";
     public int? Dpi { get; set; }
     public int? PollingHz { get; set; }
+    /// <summary>The live brightness in percent: 0 turns the light off in gamemode; in the state, what the light had before.</summary>
+    public int? Brightness { get; set; }
 }
 
 /// <summary>What the devices had before gamemode (same shape: the values to write back).</summary>

@@ -266,6 +266,14 @@ public class PeripheralDriversTests
         Assert.All(sent, r => Assert.Contains((r[7], r[8]), new[] { ((byte)0x00, (byte)0x81), ((byte)0x00, (byte)0x82), ((byte)0x0F, (byte)0x84), ((byte)0x0F, (byte)0x82) })); // no DPI, polling or battery
         Assert.Equal(50, d.SetBrightness(50).Brightness);
         Assert.Equal((RazerCodec.Level(50), RazerCodec.Level(50)), (level[RazerCodec.Stored], level[RazerCodec.NoStore])); // stored and live
+
+        // Gamemode's "light off": live only, read back, the stored brightness kept (no flash write)
+        Assert.True(d.HasLiveBrightness);
+        sent.Clear();
+        Assert.Equal(0, d.SetBrightnessLive(0));
+        Assert.Equal((RazerCodec.Level(50), (byte)0), (level[RazerCodec.Stored], level[RazerCodec.NoStore]));
+        Assert.All(sent.Where(r => r[8] == 0x04), r => Assert.Equal(RazerCodec.NoStore, r[9]));
+        Assert.Equal(0, d.ReadLiveBrightness());
     }
 
     [Fact]

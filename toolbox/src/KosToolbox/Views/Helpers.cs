@@ -34,6 +34,18 @@ public sealed class NotEmptyToVisibility : IValueConverter
     public object ConvertBack(object value, Type t, object p, CultureInfo c) => throw new NotSupportedException();
 }
 
+/// <summary>Visible when the width (ActualWidth) is at least the parameter; "!" before it inverts (narrower than).</summary>
+public sealed class WidthAtLeast : IValueConverter
+{
+    public object Convert(object value, Type t, object p, CultureInfo c)
+    {
+        var s = p as string ?? "0";
+        var wide = value is double w && w >= double.Parse(s.TrimStart('!'), CultureInfo.InvariantCulture);
+        return wide != s.StartsWith('!') ? Visibility.Visible : Visibility.Collapsed;
+    }
+    public object ConvertBack(object value, Type t, object p, CultureInfo c) => throw new NotSupportedException();
+}
+
 /// <summary>Visible when any value is true or non-empty text.</summary>
 public sealed class AnyVisibleConverter : IMultiValueConverter
 {

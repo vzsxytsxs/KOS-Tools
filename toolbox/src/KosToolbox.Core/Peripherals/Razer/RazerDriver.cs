@@ -237,6 +237,27 @@ public sealed class RazerDriver : PeripheralDriver
 
     static readonly byte[] Both = { RazerCodec.Stored, RazerCodec.NoStore };
 
+    public override bool HasLiveBrightness => _model.Led is not null;
+
+    public override int? ReadLiveBrightness() => _model.Led is not { } led ? null : With(_control, false, t =>
+    {
+        try { ResolveTransactionId(t); return Try(t, RazerCodec.BrightnessGet, new[] { RazerCodec.NoStore, led }) is { } b ? RazerCodec.DecodeBrightness(b) : (int?)null; }
+        catch (PeripheralAsleepException) { return null; }
+    });
+
+    public override int SetBrightnessLive(int percent)
+    {
+        Require(percent is >= 0 and <= 100, "Brightness goes from 0 to 100 %.");
+        var led = _model.Led ?? throw Unsupported();
+        if (_transactionId is null) throw new PeripheralException("The device hasn't answered a read yet; nothing is written.");
+        return With(_control, false, t =>
+        {
+            Set(t, RazerCodec.BrightnessSet, new[] { RazerCodec.NoStore, led, RazerCodec.Level(percent) });
+            var now = RazerCodec.DecodeBrightness(Get(t, RazerCodec.BrightnessGet, new[] { RazerCodec.NoStore, led }));
+            return now == percent ? now : throw new PeripheralException($"The device shows {now} % instead of {percent} %.");
+        });
+    }
+
     public override PeripheralState SetLighting(LightingEffect effect, int color) => SetLighting(effect, color, Both);
 
     /// <summary>The live effect only, nothing stored (KOS Governor's battery color on the dock).</summary>

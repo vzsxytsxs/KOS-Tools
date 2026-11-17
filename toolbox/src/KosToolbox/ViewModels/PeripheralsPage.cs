@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Threading;
 using KosToolbox.Core.Peripherals;
 using KosToolbox.Core.Peripherals.Hid;
@@ -50,6 +51,8 @@ public sealed class PeripheralRowViewModel : ObservableObject
         ApplyColorCommand = new AsyncCommand(() => Hex(_colorText) is { } c
             ? Write(Txt.PeripheralColor, d => d.SetLighting(_state?.Lighting?.Effect == LightingEffect.Breathing ? LightingEffect.Breathing : LightingEffect.Static, c))
             : Invalid(Txt.PeripheralColorInvalid));
+        GmPollingCommand = new RelayCommand(p => { if (p is string k) { _gmHz = int.TryParse(k, out var hz) ? hz : null; Raise(nameof(GmRates)); } });
+        SwatchCommand = new RelayCommand(p => { if (p is string hex) ColorText = hex; });
         DockBatteryOnCommand = new AsyncCommand(() => SaveDockBattery(true));
         DockBatteryOffCommand = new AsyncCommand(() => SaveDockBattery(false));
         _gamemode = Gamemode();
@@ -92,12 +95,29 @@ public sealed class PeripheralRowViewModel : ObservableObject
         if (!on && _state?.Lighting is { Effect: not LightingEffect.Other } l) await Write(Txt.PeripheralLighting, d => d.SetLighting(l.Effect, l.Color ?? 0));
     }
 
+    // ---------- gamemode profile: what KOS Governor writes live while gamemode is on, put back when it ends ----------
     GamemodePeripheralEntry? _gamemode;
+    bool _gmDpiOn, _gmLightOff, _gmLoaded;
+    string? _gmDpiText;
+    int? _gmHz;
     public ICommand GamemodeCommand { get; }
     public ICommand GamemodeClearCommand { get; }
-    /// <summary>The KOS Governor engine can set the live DPI and polling rate in gamemode (volatile settings only).</summary>
-    public bool CanGamemode => Driver is { BatteryOnly: false, HasLiveDpi: true } && (CanDpi || CanPolling);
-    public string? GamemodeText => _gamemode is { } g ? Txt.PeripheralGamemodeValues(g.Dpi, g.PollingHz) : null;
+    public ICommand GmPollingCommand { get; }
+    public bool CanGmDpi => Driver is { HasLiveDpi: true } && CanDpi && Dpi is not null;
+    public bool CanGmPolling => CanPolling && HasPolling;
+    public bool CanGmLight => Driver is { HasLiveBrightness: true } && HasLight;
+    public bool CanGamemode => Driver is { BatteryOnly: false } && (CanGmDpi || CanGmPolling || CanGmLight);
+    public string GmLightText => IsDock ? Txt.PeripheralGamemodeRingOff : Txt.PeripheralGamemodeLightOff;
+    public bool GmDpiOn { get => _gmDpiOn; set => Set(ref _gmDpiOn, value); }
+    public string? GmDpiText { get => _gmDpiText; set { if (Set(ref _gmDpiText, value)) Raise(nameof(GmDpiSlider)); } }
+    public double GmDpiSlider { get => Int(_gmDpiText) ?? Dpi?.X ?? 0; set => GmDpiText = Snap(value).ToString(); }
+    public bool GmLightOff { get => _gmLightOff; set => Set(ref _gmLightOff, value); }
+    /// <summary>"Keep" and each supported rate; the choice is saved only by Save.</summary>
+    public IReadOnlyList<OptionItem> GmRates => _state?.Polling is { } p
+        ? new[] { new OptionItem("", Txt.PeripheralGamemodeKeep) { IsSelected = _gmHz is null } }
+            .Concat(p.Supported.Select(hz => new OptionItem(hz.ToString(), $"{hz} Hz") { IsSelected = hz == _gmHz })).ToList()
+        : Array.Empty<OptionItem>();
+    public string GamemodeText => _gamemode is { } g ? Txt.PeripheralGamemodeValues(g.Dpi, g.PollingHz, g.Brightness == 0, IsDock) : Txt.PeripheralGamemodeNone;
     public bool HasGamemode => _gamemode is not null;
 
     GamemodePeripheralEntry? Gamemode()
@@ -106,19 +126,38 @@ public sealed class PeripheralRowViewModel : ObservableObject
         catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or System.Text.Json.JsonException) { return null; }
     }
 
-    /// <summary>Saves (keep) or removes this device's gamemode values: the DPI and polling rate it has now.</summary>
+    /// <summary>The editor starts from the saved profile, else from what the device has now (nothing chosen).</summary>
+    void LoadGamemodeEditor()
+    {
+        if (_gmLoaded || _state is null) return;
+        _gmLoaded = true;
+        _gmDpiOn = _gamemode?.Dpi is not null;
+        _gmDpiText = (_gamemode?.Dpi ?? _state.Dpi?.X)?.ToString();
+        _gmHz = _gamemode?.PollingHz;
+        _gmLightOff = _gamemode?.Brightness == 0;
+    }
+
+    /// <summary>Saves (keep) or removes this device's gamemode profile, each value checked against what the device reported.</summary>
     void SaveGamemode(bool keep)
     {
         try
         {
             if (!KosToolbox.Core.Execution.Elevation.IsAdmin) throw new InvalidOperationException(Txt.GpuGamemodeNeedsAdmin);
+            int? dpi = null, hz = null;
+            if (keep)
+            {
+                if (_gmDpiOn && CanGmDpi)
+                    dpi = Int(_gmDpiText) is { } v && v >= Dpi!.Min && v <= Dpi.Max ? v : throw new InvalidOperationException(Txt.PeripheralGamemodeDpiInvalid(Dpi!.Min, Dpi.Max));
+                if (_gmHz is { } h && CanGmPolling && _state!.Polling!.Supported.Contains(h)) hz = h;
+                if (dpi is null && hz is null && !(_gmLightOff && CanGmLight)) throw new InvalidOperationException(Txt.PeripheralGamemodeNothing);
+            }
             var config = GamemodePeripheral.Load() ?? new GamemodePeripheral();
             config.Devices.RemoveAll(e => e.VendorId == Device.VendorId && e.ProductId == Device.ProductId);
             if (keep)
                 config.Devices.Add(new GamemodePeripheralEntry
                 {
-                    VendorId = Device.VendorId, ProductId = Device.ProductId, Name = Name,
-                    Dpi = CanDpi ? _state?.Dpi?.X : null, PollingHz = CanPolling ? _state?.Polling?.Hz : null,
+                    VendorId = Device.VendorId, ProductId = Device.ProductId, Name = Name, Dpi = dpi, PollingHz = hz,
+                    Brightness = _gmLightOff && CanGmLight ? 0 : null,
                 });
             config.Suspended = false; // choosing again lifts a pause
             config.Save();
@@ -126,13 +165,50 @@ public sealed class PeripheralRowViewModel : ObservableObject
             Raise(nameof(GamemodeText));
             Raise(nameof(HasGamemode));
             Toasts.Show(keep ? Txt.PeripheralGamemodeSaved : Txt.PeripheralGamemodeRemoved);
-            Log.Info($"Peripherals: gamemode values for {Name}: {GamemodeText ?? "none"}.");
+            Log.Info($"Peripherals: gamemode profile for {Name}: {(_gamemode is null ? "none" : GamemodeText)}.");
         }
         catch (Exception ex) when (ex is InvalidOperationException or System.IO.IOException or UnauthorizedAccessException)
         {
             Toasts.Show(Txt.PeripheralWriteFailed(ex.Message), ToastKind.Error);
         }
     }
+
+    // ---------- the picture: a drawing per model family, its light in the color and brightness the controls show ----------
+    /// <summary>Which drawing: Viper, DeathAdder, Naga, Dock, Mouse, Headset, Keyboard, Controller or Other.</summary>
+    public string Art => (Driver?.Model ?? Name) switch
+    {
+        var m when m.Contains("Dock", StringComparison.OrdinalIgnoreCase) => "Dock",
+        var m when Kind == PeripheralKind.Mouse && m.Contains("Viper", StringComparison.OrdinalIgnoreCase) => "Viper",
+        var m when Kind == PeripheralKind.Mouse && m.Contains("DeathAdder", StringComparison.OrdinalIgnoreCase) => "DeathAdder",
+        var m when Kind == PeripheralKind.Mouse && m.Contains("Naga", StringComparison.OrdinalIgnoreCase) => "Naga",
+        _ => Kind is PeripheralKind.Mouse or PeripheralKind.Headset or PeripheralKind.Keyboard or PeripheralKind.Controller ? Kind.ToString() : "Other",
+    };
+    /// <summary>The device has a light the toolbox reads: the drawing shows it.</summary>
+    public bool HasLight => HasBrightness || HasLighting;
+    static readonly Brush Rainbow = Frozen(new LinearGradientBrush(new GradientStopCollection(new[] { 0xFF0000, 0xFFFF00, 0x00FF00, 0x00FFFF, 0x0000FF, 0xFF00FF, 0xFF0000 }
+        .Select((c, i) => new GradientStop(Rgb(c), i / 6.0))), 45));
+    /// <summary>The light as the controls show it (a typed brightness or color included, before Apply); null while it is off.</summary>
+    public Brush? LedBrush
+    {
+        get
+        {
+            if (!HasLight) return null;
+            var level = Int(_brightText) ?? _state?.Brightness ?? 100;
+            var effect = _state?.Lighting?.Effect ?? LightingEffect.Static;
+            if (level <= 0 || effect == LightingEffect.Off) return null;
+            var brush = effect == LightingEffect.Spectrum ? Rainbow.Clone() : new SolidColorBrush(Rgb(Hex(_colorText) ?? _state?.Lighting?.Color ?? 0xFFFFFF));
+            brush.Opacity = 0.3 + 0.7 * Math.Min(level, 100) / 100;
+            return Frozen(brush);
+        }
+    }
+    public string LedText => !HasLight ? "" : LedBrush is null ? Txt.PeripheralLightOff
+        : _state?.Lighting is { } l ? Txt.LightingEffectName(l.Effect) + (l.Effect is LightingEffect.Static or LightingEffect.Breathing && l.Color is { } c ? $" · #{c:X6}" : "")
+        : Txt.PeripheralLightOn;
+    static Color Rgb(int c) => Color.FromRgb((byte)(c >> 16), (byte)(c >> 8), (byte)c);
+    static Brush Frozen(Brush b) { b.Freeze(); return b; }
+    /// <summary>Color presets: they fill the color box (and the picture); Apply writes.</summary>
+    public static IReadOnlyList<string> Swatches { get; } = new[] { "#FF0000", "#FF6A00", "#FFD000", "#00FF40", "#00E5FF", "#0050FF", "#9000FF", "#FFFFFF" };
+    public ICommand SwatchCommand { get; }
 
     public HidDevice Device { get; }
     public PeripheralDriver? Driver { get; }
@@ -148,8 +224,8 @@ public sealed class PeripheralRowViewModel : ObservableObject
     public string KindText => Txt.PeripheralKindName(Kind);
     public string Glyph => Kind switch
     {
-        PeripheralKind.Mouse => "", PeripheralKind.Keyboard => "", PeripheralKind.Headset => "",
-        PeripheralKind.Controller => "", _ => "", // mouse, keyboard, headphones, gamepad, a USB plug
+        PeripheralKind.Mouse => "", PeripheralKind.Keyboard => "", PeripheralKind.Headset => "",
+        PeripheralKind.Controller => "", _ => "", // mouse, keyboard, headphones, gamepad, a USB plug (escaped: the glyphs are private-use characters)
     };
     public string StatusText => Driver is null ? Txt.PeripheralNotSupported : Driver.Tested ? Driver.Family : Txt.PeripheralUntested;
     public string? Note => Driver is null ? Txt.PeripheralNotSupportedNote
@@ -210,11 +286,16 @@ public sealed class PeripheralRowViewModel : ObservableObject
     public ICommand EffectCommand { get; }
     public ICommand ApplyColorCommand { get; }
 
-    public string? DpiText { get => _dpiText; set => Set(ref _dpiText, value); }
+    public string? DpiText { get => _dpiText; set { if (Set(ref _dpiText, value)) Raise(nameof(DpiSlider)); } }
+    /// <summary>The sliders only move the text (and the picture); Apply is the one write.</summary>
+    public double DpiSlider { get => Int(_dpiText) ?? Dpi?.X ?? 0; set => DpiText = Snap(value).ToString(); }
+    public double DpiStep => Dpi?.Step is > 0 and var step ? step : 50;
+    int Snap(double v) => (int)(Math.Round(v / DpiStep) * DpiStep);
     public string? SleepText { get => _sleepText; set => Set(ref _sleepText, value); }
     public string? LowText { get => _lowText; set => Set(ref _lowText, value); }
-    public string? BrightnessText { get => _brightText; set => Set(ref _brightText, value); }
-    public string? ColorText { get => _colorText; set => Set(ref _colorText, value); }
+    public string? BrightnessText { get => _brightText; set { if (Set(ref _brightText, value)) { Raise(nameof(BrightnessSlider)); Raise(nameof(LedBrush)); Raise(nameof(LedText)); } } }
+    public double BrightnessSlider { get => Int(_brightText) ?? _state?.Brightness ?? 0; set => BrightnessText = ((int)Math.Round(value)).ToString(); }
+    public string? ColorText { get => _colorText; set { if (Set(ref _colorText, value)) Raise(nameof(LedBrush)); } }
 
     /// <summary>Reads everything the driver knows (getters only). Runs off the UI thread; the result is applied on it.</summary>
     public async Task ReadAsync()
@@ -295,6 +376,7 @@ public sealed class PeripheralRowViewModel : ObservableObject
         BrightnessText = state.Brightness?.ToString();
         if (state.Lighting?.Color is { } color) ColorText = $"#{color:X6}"; // an effect without a color keeps what was typed
         Info.Rows = InfoRows();
+        LoadGamemodeEditor();
         Raise(string.Empty); // every derived property
     }
 

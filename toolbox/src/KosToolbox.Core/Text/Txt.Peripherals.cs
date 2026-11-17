@@ -44,9 +44,15 @@ public static partial class Txt
         Peripherals.PeripheralConnection.Receiver => PeripheralWireless, Peripherals.PeripheralConnection.Bluetooth => Bluetooth, _ => PeripheralWired,
     };
 
-    public const string PeripheralGamemode = "Gamemode", PeripheralUseInGamemode = "Use these in gamemode", PeripheralGamemodeClear = "Remove",
-        PeripheralGamemodeNote = "KOS Governor sets the live DPI and polling rate saved here when gamemode turns on, and puts back what the mouse had when it turns off. Nothing is stored in the mouse.",
-        PeripheralGamemodeSaved = "Saved for gamemode: KOS Governor applies them when gamemode turns on.", PeripheralGamemodeRemoved = "Removed from gamemode.";
+    public const string PeripheralGamemode = "Gamemode profile", PeripheralUseInGamemode = "Save", PeripheralGamemodeClear = "Remove",
+        PeripheralGamemodeNote = "When gamemode turns on, KOS Governor sets what is chosen here and puts back what the device had when it turns off. Live values only: nothing is stored in the device.",
+        PeripheralGamemodeSaved = "Gamemode profile saved: KOS Governor applies it when gamemode turns on.", PeripheralGamemodeRemoved = "Gamemode profile removed.",
+        PeripheralGamemodeSetDpi = "Set the DPI", PeripheralGamemodeKeep = "Keep", PeripheralGamemodeLightOff = "Turn the light off",
+        PeripheralGamemodeRingOff = "Turn the ring off", PeripheralGamemodeNone = "No profile saved.", PeripheralGamemodeSavedLabel = "Saved",
+        PeripheralGamemodeNothing = "choose at least one thing for gamemode to change.",
+        PeripheralLightOff = "Light off", PeripheralLightOn = "Light on", PeripheralLivePreview = "Shows the values above before Apply.";
+
+    public static string PeripheralGamemodeDpiInvalid(int min, int max) => $"the gamemode DPI goes from {min} to {max}.";
 
     public const string PeripheralEffect = "Effect", PeripheralColor = "Color (#RRGGBB)", PeripheralColorInvalid = "enter the color as #RRGGBB.",
         PeripheralDockBattery = "Mouse battery on the ring", PeripheralDockBatteryOn = "On", PeripheralDockBatteryOff = "Off",
@@ -61,8 +67,9 @@ public static partial class Txt
         LightingEffect.Off => "Off", LightingEffect.Static => "Static", LightingEffect.Breathing => "Breathing", LightingEffect.Spectrum => "Spectrum", _ => "Other",
     };
 
-    public static string PeripheralGamemodeValues(int? dpi, int? hz) =>
-        string.Join(" · ", new[] { dpi is { } d ? $"{d} DPI" : null, hz is { } h ? $"{h} Hz" : null }.OfType<string>()) is { Length: > 0 } s ? s : "—";
+    public static string PeripheralGamemodeValues(int? dpi, int? hz, bool lightOff, bool dock) =>
+        string.Join(" · ", new[] { dpi is { } d ? $"{d} DPI" : null, hz is { } h ? $"{h} Hz" : null, lightOff ? (dock ? "ring off" : "light off") : null }
+            .OfType<string>()) is { Length: > 0 } s ? s : "—";
 
     public static string PeripheralVendorApp(string app) => $"{app} is running and may overwrite these settings.";
     public static string PeripheralReadFailed(string message) => $"The device couldn't be read: {message}";

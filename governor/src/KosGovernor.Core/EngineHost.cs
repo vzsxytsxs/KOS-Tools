@@ -42,7 +42,7 @@ public static class EngineHost
         engine.ConfigChanged += tray.Refresh;
         engine.SessionEnded += report => tray.Balloon("Gamemode session", $"{report.Summary}. Report on the toolbox's Stability page.",
             report.Sections.Any(s => s.Lines.Any(l => l.Warning)));
-        var batteries = new PeripheralBatteryMonitor((title, text) => tray.Balloon(title, text, warning: true)); // peripherals: tray batteries
+        var batteries = new PeripheralBatteryMonitor((title, text) => tray.Balloon(title, text, warning: true), tray.Refresh); // peripherals: tray batteries
         batteries.Start();
 
         var worker = new Thread(() =>
@@ -149,11 +149,56 @@ internal sealed class Tray : IDisposable
     }
 
     public void Refresh() => PostMessage(_hwnd, WmRefresh, IntPtr.Zero, IntPtr.Zero);
+
+    // ---------- one icon per device battery (TrayBatteryIcon), its id from the VID and PID ----------
+    readonly Dictionary<string, (uint Id, IntPtr Icon, PeripheralBatteryMonitor.TrayDevice Shown)> _devices = new();
+
+    void SyncDevices()
+    {
+        var now = PeripheralBatteryMonitor.Devices;
+        var size = GetSystemMetrics(49); // SM_CXSMICON
+        foreach (var key in _devices.Keys.Except(now.Select(d => d.Key)).ToList())
+        {
+            DeviceIcon(NimDelete, _devices[key].Id, IntPtr.Zero, "");
+            DestroyIcon(_devices[key].Icon);
+            _devices.Remove(key);
+        }
+        foreach (var d in now)
+        {
+            var known = _devices.TryGetValue(d.Key, out var had);
+            if (known && had.Shown == d) continue;
+            var icon = TrayBatteryIcon.ToIcon(TrayBatteryIcon.Render(size, d.Percent, d.Glyph, d.Charging), size);
+            if (icon == IntPtr.Zero) continue;
+            var id = known ? had.Id : d.Id;
+            while (!known && _devices.Values.Any(v => v.Id == id)) id++; // two of the same model
+            DeviceIcon(known ? NimModify : NimAdd, id, icon, $"{d.Name} · {d.Percent} %{(d.Charging ? ", charging" : "")}");
+            if (known) DestroyIcon(had.Icon);
+            _devices[d.Key] = (id, icon, d);
+        }
+    }
+
+    void DeviceIcon(uint message, uint id, IntPtr icon, string tip)
+    {
+        var data = new NotifyIconData
+        {
+            cbSize = Marshal.SizeOf<NotifyIconData>(), hWnd = _hwnd, uID = id, uFlags = message == NimDelete ? 0 : NifMessage | NifIcon | NifTip,
+            uCallbackMessage = WmTray, hIcon = icon, szTip = tip.Length > 127 ? tip[..127] : tip, szInfo = "", szInfoTitle = "",
+        };
+        Shell_NotifyIcon(message, ref data);
+    }
+
+    /// <summary>Explorer restarted: every device icon is added again.</summary>
+    void ReAddDevices()
+    {
+        foreach (var d in _devices.Values) DestroyIcon(d.Icon);
+        _devices.Clear();
+        SyncDevices();
+    }
     public void Close() => PostMessage(_hwnd, WmClose, IntPtr.Zero, IntPtr.Zero);
 
     IntPtr Proc(IntPtr hwnd, uint msg, IntPtr w, IntPtr l)
     {
-        if (msg == _taskbarCreated && msg != 0) { AddIcon(); return IntPtr.Zero; }
+        if (msg == _taskbarCreated && msg != 0) { AddIcon(); ReAddDevices(); return IntPtr.Zero; }
         switch (msg)
         {
             case WmTray:
@@ -167,12 +212,15 @@ internal sealed class Tray : IDisposable
             case WmRefresh:
                 RegisterHotkey();
                 Notify(NimModify);
+                SyncDevices();
                 return IntPtr.Zero;
             case WmClose:
                 DestroyWindow(hwnd);
                 return IntPtr.Zero;
             case WmDestroy:
                 Notify(NimDelete);
+                foreach (var d in _devices.Values) { DeviceIcon(NimDelete, d.Id, IntPtr.Zero, ""); DestroyIcon(d.Icon); }
+                _devices.Clear();
                 if (_hotkey) UnregisterHotKey(hwnd, 1);
                 PostQuitMessage(0);
                 return IntPtr.Zero;
