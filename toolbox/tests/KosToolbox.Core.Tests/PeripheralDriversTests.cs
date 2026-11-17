@@ -222,6 +222,33 @@ public class PeripheralDriversTests
         Assert.Throws<ArgumentOutOfRangeException>(() => d.SetSleep(10));
     }
 
+    [Fact]
+    public void MouseDockReadsAndWritesOnlyItsRingLight()
+    {
+        var light = (byte)0;
+        var d = Driver((req, _) =>
+        {
+            if (req[7] == 0x0F && req[8] == 0x04 && req[1 + RazerCodec.ArgsOffset + 1] == 0x05) light = req[1 + RazerCodec.ArgsOffset + 2];
+            return (req[7], req[8]) switch
+            {
+                (0x00, 0x81) => Reply(req, RazerStatus.Ok, 1, 2),
+                (0x0F, 0x84) or (0x0F, 0x04) when req[1 + RazerCodec.ArgsOffset + 1] == 0x05 => Reply(req, RazerStatus.Ok, req[1 + RazerCodec.ArgsOffset], 0x05, light),
+                (0x00, 0x82) => Reply(req, RazerStatus.Ok),
+                _ => Reply(req, RazerStatus.Unsupported),
+            };
+        }, out var sent, 0x007E);
+        var s = d.Read();
+        Assert.Equal("1.2", s.Firmware);
+        Assert.Equal(0, s.Brightness);
+        Assert.Null(s.Dpi);
+        Assert.Null(d.ReadBattery());
+        Assert.False(d.HasLiveDpi);
+        Assert.Equal(new[] { PeripheralSetting.Brightness }, d.Writable);
+        Assert.All(sent, r => Assert.Contains((r[7], r[8]), new[] { ((byte)0x00, (byte)0x81), ((byte)0x00, (byte)0x82), ((byte)0x0F, (byte)0x84) })); // no DPI, polling or battery
+        Assert.Equal(50, d.SetBrightness(50).Brightness);
+        Assert.Equal(RazerCodec.Level(50), light);
+    }
+
     // ---------- registry ----------
     [Fact]
     public void RegistryClaimsOnlyExactProductsAndShapes()
@@ -229,7 +256,8 @@ public class PeripheralDriversTests
         PeripheralDriver.Opener = (_, _) => throw new InvalidOperationException("claiming never opens a device");
         Assert.IsType<RazerDriver>(PeripheralRegistry.Claim(Viper()));
         Assert.IsType<RazerDriver>(PeripheralRegistry.Claim(Viper(0x007A)));
-        Assert.Null(PeripheralRegistry.Claim(Viper(0x007E))); // the Mouse Dock
+        Assert.Equal(PeripheralKind.Other, Assert.IsType<RazerDriver>(PeripheralRegistry.Claim(Viper(0x007E))).Kind); // the Mouse Dock: light only
+        Assert.Null(PeripheralRegistry.Claim(Viper(0x00A4))); // the Mouse Dock Pro
         Assert.Null(PeripheralRegistry.Claim(new HidDevice("k", new[] { Col(0x1532, 0x007B, "mi_00", 1, 2, 8, 0, 0) }))); // no 91-byte collection
         var keyboard = new HidDevice("kb", new[]
         {

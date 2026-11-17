@@ -32,7 +32,7 @@ public sealed class RazerDriver : PeripheralDriver
         .Where(c => c.FeatureLength == RazerCodec.Length + 1)
         .OrderBy(c => c.UsagePage == 0x01 && c.Usage == 0x02 ? 0 : 1).FirstOrDefault();
 
-    public override PeripheralKind Kind => PeripheralKind.Mouse;
+    public override PeripheralKind Kind => _model.LightOnly ? PeripheralKind.Other : PeripheralKind.Mouse;
     public override PeripheralConnection? Connection => _model.Wireless ? PeripheralConnection.Receiver : PeripheralConnection.Wired;
     /// <summary>The transaction id that answered a getter; null until one did.</summary>
     public byte? TransactionId => _transactionId;
@@ -59,6 +59,14 @@ public sealed class RazerDriver : PeripheralDriver
         try
         {
             ResolveTransactionId(t);
+            if (_model.LightOnly)
+                return _last = new PeripheralState
+                {
+                    Name = _model.Name,
+                    Firmware = Try(t, RazerCodec.Firmware) is { } f ? RazerCodec.DecodeFirmware(f) : null,
+                    Serial = _serial ??= Try(t, RazerCodec.Serial) is { } s ? RazerCodec.DecodeSerial(s) : null,
+                    Brightness = Try(t, RazerCodec.BrightnessGet, new[] { RazerCodec.Stored, _model.Led!.Value }) is { } b ? RazerCodec.DecodeBrightness(b) : null,
+                };
             var dpi = Try(t, RazerCodec.DpiGet, new[] { _model.DpiStorage }) is { } d ? RazerCodec.DecodeDpi(d) : null;
             var stages = Try(t, RazerCodec.StagesGet, new[] { _model.DpiStorage }) is { } st ? RazerCodec.DecodeStages(st) : default;
             _serial ??= Try(t, RazerCodec.Serial) is { } sn ? RazerCodec.DecodeSerial(sn) : null;
@@ -84,7 +92,7 @@ public sealed class RazerDriver : PeripheralDriver
         }
     });
 
-    public override PeripheralBattery? ReadBattery() => With(_control, false, t =>
+    public override PeripheralBattery? ReadBattery() => _model.LightOnly ? null : With(_control, false, t =>
     {
         try
         {
@@ -119,7 +127,7 @@ public sealed class RazerDriver : PeripheralDriver
 
     /// <summary>The live DPI only (no-store byte): what gamemode uses, so the stored value stays the user's.</summary>
     public override PeripheralState SetDpiLive(int x, int y) => SetDpi(x, y, RazerCodec.NoStore);
-    public override bool HasLiveDpi => true;
+    public override bool HasLiveDpi => !_model.LightOnly;
 
     PeripheralState SetDpi(int x, int y, byte storage)
     {
