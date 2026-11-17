@@ -196,7 +196,15 @@ public sealed class ScheduledTaskProvider : IStartupProvider
         try
         {
             dynamic task = Open(service, path);
-            task.Enabled = enable;
+            try { task.Enabled = enable; }
+            // E_ACCESSDENIED arrives as UnauthorizedAccessException through COM interop (or a COMException).
+            catch (Exception ex) when ((ex is UnauthorizedAccessException || ex is COMException { HResult: unchecked((int)0x80070005) })
+                                       && Settings.TrustedInstaller.Available)
+            {
+                // Windows Update's own tasks (UpdateOrchestrator, WaaSMedic) refuse administrators; the KOS scripts change them as TrustedInstaller.
+                if (!Settings.TrustedInstaller.SetTaskEnabled(path, enable, () => (bool)((dynamic)Open(service, path)).Enabled == enable))
+                    throw new UnauthorizedAccessException(ex.Message, ex);
+            }
             Log.Info($"Scheduled task {path}: Enabled = {enable}");
         }
         catch (COMException ex) when ((uint)ex.HResult == 0x80070005) { throw new UnauthorizedAccessException(ex.Message, ex); }

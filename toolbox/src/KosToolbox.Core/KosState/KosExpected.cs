@@ -165,6 +165,45 @@ static class KosReg
     public static RegistryKey Base(Hive hive) => RegistryKey.OpenBaseKey(
         hive == Hive.LocalMachine ? RegistryHive.LocalMachine : RegistryHive.CurrentUser, RegistryView.Registry64);
 
+    /// <summary>
+    /// The 64-bit key a WOW6432Node key is shared with, or null. Windows 11 shares most Policies keys (a registry link: the kernel
+    /// names the 64-bit key) and a few Explorer keys (the same key: same last write time and values) between the two views, so
+    /// checking both would give one value two expectations and an apply on one would undo the other (checked in a KOS VM).
+    /// </summary>
+    public static string? SharedNative(string root, string key)
+    {
+        var i = key.IndexOf(@"\WOW6432Node\", StringComparison.OrdinalIgnoreCase);
+        if (i < 0 || Map(root, key) is not { Hive: Hive.LocalMachine }) return null;
+        var native = key.Remove(i, @"\WOW6432Node".Length);
+        using var b = Base(Hive.LocalMachine);
+        using var wow = b.OpenSubKey(key);
+        using var nat = b.OpenSubKey(native);
+        if (wow is null || nat is null) return null;
+        if (KernelName(wow)?.EndsWith(@"\" + native, StringComparison.OrdinalIgnoreCase) == true) return native;
+        return LastWrite(wow) is { } w && w == LastWrite(nat)
+               && wow.GetValueNames().Order(StringComparer.OrdinalIgnoreCase).SequenceEqual(nat.GetValueNames().Order(StringComparer.OrdinalIgnoreCase), StringComparer.OrdinalIgnoreCase)
+            ? native : null;
+    }
+
+    [System.Runtime.InteropServices.DllImport("ntdll.dll")]
+    static extern int NtQueryKey(Microsoft.Win32.SafeHandles.SafeRegistryHandle key, int infoClass, byte[] buffer, int length, out int result);
+
+    [System.Runtime.InteropServices.DllImport("advapi32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    static extern int RegQueryInfoKeyW(Microsoft.Win32.SafeHandles.SafeRegistryHandle key, IntPtr cls, IntPtr clsLen, IntPtr reserved, IntPtr subKeys,
+        IntPtr maxSubKey, IntPtr maxCls, IntPtr values, IntPtr maxValueName, IntPtr maxValue, IntPtr security, out long lastWrite);
+
+    /// <summary>The key's name as the kernel resolved it (KeyNameInformation), e.g. \REGISTRY\MACHINE\SOFTWARE\...</summary>
+    static string? KernelName(RegistryKey k)
+    {
+        var buffer = new byte[4096];
+        if (NtQueryKey(k.Handle, 3, buffer, buffer.Length, out _) != 0) return null;
+        var length = BitConverter.ToInt32(buffer, 0);
+        return length is > 0 and <= 4092 ? System.Text.Encoding.Unicode.GetString(buffer, 4, length) : null;
+    }
+
+    static long? LastWrite(RegistryKey k) =>
+        RegQueryInfoKeyW(k.Handle, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, out var t) == 0 ? t : null;
+
     public static bool KeyExists(string root, string key)
     {
         if (Map(root, key) is not { } m) return false;

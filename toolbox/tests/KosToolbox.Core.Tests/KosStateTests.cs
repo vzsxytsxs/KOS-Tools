@@ -12,6 +12,16 @@ public class KosStateTests(ITestOutputHelper output)
 {
     static KosExpected Expected => KosExpected.Embedded;
 
+    /// <summary>This PC's registry: the Policies key is a link to the 64-bit one, the CurrentVersion key is a separate 32-bit copy.</summary>
+    [Fact]
+    public void SharedWow64KeysAreFoundAsTheNativeKey()
+    {
+        Assert.Equal(@"SOFTWARE\Policies\Microsoft\Windows", KosReg.SharedNative("HKLM", @"SOFTWARE\WOW6432Node\Policies\Microsoft\Windows"));
+        Assert.Null(KosReg.SharedNative("HKLM", @"SOFTWARE\WOW6432Node\Microsoft\Windows NT\CurrentVersion"));
+        Assert.Null(KosReg.SharedNative("HKLM", @"SOFTWARE\Microsoft\Windows NT\CurrentVersion"));
+        Assert.Null(KosReg.SharedNative("HKCU", @"SOFTWARE\WOW6432Node\Policies\Microsoft\Windows"));
+    }
+
     /// <summary>The embedded copy is KOS-W11's (when that repository sits next to this one).</summary>
     [Fact]
     public void EmbeddedListIsTheKosOne()

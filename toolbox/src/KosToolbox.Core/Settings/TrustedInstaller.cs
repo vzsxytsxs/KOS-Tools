@@ -51,6 +51,26 @@ static class TrustedInstaller
         return false;
     }
 
+    /// <summary>
+    /// Turns a scheduled task on or off as TrustedInstaller (schtasks /change), for tasks that refuse administrators. True once
+    /// <paramref name="done"/> reads the new state back.
+    /// </summary>
+    public static bool SetTaskEnabled(string path, bool enable, Func<bool> done)
+    {
+        // The path goes on PowerRun's command line in quotes: only the characters task paths use.
+        if (!path.StartsWith('\\') || path.IndexOfAny(new[] { '"', '%', '!', '&', '|', '<', '>', '^' }) >= 0) throw new ArgumentException($"Unexpected task path: {path}");
+        path = "\\" + path.TrimStart('\\'); // schtasks wants one leading backslash
+        var schtasks = Path.Combine(Environment.SystemDirectory, "schtasks.exe");
+        Log.Info($"Access denied on the task {path}; changing it through PowerRun (TrustedInstaller).");
+        ProcessRunner.Run(PowerRun, $"/SW:0 {ProcessRunner.Quote(schtasks)} /change /tn {ProcessRunner.Quote(path)} {(enable ? "/enable" : "/disable")}");
+        for (var i = 0; i < 10; i++) // PowerRun may return before schtasks finishes
+        {
+            if (done()) return true;
+            Thread.Sleep(500);
+        }
+        return false;
+    }
+
     /// <summary>Writes a binary value under HKLM (a key only SYSTEM may write, such as the NVIDIA driver's display database).</summary>
     public static void RegWriteBinary(string path, string name, byte[] value)
     {
