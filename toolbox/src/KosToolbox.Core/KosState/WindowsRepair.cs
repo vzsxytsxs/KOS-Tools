@@ -42,7 +42,7 @@ public static class WindowsRepair
     static string ResultFile(string tool) => Path.Combine(Folder, $"{tool}-result.json");
 
     /// <summary>DISM's "source files could not be found or downloaded" errors: it repairs from Windows Update, which the KOS turns off.</summary>
-    static readonly int[] SourceErrors = { unchecked((int)0x800f081f), unchecked((int)0x800f0906), unchecked((int)0x800f0907), unchecked((int)0x800f0950), unchecked((int)0x800f0954) };
+    static readonly int[] SourceErrors = { unchecked((int)0x800f081f), unchecked((int)0x800f0906), unchecked((int)0x800f0907), unchecked((int)0x800f0915), unchecked((int)0x800f0950), unchecked((int)0x800f0954) };
     public static bool SourceMissing(RepairResult r) => r.Tool == Dism && SourceErrors.Contains(r.ExitCode);
 
     /// <summary>The fixed command of each tool, and how it writes its output (sfc writes UTF-16, even redirected).</summary>

@@ -263,6 +263,8 @@ public class KosStateTests(ITestOutputHelper output)
         Assert.Throws<InvalidOperationException>(() => WindowsRepair.Validate(new RepairJob { Tool = "cmd", RunId = id }));
         Assert.Throws<InvalidOperationException>(() => WindowsRepair.Validate(new RepairJob { Tool = WindowsRepair.Sfc, RunId = @"..\x" }));
         Assert.True(WindowsRepair.SourceMissing(new RepairResult { Tool = WindowsRepair.Dism, ExitCode = unchecked((int)0x800f081f) }));
+        // A KOS install with Windows Update off (DISM's "repair content could not be found anywhere").
+        Assert.True(WindowsRepair.SourceMissing(new RepairResult { Tool = WindowsRepair.Dism, ExitCode = unchecked((int)0x800f0915) }));
         Assert.False(WindowsRepair.SourceMissing(new RepairResult { Tool = WindowsRepair.Dism, ExitCode = 0 }));
     }
 
