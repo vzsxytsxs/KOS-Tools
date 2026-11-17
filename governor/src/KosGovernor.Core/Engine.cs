@@ -153,7 +153,9 @@ public sealed class Engine
                                         && !(_active.TryGetValue(p.Name, out var r) && (r.CpuSets is not null || r.Affinity is not null))).ToList();
         var game = games.Find(p => (p.Pid, p.CreateTime) == _director.Game) ?? games.MaxBy(p => _usage.Percent(p));
         var tree = game is null ? new HashSet<int>() : GameTree(snapshot);
-        _director.Tick(state, Config.Active.System, snapshot, game, p => tree.Contains(p.Pid) || _active.ContainsKey(p.Name) || _tree.ContainsKey(p.Pid),
+        // Services and other users' programs stay as they are, as with the memory clean and the restraint.
+        _director.Tick(state, Config.Active.System, snapshot, game,
+            p => p.SessionId != _session || tree.Contains(p.Pid) || _active.ContainsKey(p.Name) || _tree.ContainsKey(p.Pid),
             (tid, created) => _seenThreads.TryGetValue(tid, out var c) && c == created, _interrupts, nowMs);
     }
 
@@ -478,7 +480,7 @@ public sealed class Engine
     /// <summary>Engine exiting (Exit in the tray): undoes the Windows changes of a gamemode still on.</summary>
     public void Shutdown()
     {
-        try { KeepAwake.Set(false); SetDwmMmcss(false); StopAudio(); RestoreSystem(); ResetGameCores(); if (_tracing) EtwDriverTrace.StopSession(); }
+        try { KeepAwake.Set(false); SetDwmMmcss(false); StopAudio(); RestoreSystem(); ResetGameCores(); EtwDriverTrace.Close(); }
         catch (Exception ex) { Log.Error("Restoring gamemode's system changes at exit failed", ex); }
         try { _limiter.Release(); _extras.Release(); TimerResolution.Release(); }
         catch (Exception ex) { Log.Error("Undoing the rules' CPU limits, power plan, screen mode or timer resolution at exit failed", ex); }

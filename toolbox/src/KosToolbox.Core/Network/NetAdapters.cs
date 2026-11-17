@@ -140,7 +140,7 @@ public static class NetAdapters
                 if (e is not null)
                     foreach (var v in e.GetValueNames()) options.Add(new(v, e.GetValue(v) as string ?? v));
             list.Add(new NetProperty(keyword, Str(p, "ParamDesc") ?? keyword, (Str(p, "type") ?? "edit").ToLowerInvariant(), Str(p, "default"),
-                Str(instance, keyword), options, Num(p, "min"), Num(p, "max"), Num(p, "step"),
+                Current(instance, keyword), options, Num(p, "min"), Num(p, "max"), Num(p, "step"),
                 Str(p, "base") == "16" ? 16 : 10, (int)(Num(p, "LimitText") ?? 256)));
         }
         // Known keywords the driver doesn't list (Windows/the driver reads them from the registry anyway, if supported).
@@ -148,12 +148,15 @@ public static class NetAdapters
         {
             if (list.Any(p => p.Keyword.Equals(known.Keyword, StringComparison.OrdinalIgnoreCase))) continue;
             var options = known.Options.Select(o => new KeyValuePair<string, string>(o.Value, o.Label)).ToList();
-            list.Add(new NetProperty(known.Keyword, known.Name ?? known.Keyword, options.Count > 0 ? "enum" : "int", null, Str(instance, known.Keyword),
+            list.Add(new NetProperty(known.Keyword, known.Name ?? known.Keyword, options.Count > 0 ? "enum" : "int", null, Current(instance, known.Keyword),
                 options, known.Min, known.Max, null, 10, 16) { Unlisted = true });
         }
         return list.OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
     }
 
+    /// <summary>The adapter's value; a REG_DWORD as unsigned, the way it was written (HwOption masks reach 0xFFFFFFFF).</summary>
+    static string? Current(RegistryKey instance, string keyword) =>
+        instance.GetValue(keyword) is int i ? ((uint)i).ToString(CultureInfo.InvariantCulture) : Str(instance, keyword);
     static string? Str(RegistryKey k, string name) => k.GetValue(name)?.ToString()?.Trim();
     static long? Num(RegistryKey k, string name) => long.TryParse(Str(k, name), NumberStyles.Integer, CultureInfo.InvariantCulture, out var v) ? v : null;
 

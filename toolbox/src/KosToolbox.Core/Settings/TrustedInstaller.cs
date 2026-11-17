@@ -31,6 +31,26 @@ static class TrustedInstaller
         throw new UnauthorizedAccessException($"Couldn't write {s.Display}, not even as TrustedInstaller.");
     }
 
+    /// <summary>
+    /// A protected service's startup type through the Service Control Manager as TrustedInstaller (sc config), for services that refuse
+    /// administrators (Delivery Optimization). True once the SCM reports it.
+    /// </summary>
+    public static bool SetServiceStart(string service, int start)
+    {
+        if (start is not (2 or 3 or 4) || service.Length == 0 || !service.All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '-'))
+            throw new ArgumentException($"Unexpected service or start type: {service} {start}");
+        var sc = Path.Combine(Environment.SystemDirectory, "sc.exe");
+        Log.Info($"Changing {service}'s startup type through PowerRun (TrustedInstaller).");
+        ProcessRunner.Run(PowerRun, $"/SW:0 {ProcessRunner.Quote(sc)} config {service} start= {(start switch { 2 => "auto", 3 => "demand", _ => "disabled" })}");
+        for (var i = 0; i < 10; i++) // PowerRun may return before sc.exe finishes
+        {
+            var qc = System.Text.RegularExpressions.Regex.Match(ProcessRunner.Run(sc, $"qc {service}", TimeSpan.FromSeconds(10)).Output, @"START_TYPE\s*:\s*(\d)");
+            if (qc.Success && qc.Groups[1].Value == start.ToString(System.Globalization.CultureInfo.InvariantCulture)) return true;
+            Thread.Sleep(500);
+        }
+        return false;
+    }
+
     /// <summary>Writes a binary value under HKLM (a key only SYSTEM may write, such as the NVIDIA driver's display database).</summary>
     public static void RegWriteBinary(string path, string name, byte[] value)
     {

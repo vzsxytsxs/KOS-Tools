@@ -9,7 +9,7 @@ public enum IoPriority { VeryLow, Low, Normal, High }
 public enum MemoryPriority { VeryLow, Low, Medium, BelowNormal, Normal }
 public enum Efficiency { Off, On, Auto }
 /// <summary>GPU scheduling priority class of a process (D3DKMT_SCHEDULINGPRIORITYCLASS: the numbers are the kernel's).</summary>
-public enum GpuPriority { Idle = 0, Normal = 1, High = 2, Realtime = 3, BelowNormal = 4, AboveNormal = 5 }
+public enum GpuPriority { Idle = 0, BelowNormal = 1, Normal = 2, AboveNormal = 3, High = 4, Realtime = 5 }
 
 /// <summary>What every rule can change. Null = leave unchanged.</summary>
 public abstract class RuleBase

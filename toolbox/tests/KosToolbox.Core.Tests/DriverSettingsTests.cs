@@ -3,6 +3,8 @@ using Xunit;
 
 namespace KosToolbox.Core.Tests;
 
+// The live NVAPI tests share one session (a reset in one would close it under another): they run one at a time.
+[Collection("NVAPI")]
 public class DriverSettingsTests
 {
     [Fact]

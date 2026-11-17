@@ -20,7 +20,9 @@ public sealed class DrsSession : IDisposable
 {
     internal DrsSession(IntPtr handle) => Handle = handle;
     internal IntPtr Handle { get; private set; }
-    public void Dispose() { Nvapi.DrsClose(Handle); Handle = IntPtr.Zero; }
+    /// <summary>NVAPI's session the handle belongs to: after a reset (driver restarted) the handle is gone with it.</summary>
+    readonly int _generation = Nvapi.Generation;
+    public void Dispose() { Nvapi.DrsClose(Handle, _generation); Handle = IntPtr.Zero; }
 }
 
 /// <summary>Driver profile (the global one or a game/app one).</summary>

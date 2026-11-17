@@ -114,6 +114,7 @@ public static class WindowsUpdates
                 try
                 {
                     Allow(changed);
+                    EnsureServiceStarts();
                     result = work((object)Create("Microsoft.Update.Session"));
                 }
                 catch (COMException ex)
@@ -148,8 +149,32 @@ public static class WindowsUpdates
         foreach (var service in Services)
         {
             var s = RegistrySetting.ServiceStart(service);
-            if (s.Read() == "4") Change(s, "3", changed);
+            if (s.Read() != "4") continue;
+            Change(s, "3", changed);
+            Scm(service, 3);
         }
+    }
+
+    /// <summary>
+    /// The Service Control Manager keeps start types in memory: the registry value alone only counts after a restart, and a disabled
+    /// wuauserv makes the agent's search wait forever. Admins may change wuauserv and BITS; Delivery Optimization refuses them, and
+    /// downloads fail without it (0x80004002), so it goes through TrustedInstaller.
+    /// </summary>
+    static void Scm(string service, int start)
+    {
+        int error;
+        try { Interop.ServiceControl.SetStartType(service, start, null); return; }
+        catch (System.ComponentModel.Win32Exception ex) { error = ex.NativeErrorCode; }
+        if (error == 5 && TrustedInstaller.Available && TrustedInstaller.SetServiceStart(service, start)) return;
+        Log.Info($"Windows Update: the Service Control Manager refused {service}'s startup type ({error}); the registry value counts after a restart.");
+    }
+
+    /// <summary>Starts wuauserv before asking the agent anything: if Windows still has it disabled, says so instead of hanging.</summary>
+    static void EnsureServiceStarts()
+    {
+        var r = ProcessRunner.Run(Path.Combine(Environment.SystemDirectory, "sc.exe"), "start wuauserv", TimeSpan.FromSeconds(30));
+        if (r.ExitCode == 1058) // ERROR_SERVICE_DISABLED
+            throw new InvalidOperationException("Windows still has the Windows Update service disabled (its startup type changes when Windows restarts). Restart and try again.");
     }
 
     static void Change(RegistrySetting s, string? value, List<Changed> changed)
@@ -176,7 +201,12 @@ public static class WindowsUpdates
                 if (!s.ValueEquals(s.Read(), written)) { Log.Info($"Windows Update: {s.Display} was changed during the operation; left as it is."); continue; }
                 s.Write(before);
                 if (!s.ValueEquals(s.Read(), before)) problems.Add(s.Display);
-                else if (s.Name == "Start" && before == "4") stop.Add(Path.GetFileName(s.Path));
+                else if (s.Name == "Start" && before == "4")
+                {
+                    var name = Path.GetFileName(s.Path);
+                    Scm(name, 4);
+                    stop.Add(name);
+                }
             }
             catch (Exception ex) { problems.Add($"{s.Display}: {ex.Message}"); }
         }

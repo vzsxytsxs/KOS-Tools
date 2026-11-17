@@ -7,6 +7,8 @@ using Xunit;
 namespace KosToolbox.Core.Tests;
 
 // Pure logic only: no test loads NVML or touches the card.
+// The live NVAPI tests share one session (a reset in one would close it under another): they run one at a time.
+[Collection("NVAPI")]
 public class GpuTests
 {
     const string Bus = "00000000:04:00.0";

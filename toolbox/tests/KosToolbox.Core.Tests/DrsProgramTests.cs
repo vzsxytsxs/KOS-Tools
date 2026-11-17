@@ -3,6 +3,8 @@ using Xunit;
 
 namespace KosToolbox.Core.Tests;
 
+// The live NVAPI tests share one session (a reset in one would close it under another): they run one at a time.
+[Collection("NVAPI")]
 public class DrsProgramTests
 {
     /// <summary>Read-only on this PC's driver (no NVIDIA → nothing to check): a well-known game resolves to its driver profile, which lists it.</summary>

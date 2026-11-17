@@ -55,7 +55,7 @@ public sealed class ThreadDirector(CpuTopology topo)
     ulong _gameCores, _gameMask;
     List<ulong> _cores = new();
     long _windowStart;
-    bool _refusedLogged;
+    bool _refusedLogged, _dirty;
     Dictionary<(int, long), (ulong Cycles, long Cpu)> _last = new();
     readonly HashSet<(int, long)> _moved = new(), _classChecked = new(), _threadsChecked = new(), _refused = new();
     readonly Dictionary<(int, long), bool> _leftAlone = new();
@@ -64,6 +64,22 @@ public sealed class ThreadDirector(CpuTopology topo)
     public (int Pid, long Create)? Game => _game;
 
     public void Tick(GamemodeSystemState state, GamemodeSystemSettings s, IReadOnlyList<ProcessEntry> snapshot, ProcessEntry? game,
+        Func<ProcessEntry, bool> leaveAlone, Func<int, long, bool> threadHasRule, InterruptLoad? interrupts, long nowMs)
+    {
+        // A step that throws after earlier changes, or a save that failed, still gets the journal written (now or next tick).
+        try { _dirty |= TickCore(state, s, snapshot, game, leaveAlone, threadHasRule, interrupts, nowMs); }
+        catch { _dirty = true; throw; }
+        finally
+        {
+            if (_dirty)
+            {
+                GamemodeSystem.Save(state);
+                _dirty = false;
+            }
+        }
+    }
+
+    bool TickCore(GamemodeSystemState state, GamemodeSystemSettings s, IReadOnlyList<ProcessEntry> snapshot, ProcessEntry? game,
         Func<ProcessEntry, bool> leaveAlone, Func<int, long, bool> threadHasRule, InterruptLoad? interrupts, long nowMs)
     {
         var changed = Prune(state, snapshot);
@@ -83,7 +99,7 @@ public sealed class ThreadDirector(CpuTopology topo)
             if (s.MoveBackground) changed |= Move(state, snapshot, leaveAlone);
             if (s.NormalizePriorities) changed |= Lower(state, snapshot, leaveAlone);
         }
-        if (changed) GamemodeSystem.Save(state);
+        return changed;
     }
 
     /// <summary>Turned off while gamemode is on: undoes what it did.</summary>
@@ -272,7 +288,7 @@ public sealed class ThreadDirector(CpuTopology topo)
     {
         if (state.Placed.Find(p => p.Pid == game.Pid && p.Create == game.CreateTime) is not { } entry) return false;
         using var h = ProcessControl.Open(game.Pid, Native.ProcessQueryLimited | Native.ProcessSetLimited);
-        if (h is null || ProcessControl.ReadCpuSets(h, topo) is not { } now || now == entry.Mask) return false;
+        if (h is null || !Affinity.Same(h, game.CreateTime) || ProcessControl.ReadCpuSets(h, topo) is not { } now || now == entry.Mask) return false;
         Log.Info($"Thread director: {game.Name}'s CPU sets were changed to CPUs {CpuSpec.FormatList(now)}; set back.");
         return Place(state, h, game.Pid, game.CreateTime, entry.Mask, entry.Previous);
     }
@@ -308,7 +324,8 @@ public sealed class ThreadDirector(CpuTopology topo)
 
     /// <summary>
     /// Other programs at Realtime priority drop to High, and time-critical threads to Highest (once per start). Left alone: the game and
-    /// what it opened, programs with a rule, Windows' own (Windows folder, or no readable path) and MMCSS users (avrt.dll loaded).
+    /// what it opened, programs with a rule, other sessions, anti-cheats, voice and capture programs, Windows' own (Windows folder, or no
+    /// readable path) and MMCSS users (avrt.dll loaded).
     /// </summary>
     bool Lower(GamemodeSystemState state, IReadOnlyList<ProcessEntry> snapshot, Func<ProcessEntry, bool> leaveAlone)
     {
@@ -350,7 +367,8 @@ public sealed class ThreadDirector(CpuTopology topo)
         var key = (p.Pid, p.CreateTime);
         if (_leftAlone.TryGetValue(key, out var alone)) return alone;
         var windows = Path.TrimEndingDirectorySeparator(Environment.GetFolderPath(Environment.SpecialFolder.Windows)) + Path.DirectorySeparatorChar;
-        return _leftAlone[key] = leaveAlone(p) || ProcessControl.ImagePath(p.Pid) is not { } path || path.StartsWith(windows, StringComparison.OrdinalIgnoreCase)
+        return _leftAlone[key] = leaveAlone(p) || GamemodeSystem.IsAntiCheat(p.Name) || GamemodeSystem.NeverThrottled(p.Name)
+                                 || ProcessControl.ImagePath(p.Pid) is not { } path || path.StartsWith(windows, StringComparison.OrdinalIgnoreCase)
                                  || ModuleMap.Read(p.Pid).Has("avrt.dll") != false;
     }
 

@@ -6,6 +6,8 @@ using Xunit.Abstractions;
 namespace KosToolbox.Core.Tests;
 
 /// <summary>CRU-style sections: established, standard, base descriptors, extension blocks and CTA-861 data blocks.</summary>
+// The live NVAPI tests share one session (a reset in one would close it under another): they run one at a time.
+[Collection("NVAPI")]
 public class EdidEditorTests(ITestOutputHelper output)
 {
     /// <summary>1920x1080@60 preferred, a name, a free descriptor, 640x480@60 + 1024x768@60 established, two standard timings and a CTA block

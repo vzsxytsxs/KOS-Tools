@@ -116,7 +116,9 @@ public class CpuSpecTests
         Assert.False(rule.IsEmpty);
         rule.GpuPriority = (GpuPriority)9; // a number the kernel doesn't know, from a hand-edited config
         Assert.NotNull(Validation.RuleProblem(rule, Array.Empty<ProcessRule>(), Masks, Plain));
-        Assert.Equal((int)GpuPriority.AboveNormal, 5); // D3DKMT_SCHEDULINGPRIORITYCLASS_ABOVE_NORMAL
+        // d3dkmthk.h: IDLE 0, BELOW_NORMAL 1, NORMAL 2, ABOVE_NORMAL 3, HIGH 4, REALTIME 5.
+        Assert.Equal(new[] { 0, 1, 2, 3, 4, 5 },
+            new[] { GpuPriority.Idle, GpuPriority.BelowNormal, GpuPriority.Normal, GpuPriority.AboveNormal, GpuPriority.High, GpuPriority.Realtime }.Select(g => (int)g));
     }
 
     [Fact]

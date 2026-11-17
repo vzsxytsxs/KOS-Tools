@@ -26,12 +26,24 @@ public static class EtwDriverTrace
     static readonly EventRecordCallback Callback = OnEvent; // kept alive for ETW (a static: Native AOT, no closure)
     static LatencyCollector? _collector;
     static readonly byte[] Payload = new byte[64];
+    static bool _closed;
+
+    /// <summary>Engine exiting: waits for a trace in progress (at most its length), stops the session and refuses new ones.</summary>
+    public static void Close()
+    {
+        lock (Gate)
+        {
+            _closed = true;
+            StopSession();
+        }
+    }
 
     /// <summary>Traces for <paramref name="length"/> and returns what each processor spent in interrupts. Blocks; run it off the engine loop.</summary>
     public static InterruptLoad Sample(TimeSpan length)
     {
         lock (Gate)
         {
+            if (_closed) throw new ObjectDisposedException(nameof(EtwDriverTrace), "The engine is exiting.");
             StopSession(); // one left by an engine that crashed
             var collector = new LatencyCollector(KernelModules.Read(keepDebug: true), Stopwatch.Frequency); // the engine keeps SeDebugPrivilege on
             Start();

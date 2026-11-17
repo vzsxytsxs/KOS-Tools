@@ -144,9 +144,9 @@ internal static partial class Nvapi
         }
     }
 
-    public static void DrsClose(IntPtr session)
+    public static void DrsClose(IntPtr session, int generation)
     {
-        lock (Gate) { if (session != IntPtr.Zero) Function<OnePtr>(DrsDestroySession)(session); }
+        lock (Gate) { if (session != IntPtr.Zero && generation == Generation && _query is not null) Function<OnePtr>(DrsDestroySession)(session); }
     }
 
     public static void DrsSave(IntPtr session)
