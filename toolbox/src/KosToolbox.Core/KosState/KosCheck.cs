@@ -156,10 +156,7 @@ public static class KosCheck
             var now = KosSnapshots.CaptureKey(expected, sk.Root, sk.Key);
             (machine ? machineNow : userNow).Keys.Add(now);
             if (now.Unreadable == true) { unreadable++; continue; }
-            // A WOW6432Node key that is the 64-bit key itself is compared once, as the 64-bit key.
-            if (KosReg.SharedNative(sk.Root, sk.Key) is { } native
-                && expected.SnapshotKeys.Exists(o => o.Root.Equals(sk.Root, StringComparison.OrdinalIgnoreCase) && o.Key.Equals(native, StringComparison.OrdinalIgnoreCase)))
-                continue;
+            if (ComparedAsNative(expected, sk)) continue;
             if ((machine ? machineRef : userRef)?.Snapshot.Find(sk.Root, sk.Key) is not { Unreadable: not true } before) continue;
             foreach (var d in OtherDifferences(expected, sk, before, now))
             {
@@ -182,6 +179,11 @@ public static class KosCheck
             : a.Area != b.Area ? a.Area.CompareTo(b.Area) : string.Compare(a.Title, b.Title, StringComparison.OrdinalIgnoreCase));
         return new KosReport(items, compared, unreadable, machineRef, userRef, machineNow, userNow);
     }
+
+    /// <summary>A WOW6432Node key that is the 64-bit key itself (also in the list) is compared once, as the 64-bit key.</summary>
+    internal static bool ComparedAsNative(KosExpected expected, KosKey sk) =>
+        KosReg.SharedNative(sk.Root, sk.Key) is { } native
+        && expected.SnapshotKeys.Exists(o => o.Root.Equals(sk.Root, StringComparison.OrdinalIgnoreCase) && o.Key.Equals(native, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Apps and NTLite components that came back (every user's and the provisioned ones as administrator, the current user's

@@ -173,16 +173,38 @@ static class KosReg
     public static string? SharedNative(string root, string key)
     {
         var i = key.IndexOf(@"\WOW6432Node\", StringComparison.OrdinalIgnoreCase);
-        if (i < 0 || Map(root, key) is not { Hive: Hive.LocalMachine }) return null;
+        if (i < 0 || Map(root, key) is not { Hive: Hive.LocalMachine } m) return null;
         var native = key.Remove(i, @"\WOW6432Node".Length);
-        using var b = Base(Hive.LocalMachine);
-        using var wow = b.OpenSubKey(key);
-        using var nat = b.OpenSubKey(native);
-        if (wow is null || nat is null) return null;
-        if (KernelName(wow)?.EndsWith(@"\" + native, StringComparison.OrdinalIgnoreCase) == true) return native;
-        return LastWrite(wow) is { } w && w == LastWrite(nat)
-               && wow.GetValueNames().Order(StringComparer.OrdinalIgnoreCase).SequenceEqual(nat.GetValueNames().Order(StringComparer.OrdinalIgnoreCase), StringComparer.OrdinalIgnoreCase)
-            ? native : null;
+        var nativePath = Map(root, native)!.Value.Path;
+        try
+        {
+            using var b = Base(Hive.LocalMachine);
+            using var wow = b.OpenSubKey(m.Path);
+            using var nat = b.OpenSubKey(nativePath);
+            if (wow is null || nat is null) return null;
+            if (KernelName(wow)?.EndsWith(@"\" + nativePath, StringComparison.OrdinalIgnoreCase) == true) return native;
+            return LastWrite(wow) is { } w && w == LastWrite(nat) && SameValues(wow, nat) ? native : null;
+        }
+        catch (Exception ex) when (ex is System.Security.SecurityException or UnauthorizedAccessException or IOException) { return null; }
+    }
+
+    static bool SameValues(RegistryKey a, RegistryKey b)
+    {
+        var names = a.GetValueNames();
+        if (names.Length != b.ValueCount) return false;
+        foreach (var n in names)
+        {
+            if (a.GetValueKind(n) != b.GetValueKind(n)) return false;
+            object? x = a.GetValue(n, null, RegistryValueOptions.DoNotExpandEnvironmentNames), y = b.GetValue(n, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
+            var same = x switch
+            {
+                byte[] xb => y is byte[] yb && xb.AsSpan().SequenceEqual(yb),
+                string[] xs => y is string[] ys && xs.SequenceEqual(ys),
+                _ => Equals(x, y),
+            };
+            if (!same) return false;
+        }
+        return true;
     }
 
     [System.Runtime.InteropServices.DllImport("ntdll.dll")]

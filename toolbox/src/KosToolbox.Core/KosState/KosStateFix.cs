@@ -64,6 +64,7 @@ public static class KosStateFix
                 return new Change(id, ChangeKind.Task, "", t.Path, "", "", t.State);
             case "s" when bar > 0:
                 var sk = expected.SnapshotKeys[index];
+                if (KosCheck.ComparedAsNative(expected, sk)) throw Refused(id); // the check offers it as the 64-bit key
                 var name = rest[(bar + 1)..];
                 var before = reference(sk.Root)?.Find(sk.Root, sk.Key);
                 if (before is null || before.Unreadable == true) throw Refused(id);

@@ -160,13 +160,14 @@ public static class WindowsUpdates
     /// wuauserv makes the agent's search wait forever. Admins may change wuauserv and BITS; Delivery Optimization refuses them, and
     /// downloads fail without it (0x80004002), so it goes through TrustedInstaller.
     /// </summary>
-    static void Scm(string service, int start)
+    static bool Scm(string service, int start)
     {
         int error;
-        try { Interop.ServiceControl.SetStartType(service, start, null); return; }
+        try { Interop.ServiceControl.SetStartType(service, start, null); return true; }
         catch (System.ComponentModel.Win32Exception ex) { error = ex.NativeErrorCode; }
-        if (error == 5 && TrustedInstaller.Available && TrustedInstaller.SetServiceStart(service, start)) return;
+        if (error == 5 && TrustedInstaller.Available && TrustedInstaller.SetServiceStart(service, start)) return true;
         Log.Info($"Windows Update: the Service Control Manager refused {service}'s startup type ({error}); the registry value counts after a restart.");
+        return false;
     }
 
     /// <summary>Starts wuauserv before asking the agent anything: if Windows still has it disabled, says so instead of hanging.</summary>
@@ -204,7 +205,8 @@ public static class WindowsUpdates
                 else if (s.Name == "Start" && before == "4")
                 {
                     var name = Path.GetFileName(s.Path);
-                    Scm(name, 4);
+                    // The registry says disabled, but the SCM would still start it until Windows restarts.
+                    if (!Scm(name, 4)) problems.Add($"{name}: still on manual until Windows restarts");
                     stop.Add(name);
                 }
             }
