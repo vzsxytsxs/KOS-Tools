@@ -44,6 +44,7 @@ public static class EngineHost
             report.Sections.Any(s => s.Lines.Any(l => l.Warning)));
         var batteries = new PeripheralBatteryMonitor((title, text) => tray.Balloon(title, text, warning: true), tray.Refresh); // peripherals: tray batteries
         batteries.Start();
+        engine.GamemodeSwitched += on => { batteries.Gamemode = on; batteries.Poke(); }; // after mice.Switch: the dock's gamemode battery choice
 
         var worker = new Thread(() =>
         {

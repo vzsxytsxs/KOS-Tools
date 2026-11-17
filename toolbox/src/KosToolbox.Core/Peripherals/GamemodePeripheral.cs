@@ -66,6 +66,9 @@ public sealed class GamemodePeripheralEntry
     public int? PollingHz { get; set; }
     /// <summary>The live brightness in percent: 0 turns the light off in gamemode; in the state, what the light had before.</summary>
     public int? Brightness { get; set; }
+    /// <summary>A Razer charging dock only: the mouse battery on the ring during gamemode (true) or not (false), instead of
+    /// <see cref="GamemodePeripheral.DockBattery"/>; null = as outside gamemode. Never in the state (nothing to put back).</summary>
+    public bool? DockBattery { get; set; }
 }
 
 /// <summary>What the devices had before gamemode (same shape: the values to write back).</summary>

@@ -67,9 +67,14 @@ public static partial class Txt
         LightingEffect.Off => "Off", LightingEffect.Static => "Static", LightingEffect.Breathing => "Breathing", LightingEffect.Spectrum => "Spectrum", _ => "Other",
     };
 
-    public static string PeripheralGamemodeValues(int? dpi, int? hz, bool lightOff, bool dock) =>
-        string.Join(" · ", new[] { dpi is { } d ? $"{d} DPI" : null, hz is { } h ? $"{h} Hz" : null, lightOff ? (dock ? "ring off" : "light off") : null }
+    public static string PeripheralGamemodeValues(int? dpi, int? hz, bool lightOff, bool dock, bool? battery = null) =>
+        string.Join(" · ", new[] { dpi is { } d ? $"{d} DPI" : null, hz is { } h ? $"{h} Hz" : null, lightOff ? (dock ? "ring off" : "light off") : null,
+            battery switch { true => "battery on the ring", false => "no battery on the ring", _ => null } }
             .OfType<string>()) is { Length: > 0 } s ? s : "—";
+
+    public const string PeripheralGamemodeRing = "Ring", PeripheralGamemodeRingOffShort = "Off", PeripheralGamemodeBattery = "Battery",
+        PeripheralGamemodeNoBattery = "No battery",
+        PeripheralGamemodeRingNote = "Off turns the ring off. Battery shows the mouse battery on it during gamemode, No battery stops it; when gamemode ends, the ring goes back to Mouse battery on the ring as set above.";
 
     public static string PeripheralVendorApp(string app) => $"{app} is running and may overwrite these settings.";
     public static string PeripheralReadFailed(string message) => $"The device couldn't be read: {message}";

@@ -221,11 +221,23 @@ internal sealed class PeripheralBatteryMonitor
     /// </summary>
     bool ShowOnDock(RazerDriver? dock, PeripheralBattery? mouse)
     {
-        if (dock is null) return false;
+        if (dock is null) { _dockShown = null; return false; }
         bool on;
-        try { on = GamemodePeripheral.Load()?.DockBattery == true; }
+        try
+        {
+            var config = GamemodePeripheral.Load();
+            on = config?.DockBattery == true;
+            // gamemode: the dock's profile can turn the battery colors on or off for the session
+            if (Gamemode && config?.Devices.FirstOrDefault(e => e.VendorId == dock.Device.VendorId && e.ProductId == dock.Device.ProductId)?.DockBattery is { } g) on = g;
+        }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException) { return false; }
-        if (!on) return false;
+        if (!on)
+        {
+            if (_dockShown != false) RestoreDock(dock);
+            _dockShown = false;
+            return false;
+        }
+        _dockShown = true;
         if (mouse?.Percent is not { } p) return true; // asleep or not there: the dock keeps the last color
         var want = new PeripheralLighting(mouse.Charging == true ? LightingEffect.Breathing : LightingEffect.Static, DockBatteryColor.For(p));
         try
@@ -240,6 +252,26 @@ internal sealed class PeripheralBatteryMonitor
             Log.Warn($"Dock: showing the mouse battery failed: {ex.Message}");
         }
         return true;
+    }
+
+    /// <summary>Gamemode is on (set by the engine before it pokes the loop).</summary>
+    public volatile bool Gamemode;
+    /// <summary>Whether the ring shows the battery: null = not known yet (engine start, a dock plugged in).</summary>
+    bool? _dockShown;
+
+    /// <summary>The battery colors stop: the ring gets back the effect stored in the dock (live only), when it shows something else.</summary>
+    static void RestoreDock(RazerDriver dock)
+    {
+        try
+        {
+            if (dock.Read().Lighting is not { Effect: not LightingEffect.Other } stored || dock.ReadLiveLighting() == stored) return;
+            dock.SetLightingLive(stored.Effect, stored.Color ?? 0);
+            Log.Info($"Dock: battery colors off, the ring's own effect ({stored.Effect}) is back.");
+        }
+        catch (Exception ex) when (ex is PeripheralException or ArgumentException or NotSupportedException or System.ComponentModel.Win32Exception or IOException or TimeoutException)
+        {
+            Log.Warn($"Dock: putting back the ring's own effect failed: {ex.Message}");
+        }
     }
 
     static string Short(string name) => name.StartsWith("Razer ", StringComparison.Ordinal) || name.StartsWith("Logitech ", StringComparison.Ordinal) ? name[(name.IndexOf(' ') + 1)..] : name;

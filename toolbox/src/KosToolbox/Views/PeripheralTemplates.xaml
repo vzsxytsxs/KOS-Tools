@@ -358,7 +358,13 @@
                         <ItemsControl Style="{StaticResource PeriSegmented}" ItemsSource="{Binding GmRates}" Tag="{Binding GmPollingCommand}" AutomationProperties.Name="{x:Static t:Txt.PeripheralPolling}" />
                     </StackPanel>
                     <CheckBox Style="{StaticResource GpuSwitch}" Content="{Binding GmLightText}" IsChecked="{Binding GmLightOff}" HorizontalAlignment="Left" Margin="0,0,0,12"
-                              Visibility="{Binding CanGmLight, Converter={StaticResource BoolToVis}}" />
+                              Visibility="{Binding CanGmLightSwitch, Converter={StaticResource BoolToVis}}" />
+                    <!-- The dock's ring: kept, off, or the mouse battery shown on it or not during gamemode. -->
+                    <StackPanel Style="{StaticResource PeriField}" Visibility="{Binding CanGmRing, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Style="{StaticResource PeriLabel}" Text="{x:Static t:Txt.PeripheralGamemodeRing}" />
+                        <ItemsControl Style="{StaticResource PeriSegmented}" ItemsSource="{Binding GmRings}" Tag="{Binding GmRingCommand}" AutomationProperties.Name="{x:Static t:Txt.PeripheralGamemodeRing}" />
+                        <TextBlock Style="{StaticResource GpuHint}" Text="{x:Static t:Txt.PeripheralGamemodeRingNote}" />
+                    </StackPanel>
                     <DockPanel>
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                             <Button Content="{x:Static t:Txt.PeripheralUseInGamemode}" Command="{Binding GamemodeCommand}" />

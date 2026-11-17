@@ -51,6 +51,7 @@ public sealed class PeripheralRowViewModel : ObservableObject
         ApplyColorCommand = new AsyncCommand(() => Hex(_colorText) is { } c
             ? Write(Txt.PeripheralColor, d => d.SetLighting(_state?.Lighting?.Effect == LightingEffect.Breathing ? LightingEffect.Breathing : LightingEffect.Static, c))
             : Invalid(Txt.PeripheralColorInvalid));
+        GmRingCommand = new RelayCommand(p => { if (p is string k) { _gmRing = k; Raise(nameof(GmRings)); } });
         GmPollingCommand = new RelayCommand(p => { if (p is string k) { _gmHz = int.TryParse(k, out var hz) ? hz : null; Raise(nameof(GmRates)); } });
         SwatchCommand = new RelayCommand(p => { if (p is string hex) ColorText = hex; });
         DockBatteryOnCommand = new AsyncCommand(() => SaveDockBattery(true));
@@ -112,12 +113,21 @@ public sealed class PeripheralRowViewModel : ObservableObject
     public string? GmDpiText { get => _gmDpiText; set { if (Set(ref _gmDpiText, value)) Raise(nameof(GmDpiSlider)); } }
     public double GmDpiSlider { get => LogDpi(Int(_gmDpiText) ?? Dpi?.X); set => GmDpiText = Snap(Math.Exp(value)).ToString(); }
     public bool GmLightOff { get => _gmLightOff; set => Set(ref _gmLightOff, value); }
+    /// <summary>A light that isn't a dock's ring: the on/off switch. The dock's ring has <see cref="GmRings"/> instead.</summary>
+    public bool CanGmLightSwitch => CanGmLight && !IsDock;
+    public bool CanGmRing => CanGmLight && IsDock;
+    string _gmRing = ""; // "" keep, "off" ring off, "battery" / "nobattery" the mouse battery on the ring or not
+    public ICommand GmRingCommand { get; }
+    public IReadOnlyList<OptionItem> GmRings => new[]
+    {
+        ("", Txt.PeripheralGamemodeKeep), ("off", Txt.PeripheralGamemodeRingOffShort), ("battery", Txt.PeripheralGamemodeBattery), ("nobattery", Txt.PeripheralGamemodeNoBattery),
+    }.Select(o => new OptionItem(o.Item1, o.Item2) { IsSelected = o.Item1 == _gmRing }).ToList();
     /// <summary>"Keep" and each supported rate; the choice is saved only by Save.</summary>
     public IReadOnlyList<OptionItem> GmRates => _state?.Polling is { } p
         ? new[] { new OptionItem("", Txt.PeripheralGamemodeKeep) { IsSelected = _gmHz is null } }
             .Concat(p.Supported.Select(hz => new OptionItem(hz.ToString(), $"{hz} Hz") { IsSelected = hz == _gmHz })).ToList()
         : Array.Empty<OptionItem>();
-    public string GamemodeText => _gamemode is { } g ? Txt.PeripheralGamemodeValues(g.Dpi, g.PollingHz, g.Brightness == 0, IsDock) : Txt.PeripheralGamemodeNone;
+    public string GamemodeText => _gamemode is { } g ? Txt.PeripheralGamemodeValues(g.Dpi, g.PollingHz, g.Brightness == 0, IsDock, g.DockBattery) : Txt.PeripheralGamemodeNone;
     public bool HasGamemode => _gamemode is not null;
 
     GamemodePeripheralEntry? Gamemode()
@@ -135,6 +145,7 @@ public sealed class PeripheralRowViewModel : ObservableObject
         _gmDpiText = (_gamemode?.Dpi ?? _state.Dpi?.X)?.ToString();
         _gmHz = _gamemode?.PollingHz;
         _gmLightOff = _gamemode?.Brightness == 0;
+        _gmRing = _gamemode?.Brightness == 0 ? "off" : _gamemode?.DockBattery switch { true => "battery", false => "nobattery", _ => "" };
     }
 
     /// <summary>Saves (keep) or removes this device's gamemode profile, each value checked against what the device reported.</summary>
@@ -149,7 +160,8 @@ public sealed class PeripheralRowViewModel : ObservableObject
                 if (_gmDpiOn && CanGmDpi)
                     dpi = Int(_gmDpiText) is { } v && v >= Dpi!.Min && v <= Dpi.Max ? v : throw new InvalidOperationException(Txt.PeripheralGamemodeDpiInvalid(Dpi!.Min, Dpi.Max));
                 if (_gmHz is { } h && CanGmPolling && _state!.Polling!.Supported.Contains(h)) hz = h;
-                if (dpi is null && hz is null && !(_gmLightOff && CanGmLight)) throw new InvalidOperationException(Txt.PeripheralGamemodeNothing);
+                if (dpi is null && hz is null && !(_gmLightOff && CanGmLightSwitch) && !(_gmRing != "" && CanGmRing))
+                    throw new InvalidOperationException(Txt.PeripheralGamemodeNothing);
             }
             var config = GamemodePeripheral.Load() ?? new GamemodePeripheral();
             config.Devices.RemoveAll(e => e.VendorId == Device.VendorId && e.ProductId == Device.ProductId);
@@ -157,7 +169,8 @@ public sealed class PeripheralRowViewModel : ObservableObject
                 config.Devices.Add(new GamemodePeripheralEntry
                 {
                     VendorId = Device.VendorId, ProductId = Device.ProductId, Name = Name, Dpi = dpi, PollingHz = hz,
-                    Brightness = _gmLightOff && CanGmLight ? 0 : null,
+                    Brightness = (_gmLightOff && CanGmLightSwitch) || (_gmRing == "off" && CanGmRing) ? 0 : null,
+                    DockBattery = CanGmRing ? _gmRing switch { "battery" => true, "nobattery" => false, _ => null } : null,
                 });
             config.Suspended = false; // choosing again lifts a pause
             config.Save();
