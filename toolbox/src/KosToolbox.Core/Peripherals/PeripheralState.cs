@@ -18,6 +18,12 @@ public sealed record PeripheralDpi(int X, int Y, int Min, int Max, int Step, IRe
 
 public sealed record PeripheralPolling(int Hz, IReadOnlyList<int> Supported);
 
+/// <summary>A lighting effect; <see cref="Other"/> is one the device has that the toolbox doesn't offer (it can't be written back).</summary>
+public enum LightingEffect { Off, Static, Breathing, Spectrum, Other }
+
+/// <summary>The effect of one light and its color (0xRRGGBB), null when the effect has none.</summary>
+public sealed record PeripheralLighting(LightingEffect Effect, int? Color);
+
 /// <summary>
 /// What a driver read from the device. Every part is nullable: null means the device doesn't have it or it couldn't be read, and the
 /// page hides it. A field exists only because a driver fills it.
@@ -36,6 +42,8 @@ public sealed record PeripheralState
     public int? LowBatteryPercent { get; init; }
     /// <summary>Lighting brightness in percent (all zones).</summary>
     public int? Brightness { get; init; }
+    /// <summary>The stored lighting effect and color.</summary>
+    public PeripheralLighting? Lighting { get; init; }
     /// <summary>Logitech: true while the onboard profile drives the mouse (its live settings then come from the profile).</summary>
     public bool? OnboardMode { get; init; }
     /// <summary>A keyboard protocol and its version (VIA 12).</summary>
@@ -44,7 +52,7 @@ public sealed record PeripheralState
 }
 
 /// <summary>A setting a driver can write; the page offers only these.</summary>
-public enum PeripheralSetting { Dpi, ActiveStage, PollingRate, Sleep, LowBattery, Brightness, HostMode }
+public enum PeripheralSetting { Dpi, ActiveStage, PollingRate, Sleep, LowBattery, Brightness, HostMode, Lighting }
 
 /// <summary>The device answered, but not as expected (status, timeout, a reply to something else). Shown as an error toast.</summary>
 public class PeripheralException(string message) : Exception(message);
@@ -108,6 +116,8 @@ public abstract class PeripheralDriver
     public virtual PeripheralState SetSleep(int seconds) => throw Unsupported();
     public virtual PeripheralState SetLowBattery(int percent) => throw Unsupported();
     public virtual PeripheralState SetBrightness(int percent) => throw Unsupported();
+    /// <summary>The effect and color (0xRRGGBB; ignored by Off and Spectrum). Off, Static, Breathing and Spectrum only.</summary>
+    public virtual PeripheralState SetLighting(LightingEffect effect, int color) => throw Unsupported();
     public virtual PeripheralState SetHostMode() => throw Unsupported();
 
     protected static NotSupportedException Unsupported() => new("This device doesn't offer that setting.");

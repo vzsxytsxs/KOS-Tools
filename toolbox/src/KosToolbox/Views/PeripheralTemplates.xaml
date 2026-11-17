@@ -111,15 +111,37 @@
                     </StackPanel>
                 </StackPanel>
             </Border>
-            <!-- Lighting: brightness only (effects are not offered: most can't be read back). -->
-            <Border Style="{StaticResource Card}" Margin="0,0,8,8" Visibility="{Binding HasBrightness, Converter={StaticResource BoolToVis}}">
+            <!-- Lighting: brightness, effect and color, each written stored and live and read back (only effects the device reports back). -->
+            <Border Style="{StaticResource Card}" Margin="0,0,8,8" Visibility="{Binding HasLightingCard, Converter={StaticResource BoolToVis}}">
                 <StackPanel>
                     <TextBlock Style="{StaticResource CardTitle}" Text="{x:Static t:Txt.PeripheralLighting}" Margin="0,0,0,10" />
-                    <StackPanel Orientation="Horizontal">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10" Visibility="{Binding HasBrightness, Converter={StaticResource BoolToVis}}">
                         <TextBlock Text="{x:Static t:Txt.PeripheralBrightness}" Width="190" VerticalAlignment="Center" />
                         <TextBox Text="{Binding BrightnessText, UpdateSourceTrigger=PropertyChanged}" Width="60" IsEnabled="{Binding CanBrightness}" AutomationProperties.Name="{x:Static t:Txt.PeripheralBrightness}" />
                         <Button Content="{x:Static t:Txt.Apply}" Command="{Binding ApplyBrightnessCommand}" Margin="8,0,0,0" Visibility="{Binding CanBrightness, Converter={StaticResource BoolToVis}}" />
                     </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10" Visibility="{Binding HasLighting, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="{x:Static t:Txt.PeripheralEffect}" Width="190" VerticalAlignment="Center" />
+                        <ItemsControl Style="{StaticResource Segmented}" ItemsSource="{Binding Effects}" Tag="{Binding EffectCommand}" IsEnabled="{Binding CanLighting}"
+                                      AutomationProperties.Name="{x:Static t:Txt.PeripheralEffect}" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10" Visibility="{Binding HasLighting, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="{x:Static t:Txt.PeripheralColor}" Width="190" VerticalAlignment="Center" />
+                        <TextBox Text="{Binding ColorText, UpdateSourceTrigger=PropertyChanged}" Width="90" IsEnabled="{Binding CanLighting}" AutomationProperties.Name="{x:Static t:Txt.PeripheralColor}" />
+                        <Button Content="{x:Static t:Txt.Apply}" Command="{Binding ApplyColorCommand}" Margin="8,0,0,0" Visibility="{Binding CanLighting, Converter={StaticResource BoolToVis}}" />
+                    </StackPanel>
+                    <!-- Dock only: KOS Governor sets the ring's live color from the mouse battery. -->
+                    <Grid Visibility="{Binding IsDock, Converter={StaticResource BoolToVis}}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="190" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <TextBlock Text="{x:Static t:Txt.PeripheralDockBattery}" VerticalAlignment="Center" ToolTip="{x:Static t:Txt.PeripheralDockBatteryNote}" />
+                        <TextBlock Grid.Column="1" Style="{StaticResource Secondary}" Text="{Binding DockBatteryText}" VerticalAlignment="Center" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal">
+                            <Button Content="{x:Static t:Txt.PeripheralTurnOn}" Command="{Binding DockBatteryOnCommand}" ToolTip="{x:Static t:Txt.PeripheralDockBatteryNote}" />
+                            <Button Content="{x:Static t:Txt.PeripheralTurnOff}" Command="{Binding DockBatteryOffCommand}" Margin="8,0,0,0" />
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.PeripheralDockBatteryNote}" TextWrapping="Wrap" Margin="0,8,0,0"
+                               Visibility="{Binding IsDock, Converter={StaticResource BoolToVis}}" />
                 </StackPanel>
             </Border>
             <ContentControl Content="{Binding Info}" Focusable="False" />

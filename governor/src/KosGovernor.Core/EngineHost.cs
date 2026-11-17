@@ -63,6 +63,7 @@ public static class EngineHost
                 if (!trimmed) trimmed = EmptyWorkingSet((IntPtr)(-1));
                 var i = WaitHandle.WaitAny(handles, Math.Clamp(engine.Config.General.EngineIntervalMs, Validation.MinEngineMs, Validation.MaxEngineMs));
                 if (i == 0) break;
+                if (i == 1) batteries.Poke(); // the toolbox saved: the dock battery option may have changed
                 if (i == 2) engine.RequestToggle();
             }
             engine.Shutdown();

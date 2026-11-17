@@ -222,32 +222,112 @@ public class PeripheralDriversTests
         Assert.Throws<ArgumentOutOfRangeException>(() => d.SetSleep(10));
     }
 
+    /// <summary>
+    /// A light on <paramref name="led"/> with separate stored and live values (as the Viper Ultimate and the Mouse Dock answer): brightness
+    /// 0F/84-0F/04 and the effect 0F/82-0F/02, each by its storage byte. Other commands go to <paramref name="other"/>.
+    /// </summary>
+    static Func<byte[], int, byte[]> Light(byte led, Dictionary<byte, byte> level, Dictionary<byte, byte[]> effect, Func<byte[], int, byte[]> other) => (req, n) =>
+    {
+        const int a = 1 + RazerCodec.ArgsOffset;
+        if (req[7] != 0x0F || req[a + 1] != led) return other(req, n);
+        var storage = req[a];
+        switch (req[8])
+        {
+            case 0x04: level[storage] = req[a + 2]; return Reply(req, RazerStatus.Ok);
+            case 0x84: return Reply(req, RazerStatus.Ok, storage, led, level[storage]);
+            case 0x02: effect[storage] = req[(a + 2)..(a + req[6])]; return Reply(req, RazerStatus.Ok);
+            case 0x82: return Reply(req, RazerStatus.Ok, new byte[] { 0, led }.Concat(effect[storage]).ToArray());
+            default: return Reply(req, RazerStatus.Unsupported);
+        }
+    };
+
+    static Dictionary<byte, byte[]> Spectrum() => new() { [RazerCodec.Stored] = new byte[] { 3 }, [RazerCodec.NoStore] = new byte[] { 3 } };
+
     [Fact]
     public void MouseDockReadsAndWritesOnlyItsRingLight()
     {
-        var light = (byte)0;
-        var d = Driver((req, _) =>
+        var level = new Dictionary<byte, byte> { [RazerCodec.Stored] = 0, [RazerCodec.NoStore] = 0 };
+        var effect = Spectrum();
+        var d = Driver(Light(0x05, level, effect, (req, _) => (req[7], req[8]) switch
         {
-            if (req[7] == 0x0F && req[8] == 0x04 && req[1 + RazerCodec.ArgsOffset + 1] == 0x05) light = req[1 + RazerCodec.ArgsOffset + 2];
-            return (req[7], req[8]) switch
-            {
-                (0x00, 0x81) => Reply(req, RazerStatus.Ok, 1, 2),
-                (0x0F, 0x84) or (0x0F, 0x04) when req[1 + RazerCodec.ArgsOffset + 1] == 0x05 => Reply(req, RazerStatus.Ok, req[1 + RazerCodec.ArgsOffset], 0x05, light),
-                (0x00, 0x82) => Reply(req, RazerStatus.Ok),
-                _ => Reply(req, RazerStatus.Unsupported),
-            };
-        }, out var sent, 0x007E);
+            (0x00, 0x81) => Reply(req, RazerStatus.Ok, 1, 2),
+            (0x00, 0x82) => Reply(req, RazerStatus.Ok),
+            _ => Reply(req, RazerStatus.Unsupported),
+        }), out var sent, 0x007E);
         var s = d.Read();
         Assert.Equal("1.2", s.Firmware);
         Assert.Equal(0, s.Brightness);
+        Assert.Equal(new PeripheralLighting(LightingEffect.Spectrum, null), s.Lighting);
         Assert.Null(s.Dpi);
         Assert.Null(d.ReadBattery());
         Assert.False(d.HasLiveDpi);
-        Assert.Equal(new[] { PeripheralSetting.Brightness }, d.Writable);
-        Assert.All(sent, r => Assert.Contains((r[7], r[8]), new[] { ((byte)0x00, (byte)0x81), ((byte)0x00, (byte)0x82), ((byte)0x0F, (byte)0x84) })); // no DPI, polling or battery
+        Assert.True(d.IsDock);
+        Assert.Equal(new[] { PeripheralSetting.Brightness, PeripheralSetting.Lighting }, d.Writable.Order());
+        Assert.All(sent, r => Assert.Contains((r[7], r[8]), new[] { ((byte)0x00, (byte)0x81), ((byte)0x00, (byte)0x82), ((byte)0x0F, (byte)0x84), ((byte)0x0F, (byte)0x82) })); // no DPI, polling or battery
         Assert.Equal(50, d.SetBrightness(50).Brightness);
-        Assert.Equal(RazerCodec.Level(50), light);
+        Assert.Equal((RazerCodec.Level(50), RazerCodec.Level(50)), (level[RazerCodec.Stored], level[RazerCodec.NoStore])); // stored and live
     }
+
+    [Fact]
+    public void RazerEffectCodec()
+    {
+        var (command, args) = RazerCodec.EncodeEffect(RazerCodec.Stored, 0x05, LightingEffect.Static, 0xFF8000);
+        Assert.Equal(new RazerCommand(0x0F, 0x02, 0x09), command);
+        Assert.Equal(new byte[] { 1, 5, 1, 0, 0, 1, 0xFF, 0x80, 0x00 }, args);
+        Assert.Equal(new byte[] { 0, 4, 2, 1, 0, 1, 0, 0xFF, 0 }, RazerCodec.EncodeEffect(RazerCodec.NoStore, 0x04, LightingEffect.Breathing, 0x00FF00).Args);
+        Assert.Equal(new byte[] { 1, 4, 3 }, RazerCodec.EncodeEffect(RazerCodec.Stored, 0x04, LightingEffect.Spectrum, 0x123456).Args);
+        Assert.Equal(new RazerCommand(0x0F, 0x02, 0x06), RazerCodec.EncodeEffect(RazerCodec.Stored, 0x04, LightingEffect.Off, 0).Command);
+        // Replies as read on the hardware: static red on the dock; the Viper's live spectrum with leftover bytes after the effect.
+        Assert.Equal(new PeripheralLighting(LightingEffect.Static, 0xFF0000), RazerCodec.DecodeEffect(new byte[] { 0, 5, 1, 0, 0, 1, 0xFF, 0, 0, 0, 0, 0 }));
+        Assert.Equal(new PeripheralLighting(LightingEffect.Spectrum, null), RazerCodec.DecodeEffect(new byte[] { 0, 4, 3, 0, 0x28, 1, 0, 0xFF, 0, 0, 0xFF, 0 }));
+        Assert.Equal(LightingEffect.Other, RazerCodec.DecodeEffect(new byte[] { 0, 4, 2, 2, 0, 2, 1, 2, 3, 4, 5, 6 }).Effect); // two-color breathing
+        Assert.Equal(LightingEffect.Other, RazerCodec.DecodeEffect(new byte[] { 0, 4, 4, 1, 0x28, 0, 0, 0, 0, 0, 0, 0 }).Effect); // wave
+    }
+
+    [Fact]
+    public void ViperLightingAndDpiAreWrittenStoredAndLive()
+    {
+        var values = ViperValues();
+        var dpi = new Dictionary<byte, byte[]> { [RazerCodec.Stored] = new byte[] { 1, 0x03, 0x20, 0x03, 0x20 }, [RazerCodec.NoStore] = new byte[] { 0, 0x06, 0x40, 0x06, 0x40 } };
+        var level = new Dictionary<byte, byte> { [RazerCodec.Stored] = 255, [RazerCodec.NoStore] = 0 }; // as found: 100 % stored, dark live
+        var effect = Spectrum();
+        var d = Driver(Light(0x04, level, effect, (req, n) =>
+        {
+            const int a = 1 + RazerCodec.ArgsOffset;
+            if (req[7] == 0x04 && req[8] == 0x05) { dpi[req[a]] = req[a..(a + 5)]; return Reply(req, RazerStatus.Ok); }
+            if (req[7] == 0x04 && req[8] == 0x85) return Reply(req, RazerStatus.Ok, dpi[req[a]]);
+            return Mouse(values)(req, n);
+        }), out var sent);
+        var s = d.Read();
+        Assert.Equal(1600, s.Dpi!.X); // the Viper shows its live DPI
+        Assert.Equal(100, s.Brightness); // and its stored brightness
+        Assert.Contains(PeripheralSetting.Lighting, d.Writable);
+
+        Assert.Equal(900, d.SetDpi(900, 900).Dpi!.X);
+        Assert.Equal(new[] { RazerCodec.Stored, RazerCodec.NoStore }, sent.Where(r => r[7] == 0x04 && r[8] == 0x05).Select(r => r[9]));
+        Assert.Equal((900, 900), (RazerCodec.DecodeDpi(dpi[RazerCodec.Stored]).X, RazerCodec.DecodeDpi(dpi[RazerCodec.NoStore]).X));
+
+        Assert.Equal(new PeripheralLighting(LightingEffect.Static, 0x00FF00), d.SetLighting(LightingEffect.Static, 0x00FF00).Lighting);
+        Assert.Equal(effect[RazerCodec.Stored], effect[RazerCodec.NoStore]);
+        // Live only (the engine's battery color): the stored effect stays as it was
+        Assert.Equal(new PeripheralLighting(LightingEffect.Static, 0x00FF00), d.SetLightingLive(LightingEffect.Breathing, 0x0000FF).Lighting);
+        Assert.Equal(new PeripheralLighting(LightingEffect.Breathing, 0x0000FF), RazerCodec.DecodeEffect(new byte[] { 0, 4 }.Concat(effect[RazerCodec.NoStore]).ToArray()));
+        Assert.Throws<ArgumentOutOfRangeException>(() => d.SetLighting(LightingEffect.Other, 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => d.SetLighting(LightingEffect.Static, 0x1000000));
+
+        Assert.Equal(40, d.SetBrightness(40).Brightness);
+        Assert.Equal(level[RazerCodec.Stored], level[RazerCodec.NoStore]); // the live light changes too
+
+        // A device that takes the stored brightness but keeps its live one: reported, not hidden
+        var light = Light(0x04, level, effect, Mouse(values));
+        var stuck = Driver((req, n) => req[7] == 0x0F && req[8] == 0x04 && req[9] == RazerCodec.NoStore ? Reply(req, RazerStatus.Ok) : light(req, n), out _);
+        stuck.Read();
+        Assert.Throws<ReadBackException>(() => stuck.SetBrightness(70));
+    }
+
+    [Theory]
+    [InlineData(0, 0xFF0000)] [InlineData(50, 0xFFFF00)] [InlineData(100, 0x00FF00)] [InlineData(25, 0xFF7F00)]
+    public void DockBatteryColorGoesFromRedToGreen(int percent, int color) => Assert.Equal(color, DockBatteryColor.For(percent));
 
     // ---------- registry ----------
     [Fact]

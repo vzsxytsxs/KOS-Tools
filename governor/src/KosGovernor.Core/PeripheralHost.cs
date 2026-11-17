@@ -1,5 +1,6 @@
 using KosToolbox.Core.Peripherals;
 using KosToolbox.Core.Peripherals.Hid;
+using KosToolbox.Core.Peripherals.Razer;
 
 namespace KosGovernor.Core;
 
@@ -102,7 +103,9 @@ internal sealed class GamemodePeripheralHost
 
 /// <summary>
 /// Device batteries for the tray: on its own background thread (a wireless read can take seconds), every 5 minutes, every minute while a
-/// device is asleep. Getters only. A balloon at or under 15 %, not charging, at most once an hour per device.
+/// device is asleep or the dock shows the battery. Getters only, except the dock: with <see cref="GamemodePeripheral.DockBattery"/> on, a
+/// Razer charging dock gets the Razer mouse's battery as its live color (red to green, breathing while charging; nothing stored).
+/// A balloon at or under 15 %, not charging, at most once an hour per device.
 /// </summary>
 internal sealed class PeripheralBatteryMonitor
 {
@@ -112,7 +115,12 @@ internal sealed class PeripheralBatteryMonitor
     readonly Dictionary<string, DateTime> _warned = new();
     readonly Action<string, string> _balloon;
     readonly ManualResetEvent _stop = new(false);
+    readonly AutoResetEvent _poke = new(false);
+    PeripheralLighting? _dockShown;
     Thread? _thread;
+
+    /// <summary>A config change (the toolbox saved): scan now rather than at the next interval.</summary>
+    public void Poke() => _poke.Set();
 
     public PeripheralBatteryMonitor(Action<string, string> balloon) => _balloon = balloon;
 
@@ -138,7 +146,7 @@ internal sealed class PeripheralBatteryMonitor
             var asleep = false;
             try { asleep = Scan(); }
             catch (Exception ex) { Log.Warn($"Reading device batteries failed: {ex.Message}"); }
-            if (_stop.WaitOne(asleep ? Asleep : Normal)) return;
+            if (WaitHandle.WaitAny(new WaitHandle[] { _stop, _poke }, asleep ? Asleep : Normal) == 0) return;
         }
     }
 
@@ -148,6 +156,8 @@ internal sealed class PeripheralBatteryMonitor
         foreach (var gone in _drivers.Keys.Except(present.Select(d => d.Key)).ToList()) _drivers.Remove(gone);
         var parts = new List<string>();
         var asleep = false;
+        RazerDriver? dock = null;
+        PeripheralBattery? mouse = null;
         foreach (var device in present)
         {
             if (!_drivers.TryGetValue(device.Key, out var driver))
@@ -155,6 +165,7 @@ internal sealed class PeripheralBatteryMonitor
                 if (PeripheralRegistry.Claim(device) is not { } claimed) continue;
                 _drivers[device.Key] = driver = claimed; // kept: a Razer driver remembers the transaction id that answered
             }
+            if (driver is RazerDriver { IsDock: true } d) { dock = d; continue; }
             PeripheralBattery? b;
             try { b = driver.ReadBattery(); }
             catch (Exception ex) when (ex is PeripheralException or System.ComponentModel.Win32Exception or IOException or TimeoutException or InvalidOperationException) { continue; }
@@ -162,6 +173,7 @@ internal sealed class PeripheralBatteryMonitor
             var name = Short(driver.Model ?? device.Product ?? "Device");
             if (b.Asleep) { asleep = true; continue; }
             if (b.Percent is not { } p) continue;
+            if (driver is RazerDriver) mouse = b;
             parts.Add($"{name} {p} %{(b.Charging == true ? "+" : "")}");
             if (p <= Threshold && b.Charging != true && (!_warned.TryGetValue(device.Key, out var at) || DateTime.UtcNow - at > Cooldown))
             {
@@ -170,7 +182,32 @@ internal sealed class PeripheralBatteryMonitor
             }
         }
         Line = string.Join(", ", parts);
-        return asleep;
+        return ShowOnDock(dock, mouse) || asleep;
+    }
+
+    /// <summary>The mouse battery as the dock's live color, written only when it changes. True while the option is on and a dock is there.</summary>
+    bool ShowOnDock(RazerDriver? dock, PeripheralBattery? mouse)
+    {
+        if (dock is null) { _dockShown = null; return false; }
+        bool on;
+        try { on = GamemodePeripheral.Load()?.DockBattery == true; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException) { return false; }
+        if (!on) { _dockShown = null; return false; }
+        if (mouse?.Percent is not { } p) return true; // asleep or not there: the dock keeps the last color
+        var want = new PeripheralLighting(mouse.Charging == true ? LightingEffect.Breathing : LightingEffect.Static, DockBatteryColor.For(p));
+        if (want == _dockShown) return true;
+        try
+        {
+            if (dock.TransactionId is null) dock.Read(); // the dock reports no battery, so nothing has resolved its id yet
+            dock.SetLightingLive(want.Effect, want.Color!.Value);
+            _dockShown = want;
+            Log.Info($"Dock: mouse battery {p} %{(mouse.Charging == true ? ", charging" : "")} shown as #{want.Color:X6}.");
+        }
+        catch (Exception ex) when (ex is PeripheralException or ArgumentException or NotSupportedException or System.ComponentModel.Win32Exception or IOException or TimeoutException)
+        {
+            Log.Warn($"Dock: showing the mouse battery failed: {ex.Message}");
+        }
+        return true;
     }
 
     static string Short(string name) => name.StartsWith("Razer ", StringComparison.Ordinal) || name.StartsWith("Logitech ", StringComparison.Ordinal) ? name[(name.IndexOf(' ') + 1)..] : name;

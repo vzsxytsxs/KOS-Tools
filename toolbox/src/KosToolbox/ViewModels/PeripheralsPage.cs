@@ -21,7 +21,7 @@ public sealed record HidCollectionRow(string Location, string Usage, string? Usa
 public sealed class PeripheralRowViewModel : ObservableObject
 {
     PeripheralState? _state;
-    string? _error, _dpiText, _sleepText, _lowText, _brightText;
+    string? _error, _dpiText, _sleepText, _lowText, _brightText, _colorText;
     bool _selected, _busy;
 
     public PeripheralRowViewModel(HidDevice device, PeripheralDriver? driver)
@@ -44,7 +44,51 @@ public sealed class PeripheralRowViewModel : ObservableObject
         HostModeCommand = new AsyncCommand(() => Write(Txt.PeripheralUseHostMode, d => d.SetHostMode()));
         GamemodeCommand = new RelayCommand(() => SaveGamemode(keep: true));
         GamemodeClearCommand = new RelayCommand(() => SaveGamemode(keep: false));
+        EffectCommand = new AsyncCommand(p => p is string k && Enum.TryParse<LightingEffect>(k, out var e) && e != _state?.Lighting?.Effect
+            ? Write(Txt.PeripheralEffect, d => d.SetLighting(e, Hex(_colorText) ?? _state?.Lighting?.Color ?? 0x00FF00)) : Task.CompletedTask);
+        // A color on an effect without one (off, spectrum) switches to static
+        ApplyColorCommand = new AsyncCommand(() => Hex(_colorText) is { } c
+            ? Write(Txt.PeripheralColor, d => d.SetLighting(_state?.Lighting?.Effect == LightingEffect.Breathing ? LightingEffect.Breathing : LightingEffect.Static, c))
+            : Invalid(Txt.PeripheralColorInvalid));
+        DockBatteryOnCommand = new AsyncCommand(() => SaveDockBattery(true));
+        DockBatteryOffCommand = new AsyncCommand(() => SaveDockBattery(false));
         _gamemode = Gamemode();
+        _dockBattery = IsDock && Config()?.DockBattery == true;
+    }
+
+    // ---------- the dock showing the mouse battery (KOS Governor, live color only) ----------
+    bool _dockBattery;
+    public bool IsDock => Driver is KosToolbox.Core.Peripherals.Razer.RazerDriver { IsDock: true };
+    public bool DockBattery { get => _dockBattery; private set { Set(ref _dockBattery, value); Raise(nameof(DockBatteryText)); } }
+    public string DockBatteryText => _dockBattery ? Txt.PeripheralDockBatteryOn : Txt.PeripheralDockBatteryOff;
+    public ICommand DockBatteryOnCommand { get; }
+    public ICommand DockBatteryOffCommand { get; }
+
+    static GamemodePeripheral? Config()
+    {
+        try { return GamemodePeripheral.Load(); }
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or System.Text.Json.JsonException) { return null; }
+    }
+
+    async Task SaveDockBattery(bool on)
+    {
+        try
+        {
+            if (!KosToolbox.Core.Execution.Elevation.IsAdmin) throw new InvalidOperationException(Txt.GpuGamemodeNeedsAdmin);
+            var config = GamemodePeripheral.Load() ?? new GamemodePeripheral();
+            config.DockBattery = on;
+            config.Save();
+            DockBattery = on;
+            Toasts.Show(on ? Txt.PeripheralDockBatterySaved : Txt.PeripheralDockBatteryRemoved);
+            Log.Info($"Peripherals: {Name}: mouse battery on the ring {(on ? "on" : "off")}.");
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.IO.IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+        {
+            Toasts.Show(Txt.PeripheralWriteFailed(ex.Message), ToastKind.Error);
+            return;
+        }
+        // Off: the engine stops coloring; the ring gets back the effect stored in the dock (written stored and live, read back)
+        if (!on && _state?.Lighting is { Effect: not LightingEffect.Other } l) await Write(Txt.PeripheralLighting, d => d.SetLighting(l.Effect, l.Color ?? 0));
     }
 
     GamemodePeripheralEntry? _gamemode;
@@ -154,11 +198,22 @@ public sealed class PeripheralRowViewModel : ObservableObject
     public bool CanLow => Writable.Contains(PeripheralSetting.LowBattery);
     public bool HasBrightness => _state?.Brightness is not null;
     public bool CanBrightness => Writable.Contains(PeripheralSetting.Brightness);
+    public bool HasLighting => _state?.Lighting is not null;
+    public bool CanLighting => Writable.Contains(PeripheralSetting.Lighting);
+    public bool HasLightingCard => HasBrightness || HasLighting || IsDock;
+    /// <summary>The effects offered; none is selected when the device has one the toolbox doesn't offer.</summary>
+    public IReadOnlyList<OptionItem> Effects => _state?.Lighting is { } l
+        ? new[] { LightingEffect.Off, LightingEffect.Static, LightingEffect.Breathing, LightingEffect.Spectrum }
+            .Select(e => new OptionItem(e.ToString(), Txt.LightingEffectName(e)) { IsSelected = e == l.Effect }).ToList()
+        : Array.Empty<OptionItem>();
+    public ICommand EffectCommand { get; }
+    public ICommand ApplyColorCommand { get; }
 
     public string? DpiText { get => _dpiText; set => Set(ref _dpiText, value); }
     public string? SleepText { get => _sleepText; set => Set(ref _sleepText, value); }
     public string? LowText { get => _lowText; set => Set(ref _lowText, value); }
     public string? BrightnessText { get => _brightText; set => Set(ref _brightText, value); }
+    public string? ColorText { get => _colorText; set => Set(ref _colorText, value); }
 
     /// <summary>Reads everything the driver knows (getters only). Runs off the UI thread; the result is applied on it.</summary>
     public async Task ReadAsync()
@@ -192,13 +247,17 @@ public sealed class PeripheralRowViewModel : ObservableObject
         catch (Exception ex) when (ex is PeripheralException or System.ComponentModel.Win32Exception or System.IO.IOException or TimeoutException) { }
     }
 
-    Task Invalid()
+    Task Invalid(string problem = "enter a whole number.")
     {
-        Toasts.Show(Txt.PeripheralWriteFailed("enter a whole number."), ToastKind.Error);
+        Toasts.Show(Txt.PeripheralWriteFailed(problem), ToastKind.Error);
         return Task.CompletedTask;
     }
 
     static int? Int(string? s) => int.TryParse(s?.Trim(), out var v) ? v : null;
+
+    /// <summary>#RRGGBB (the # is optional) as 0xRRGGBB.</summary>
+    static int? Hex(string? s) => s?.Trim().TrimStart('#') is { Length: 6 } h
+        && int.TryParse(h, System.Globalization.NumberStyles.AllowHexSpecifier, System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : null;
 
     async Task Write(string what, Func<PeripheralDriver, PeripheralState> set, string? success = null)
     {
@@ -233,6 +292,7 @@ public sealed class PeripheralRowViewModel : ObservableObject
         SleepText = state.SleepSeconds is { } s ? (s / 60).ToString() : null;
         LowText = state.LowBatteryPercent?.ToString();
         BrightnessText = state.Brightness?.ToString();
+        if (state.Lighting?.Color is { } color) ColorText = $"#{color:X6}"; // an effect without a color keeps what was typed
         Info.Rows = InfoRows();
         Raise(string.Empty); // every derived property
     }

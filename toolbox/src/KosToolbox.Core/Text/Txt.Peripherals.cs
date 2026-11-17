@@ -48,6 +48,18 @@ public static partial class Txt
         PeripheralGamemodeNote = "KOS Governor sets the live DPI and polling rate saved here when gamemode turns on, and puts back what the mouse had when it turns off. Nothing is stored in the mouse.",
         PeripheralGamemodeSaved = "Saved for gamemode: KOS Governor applies them when gamemode turns on.", PeripheralGamemodeRemoved = "Removed from gamemode.";
 
+    public const string PeripheralEffect = "Effect", PeripheralColor = "Color (#RRGGBB)", PeripheralColorInvalid = "enter the color as #RRGGBB.",
+        PeripheralDockBattery = "Mouse battery on the ring", PeripheralDockBatteryOn = "On", PeripheralDockBatteryOff = "Off",
+        PeripheralTurnOn = "Turn on", PeripheralTurnOff = "Turn off",
+        PeripheralDockBatteryNote = "KOS Governor colors the ring by the Razer mouse's battery: red when low, then yellow, green when full, breathing while charging. It checks every minute and stores nothing in the dock; Turn off puts back the effect saved in the dock.",
+        PeripheralDockBatterySaved = "The ring shows the mouse battery: KOS Governor sets it in a few seconds.",
+        PeripheralDockBatteryRemoved = "The ring no longer shows the mouse battery.";
+
+    public static string LightingEffectName(LightingEffect e) => e switch
+    {
+        LightingEffect.Off => "Off", LightingEffect.Static => "Static", LightingEffect.Breathing => "Breathing", LightingEffect.Spectrum => "Spectrum", _ => "Other",
+    };
+
     public static string PeripheralGamemodeValues(int? dpi, int? hz) =>
         string.Join(" · ", new[] { dpi is { } d ? $"{d} DPI" : null, hz is { } h ? $"{h} Hz" : null }.OfType<string>()) is { Length: > 0 } s ? s : "—";
 

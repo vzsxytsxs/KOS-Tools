@@ -33,6 +33,8 @@ public sealed class RazerDriver : PeripheralDriver
         .OrderBy(c => c.UsagePage == 0x01 && c.Usage == 0x02 ? 0 : 1).FirstOrDefault();
 
     public override PeripheralKind Kind => _model.LightOnly ? PeripheralKind.Other : PeripheralKind.Mouse;
+    /// <summary>A charging dock (lighting only): KOS Governor can color it by the mouse battery.</summary>
+    public bool IsDock => _model.LightOnly;
     public override PeripheralConnection? Connection => _model.Wireless ? PeripheralConnection.Receiver : PeripheralConnection.Wired;
     /// <summary>The transaction id that answered a getter; null until one did.</summary>
     public byte? TransactionId => _transactionId;
@@ -50,6 +52,7 @@ public sealed class RazerDriver : PeripheralDriver
             if (s.SleepSeconds is not null) set.Add(PeripheralSetting.Sleep);
             if (s.LowBatteryPercent is not null) set.Add(PeripheralSetting.LowBattery);
             if (s.Brightness is not null) set.Add(PeripheralSetting.Brightness);
+            if (s.Lighting is not null) set.Add(PeripheralSetting.Lighting);
             return set;
         }
     }
@@ -66,6 +69,7 @@ public sealed class RazerDriver : PeripheralDriver
                     Firmware = Try(t, RazerCodec.Firmware) is { } f ? RazerCodec.DecodeFirmware(f) : null,
                     Serial = _serial ??= Try(t, RazerCodec.Serial) is { } s ? RazerCodec.DecodeSerial(s) : null,
                     Brightness = Try(t, RazerCodec.BrightnessGet, new[] { RazerCodec.Stored, _model.Led!.Value }) is { } b ? RazerCodec.DecodeBrightness(b) : null,
+                    Lighting = ReadLighting(t),
                 };
             var dpi = Try(t, RazerCodec.DpiGet, new[] { _model.DpiStorage }) is { } d ? RazerCodec.DecodeDpi(d) : null;
             var stages = Try(t, RazerCodec.StagesGet, new[] { _model.DpiStorage }) is { } st ? RazerCodec.DecodeStages(st) : default;
@@ -82,6 +86,7 @@ public sealed class RazerDriver : PeripheralDriver
                 SleepSeconds = Try(t, RazerCodec.SleepGet) is { } sl ? RazerCodec.DecodeSleep(sl) : null,
                 LowBatteryPercent = Try(t, RazerCodec.LowBatteryGet) is { } lb ? RazerCodec.DecodeLowBattery(lb) : null,
                 Brightness = _model.Led is { } led && Try(t, RazerCodec.BrightnessGet, new[] { RazerCodec.Stored, led }) is { } br ? RazerCodec.DecodeBrightness(br) : null,
+                Lighting = ReadLighting(t),
             };
             return _last;
         }
@@ -101,6 +106,9 @@ public sealed class RazerDriver : PeripheralDriver
         }
         catch (PeripheralAsleepException) { return new PeripheralBattery(null, null, Asleep: true); }
     });
+
+    PeripheralLighting? ReadLighting(IHidTransport t, byte storage = RazerCodec.Stored) =>
+        _model.Led is { } led && Try(t, RazerCodec.EffectGet, new[] { storage, led }) is { } e ? RazerCodec.DecodeEffect(e) : null;
 
     PeripheralBattery? ReadBattery(IHidTransport t) => Try(t, RazerCodec.Battery) is { } b
         ? new PeripheralBattery(RazerCodec.DecodeBattery(b), Try(t, RazerCodec.Charging) is { } c ? RazerCodec.DecodeCharging(c) : null)
@@ -132,12 +140,19 @@ public sealed class RazerDriver : PeripheralDriver
     PeripheralState SetDpi(int x, int y, byte storage)
     {
         Require(x >= DpiMin && x <= _model.MaxDpi && y >= DpiMin && y <= _model.MaxDpi, $"DPI goes from {DpiMin} to {_model.MaxDpi}.");
+        // A generation that reads its DPI live keeps the stored and live values apart (Viper Ultimate, checked on hardware: a stored
+        // write leaves the live DPI as it was), so a stored change is written live too; each storage is read back.
+        var storages = storage == RazerCodec.Stored && _model.DpiStorage == RazerCodec.NoStore ? new[] { RazerCodec.Stored, RazerCodec.NoStore } : new[] { storage };
         return Write(t =>
         {
-            Set(t, RazerCodec.DpiSet, RazerCodec.EncodeDpi(storage, x, y));
-            // A live write is read back live; a stored one the way this generation reads its DPI.
-            var now = RazerCodec.DecodeDpi(Get(t, RazerCodec.DpiGet, new[] { storage == RazerCodec.NoStore ? storage : _model.DpiStorage }));
-            return now == new DpiStage(x, y) ? null : $"The mouse shows {now.X}×{now.Y} DPI instead of {x}×{y}.";
+            foreach (var s in storages) Set(t, RazerCodec.DpiSet, RazerCodec.EncodeDpi(s, x, y));
+            foreach (var s in storages)
+            {
+                // A live write is read back live; a stored one the way this generation reads its stored DPI.
+                var now = RazerCodec.DecodeDpi(Get(t, RazerCodec.DpiGet, new[] { s == RazerCodec.NoStore || storages.Length > 1 ? s : _model.DpiStorage }));
+                if (now != new DpiStage(x, y)) return $"The mouse shows {now.X}×{now.Y} DPI instead of {x}×{y}.";
+            }
+            return null;
         });
     }
 
@@ -191,11 +206,41 @@ public sealed class RazerDriver : PeripheralDriver
     {
         Require(percent is >= 0 and <= 100, "Brightness goes from 0 to 100 %.");
         var led = _model.Led ?? throw Unsupported();
+        // Stored and live are separate (the Viper Ultimate had 100 % stored and 0 live, dark): both are written, both read back.
         return Write(t =>
         {
-            Set(t, RazerCodec.BrightnessSet, new[] { RazerCodec.Stored, led, RazerCodec.Level(percent) });
-            var now = RazerCodec.DecodeBrightness(Get(t, RazerCodec.BrightnessGet, new[] { RazerCodec.Stored, led }));
-            return now == percent ? null : $"The mouse shows {now} % instead of {percent} %.";
+            foreach (var s in Both) Set(t, RazerCodec.BrightnessSet, new[] { s, led, RazerCodec.Level(percent) });
+            foreach (var s in Both)
+            {
+                var now = RazerCodec.DecodeBrightness(Get(t, RazerCodec.BrightnessGet, new[] { s, led }));
+                if (now != percent) return $"The device shows {now} % instead of {percent} %.";
+            }
+            return null;
+        });
+    }
+
+    static readonly byte[] Both = { RazerCodec.Stored, RazerCodec.NoStore };
+
+    public override PeripheralState SetLighting(LightingEffect effect, int color) => SetLighting(effect, color, Both);
+
+    /// <summary>The live effect only, nothing stored (KOS Governor's battery color on the dock).</summary>
+    public PeripheralState SetLightingLive(LightingEffect effect, int color) => SetLighting(effect, color, new[] { RazerCodec.NoStore });
+
+    PeripheralState SetLighting(LightingEffect effect, int color, byte[] storages)
+    {
+        Require(effect is LightingEffect.Off or LightingEffect.Static or LightingEffect.Breathing or LightingEffect.Spectrum, "Choose off, static, breathing or spectrum.");
+        Require(color is >= 0 and <= 0xFFFFFF, "The color is #RRGGBB.");
+        var led = _model.Led ?? throw Unsupported();
+        var want = new PeripheralLighting(effect, effect is LightingEffect.Static or LightingEffect.Breathing ? color : null);
+        return Write(t =>
+        {
+            foreach (var s in storages) { var (command, args) = RazerCodec.EncodeEffect(s, led, effect, color); Set(t, command, args); }
+            foreach (var s in storages)
+            {
+                var now = RazerCodec.DecodeEffect(Get(t, RazerCodec.EffectGet, new[] { s, led }));
+                if (now != want) return $"The device shows {now.Effect}{(now.Color is { } c ? $" #{c:X6}" : "")} instead.";
+            }
+            return null;
         });
     }
 

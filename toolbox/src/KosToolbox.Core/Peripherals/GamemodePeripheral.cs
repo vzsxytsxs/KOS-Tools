@@ -7,12 +7,15 @@ namespace KosToolbox.Core.Peripherals;
 /// Mouse settings the KOS Governor engine writes while gamemode is on, chosen on the toolbox's Peripherals page. Volatile settings only
 /// (live DPI, polling rate): nothing goes to onboard flash. gamemode-peripheral.json (toolbox → engine) sits next to gamemode-gpu.json in
 /// the admin-only governor folder; gamemode-peripheral-state.json (engine only) keeps what each device had, to put it back.
+/// It also carries <see cref="DockBattery"/>, the one peripheral setting the engine applies outside gamemode.
 /// </summary>
 public sealed class GamemodePeripheral
 {
     public List<GamemodePeripheralEntry> Devices { get; set; } = new();
     /// <summary>Set by the engine: applying started and never finished (the PC may have crashed). Skipped until chosen again.</summary>
     public bool Suspended { get; set; }
+    /// <summary>Not gamemode: the engine colors a Razer charging dock by the mouse battery (live only), all the time.</summary>
+    public bool DockBattery { get; set; }
 
     public static string FilePath => Path.Combine(GovernorFanCurve.Directory, "gamemode-peripheral.json");
     public static string StatePath => Path.Combine(GovernorFanCurve.Directory, "gamemode-peripheral-state.json");
@@ -39,6 +42,17 @@ public sealed class GamemodePeripheral
         GpuTuner.PrepareDirectory(GovernorFanCurve.Directory);
         File.Delete(StatePath + ".tmp");
         JsonFile.Save(StatePath, state, KosJson.Default.GamemodePeripheralState);
+    }
+}
+
+/// <summary>The dock color for a battery level: red at 0 % through yellow to green at 100 % (0xRRGGBB).</summary>
+public static class DockBatteryColor
+{
+    public static int For(int percent)
+    {
+        var hue = Math.Clamp(percent, 0, 100) * 120 / 100; // 0 red, 60 yellow, 120 green
+        var (r, g) = hue <= 60 ? (255, 255 * hue / 60) : (255 * (120 - hue) / 60, 255);
+        return r << 16 | g << 8;
     }
 }
 

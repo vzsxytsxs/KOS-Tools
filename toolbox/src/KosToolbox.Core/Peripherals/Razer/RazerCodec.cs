@@ -32,6 +32,10 @@ public static class RazerCodec
     public static readonly RazerCommand LowBatteryGet = new(0x07, 0x81, 0x02), LowBatterySet = new(0x07, 0x01, 0x02);
     // Extended-matrix brightness for one led (OpenRazer's 0x0F/0x84 and 0x0F/0x04): [storage, led, level 0-255].
     public static readonly RazerCommand BrightnessGet = new(0x0F, 0x84, 0x03), BrightnessSet = new(0x0F, 0x04, 0x03);
+    // Extended-matrix effect for one led (OpenRazer razer_chroma_extended_matrix_effect_*): [storage, led, effect, ...]. The getter
+    // answers in the same layout; checked on the Viper Ultimate (led 04) and the Mouse Dock (led 05).
+    public static readonly RazerCommand EffectGet = new(0x0F, 0x82, 0x0C);
+    static readonly RazerCommand EffectSetShort = new(0x0F, 0x02, 0x06), EffectSetColor = new(0x0F, 0x02, 0x09);
 
     /// <summary>Storage selector of the DPI and brightness commands: stored (survives a power cycle) or the live value only.</summary>
     public const byte Stored = 0x01, NoStore = 0x00;
@@ -128,4 +132,34 @@ public static class RazerCodec
         hz > 0 && ceiling % hz == 0 && ceiling / hz is >= 1 and <= 255 ? (byte)(ceiling / hz) : throw new ArgumentOutOfRangeException(nameof(hz), $"{hz} Hz can't be encoded.");
 
     public static int DecodeBrightness(ReadOnlySpan<byte> a) => Percent(a[2]);
+
+    /// <summary>
+    /// Off and spectrum: [storage, led, 00 or 03]. Static: [.., 01, 0, 0, 1, r, g, b]. Breathing in one color: [.., 02, 1, 0, 1, r, g, b].
+    /// </summary>
+    public static (RazerCommand Command, byte[] Args) EncodeEffect(byte storage, byte led, LightingEffect effect, int color)
+    {
+        byte r = (byte)(color >> 16), g = (byte)(color >> 8), b = (byte)color;
+        return effect switch
+        {
+            LightingEffect.Off => (EffectSetShort, new byte[] { storage, led, 0x00 }),
+            LightingEffect.Spectrum => (EffectSetShort, new byte[] { storage, led, 0x03 }),
+            LightingEffect.Static => (EffectSetColor, new byte[] { storage, led, 0x01, 0, 0, 1, r, g, b }),
+            LightingEffect.Breathing => (EffectSetColor, new byte[] { storage, led, 0x02, 1, 0, 1, r, g, b }),
+            _ => throw new ArgumentOutOfRangeException(nameof(effect)),
+        };
+    }
+
+    /// <summary>The getter's reply; bytes after the effect's own are leftovers (spectrum answers with old ones) and are ignored.</summary>
+    public static PeripheralLighting DecodeEffect(ReadOnlySpan<byte> a)
+    {
+        var color = a.Length > 8 ? a[6] << 16 | a[7] << 8 | a[8] : 0;
+        return a[2] switch
+        {
+            0x00 => new(LightingEffect.Off, null),
+            0x01 => new(LightingEffect.Static, color),
+            0x02 when a[3] == 1 => new(LightingEffect.Breathing, color),
+            0x03 => new(LightingEffect.Spectrum, null),
+            _ => new(LightingEffect.Other, null), // random or two-color breathing, wave, reactive...
+        };
+    }
 }
