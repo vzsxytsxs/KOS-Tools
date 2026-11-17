@@ -1,6 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <RootNamespace>KosGovernor.Core</RootNamespace>  </PropertyGroup>
+    <RootNamespace>KosGovernor.Core</RootNamespace>
+    <!-- Rtss.cs: a bounds-checked span over RTSS's shared memory. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KosGovernor.Core.Tests" />
   </ItemGroup>

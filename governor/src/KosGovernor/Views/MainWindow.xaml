@@ -559,6 +559,22 @@
                                                                    Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" TextWrapping="Wrap" MaxWidth="440" />
                                                     </StackPanel>
                                                 </CheckBox>
+                                                <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysRtssOsd}" Margin="0,8,24,0" HorizontalAlignment="Left">
+                                                    <StackPanel>
+                                                        <TextBlock Text="On-screen display in RivaTuner (RTSS)" />
+                                                        <TextBlock Text="FPS and frame time, GPU load, temperature, clock, power and VRAM (NVIDIA), CPU and memory on RTSS's overlay. Needs RivaTuner Statistics Server installed and running: it hooks into the game, which some anti-cheats refuse."
+                                                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" TextWrapping="Wrap" MaxWidth="440" />
+                                                    </StackPanel>
+                                                </CheckBox>
+                                                <StackPanel Margin="0,8,24,0">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <TextBlock Text="RTSS frame limit" VerticalAlignment="Center" />
+                                                        <ComboBox ItemsSource="{Binding FrameLimitOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding SysRtssFrameLimit}"
+                                                                  Width="170" Margin="14,0,0,0" VerticalAlignment="Center" AutomationProperties.Name="RTSS frame limit" />
+                                                    </StackPanel>
+                                                    <TextBlock Text="RTSS's global limit while gamemode is on, back to what it was when gamemode turns off. A game's own RTSS profile with a limit of its own wins over it."
+                                                               Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" TextWrapping="Wrap" MaxWidth="440" Margin="0,2,0,0" />
+                                                </StackPanel>
                                                 <StackPanel Margin="0,8,24,0">
                                                     <StackPanel Orientation="Horizontal">
                                                         <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysGameCores}">

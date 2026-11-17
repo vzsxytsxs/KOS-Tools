@@ -550,7 +550,8 @@ public sealed class ConfigViewModel : ObservableObject
         nameof(SysTransparency), nameof(SysCStates), nameof(SysCleanMemory), nameof(SysBackgroundEfficiency), nameof(SysGameCores), nameof(SysGameCoresSpec),
         nameof(GameCoresOptions), nameof(SysCleanDelay), nameof(SysPurgeStandby), nameof(SysPurgeStandbyMb), nameof(SysPurgeFreeMb), nameof(SysRestrain),
         nameof(SysKeepAwake), nameof(SysDwmMmcss), nameof(SysDirector), nameof(SysHeavyThreads), nameof(SysMoveBackground),
-        nameof(SysNormalizePriorities), nameof(SysAvoidInterrupts), nameof(SysWifi), nameof(SysAudio), nameof(TimerMode), nameof(TimerResolution), nameof(TimerOn), nameof(TimerNote) };
+        nameof(SysNormalizePriorities), nameof(SysAvoidInterrupts), nameof(SysWifi), nameof(SysAudio), nameof(SysRtssOsd), nameof(SysRtssFrameLimit),
+        nameof(TimerMode), nameof(TimerResolution), nameof(TimerOn), nameof(TimerNote) };
     GamemodeSystemSettings Sys => _config.Active.System;
 
     void SetSystem(Action<GamemodeSystemSettings> set, string done) => Mutate(c => set(c.Active.System), done);
@@ -660,6 +661,21 @@ public sealed class ConfigViewModel : ObservableObject
     {
         get => Sys.DwmMmcss;
         set { if (value != Sys.DwmMmcss) SetSystem(s => s.DwmMmcss = value, "Saved."); }
+    }
+
+    public bool SysRtssOsd
+    {
+        get => Sys.RtssOsd;
+        set { if (value != Sys.RtssOsd) SetSystem(s => s.RtssOsd = value, "Saved."); }
+    }
+
+    public IReadOnlyList<IntOption> FrameLimitOptions { get; } = new[] { 0, 30, 60, 75, 90, 117, 120, 141, 144, 162, 165, 237, 240 }
+        .Select(f => new IntOption(f == 0 ? "RTSS's own setting" : $"{f} FPS", f)).ToList();
+
+    public int SysRtssFrameLimit
+    {
+        get => Sys.RtssFrameLimit;
+        set { if (value != Sys.RtssFrameLimit) SetSystem(s => s.RtssFrameLimit = value, "Saved."); }
     }
 
     public bool SysDirector

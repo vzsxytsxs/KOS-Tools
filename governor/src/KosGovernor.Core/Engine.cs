@@ -41,6 +41,7 @@ public sealed class Engine
     string? _game, _autoGame;
     GamemodeSystemState? _system;
     SessionRecorder? _recorder;
+    RtssOsd? _osd;
     DateTime _stamp;
     bool _loaded;
     volatile bool _toggle;
@@ -135,6 +136,7 @@ public sealed class Engine
             try { _recorder.Tick(snapshot, _usage, _games.IsGame, _games.Label); }
             catch (Exception ex) { Log.Warn($"Session report: sampling failed: {ex.Message}"); }
         }
+        SyncOsd(); // the setting can change during a session
         PruneTree(_tree, alive);
         Prune(_seen, alive.Keys.ToHashSet());
         Prune(_seenThreads, aliveThreads);
@@ -414,6 +416,7 @@ public sealed class Engine
                     if (once.TryGetValue(p.Name, out var r)) ApplyProcess(p, r, services);
             }
         }
+        SyncOsd();
         GamemodeSwitched?.Invoke(Gamemode);
         if (!Gamemode) EndSession(); // after everything is undone: the log read and the file write don't delay the restore
         // Programs: always on a manual switch; on an automatic one only if the profile asks (opening programs by itself can surprise).
@@ -443,6 +446,21 @@ public sealed class Engine
         var hr = Native.DwmEnableMMCSS(on ? 1 : 0);
         if (hr < 0) Log.Warn($"Gamemode: DWM MMCSS {(on ? "on" : "off")} failed (0x{hr:X8}).");
         else Log.Info($"Gamemode: DWM {(on ? "in" : "out of")} the MMCSS scheduling class.");
+    }
+
+    /// <summary>The RTSS on-screen display runs while gamemode is on and the active profile asks for it.</summary>
+    void SyncOsd()
+    {
+        var want = Gamemode && Config.Active.System.RtssOsd;
+        if (want == (_osd is not null)) return;
+        if (want)
+        {
+            try { _osd = new RtssOsd(); }
+            catch (Exception ex) { Log.Warn($"RTSS on-screen display didn't start: {ex.Message}"); }
+            return;
+        }
+        _osd!.Dispose();
+        _osd = null;
     }
 
     void StopAudio()
@@ -480,7 +498,8 @@ public sealed class Engine
     /// <summary>Engine exiting (Exit in the tray): undoes the Windows changes of a gamemode still on.</summary>
     public void Shutdown()
     {
-        try { KeepAwake.Set(false); SetDwmMmcss(false); StopAudio(); RestoreSystem(); ResetGameCores(); EtwDriverTrace.Close(); }
+        // The OSD goes last: its Dispose waits for a running update, which a driver reset can hold.
+        try { KeepAwake.Set(false); SetDwmMmcss(false); StopAudio(); RestoreSystem(); ResetGameCores(); EtwDriverTrace.Close(); _osd?.Dispose(); _osd = null; }
         catch (Exception ex) { Log.Error("Restoring gamemode's system changes at exit failed", ex); }
         try { _limiter.Release(); _extras.Release(); TimerResolution.Release(); }
         catch (Exception ex) { Log.Error("Undoing the rules' CPU limits, power plan, screen mode or timer resolution at exit failed", ex); }

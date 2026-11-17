@@ -45,6 +45,7 @@ public static class Validation
             if (p.System.HeavyThreads is < 1 or > 4) yield return $"{p.Name}: the thread director gives 1–4 threads a core of their own.";
             if (p.System.CleanMemoryDelaySeconds is < 0 or > MaxRuleDelay) yield return $"{p.Name}: the memory clean delay must be 0–{MaxRuleDelay} s.";
             if (p.System.PurgeStandbyMb is < 64 or > 1 << 20 || p.System.PurgeFreeMb is < 64 or > 1 << 20) yield return $"{p.Name}: the standby list limits must be 64 MB or more.";
+            if (p.System.RtssFrameLimit is < 0 or > 0 and < 10 or > 1000) yield return $"{p.Name}: the RTSS frame limit must be 10–1000 FPS, or 0 to keep RTSS's own.";
             foreach (var s in p.OnEnable.Start.Concat(p.OnDisable.Start))
                 if (StartProblem(s) is { } e) yield return $"{p.Name}: {e}";
         }

@@ -53,9 +53,13 @@ public sealed class GamemodeSystemSettings
     public bool NormalizePriorities { get; set; } = true;
     /// <summary>Thread director: a short interrupt trace (once a minute outside gamemode) keeps the busiest threads off the processors with the most DPC/ISR work.</summary>
     public bool AvoidInterrupts { get; set; } = true;
+    /// <summary>The governor's readings (GPU, CPU, memory) on RivaTuner Statistics Server's on-screen display, with RTSS's own FPS. Needs RTSS running.</summary>
+    public bool RtssOsd { get; set; }
+    /// <summary>RTSS's global frame limit while gamemode is on, in frames per second (0 = RTSS's own setting stays). Put back on disable if still as set.</summary>
+    public int RtssFrameLimit { get; set; }
 
     [JsonIgnore] public bool Any => PowerPlan || StopWindowsUpdate || StopSearch || TransparencyOff || CStatesOff || CleanMemory || BackgroundEfficiency
-        || PurgeStandby || KeepAwake || WifiLowLatency || RestrainBackground || LowLatencyAudio || DwmMmcss || ThreadDirector;
+        || PurgeStandby || KeepAwake || WifiLowLatency || RestrainBackground || LowLatencyAudio || DwmMmcss || ThreadDirector || RtssOsd || RtssFrameLimit > 0;
 }
 
 public sealed class ThrottledProcess
@@ -94,6 +98,10 @@ public sealed class GamemodeSystemState
     /// <summary>Thread director: programs lowered from Realtime to High, and threads from time-critical to Highest.</summary>
     public List<ThrottledProcess> LoweredRealtime { get; set; } = new();
     public List<DirectedThread> LoweredThreads { get; set; } = new();
+    /// <summary>RTSS's global frame limit before gamemode (limit and denominator), and the limit it set.</summary>
+    public uint? RtssLimitBefore { get; set; }
+    public uint? RtssDenominatorBefore { get; set; }
+    public uint? RtssLimitSet { get; set; }
 }
 
 /// <summary>Applies and undoes the <see cref="GamemodeSystemSettings"/>. Each step continues even if another fails (it goes to the log).</summary>
@@ -162,6 +170,17 @@ public static class GamemodeSystem
             key.SetValue("EnableTransparency", 0, RegistryValueKind.DWord);
             Native.BroadcastSettingChange("ImmersiveColorSet");
             Log.Info("Gamemode: transparency effects off.");
+        });
+        Step("RTSS frame limit", () =>
+        {
+            if (s.RtssFrameLimit <= 0) return;
+            var before = Rtss.ReadLimit();
+            var want = new Rtss.FrameLimit((uint)s.RtssFrameLimit, 1);
+            if (before == want) return;
+            (state.RtssLimitBefore, state.RtssDenominatorBefore, state.RtssLimitSet) = (before.Limit, before.Denominator, want.Limit);
+            Save(state);
+            Rtss.WriteLimit(want);
+            Log.Info($"Gamemode: RTSS frame limit {want} (was {before}).");
         });
         return state;
     }
@@ -235,6 +254,13 @@ public static class GamemodeSystem
     /// </summary>
     public static void Restore(GamemodeSystemState state)
     {
+        Step("RTSS frame limit", () =>
+        {
+            if (state.RtssLimitSet is not { } set || Rtss.ReadLimit() != new Rtss.FrameLimit(set, 1)) return;
+            var before = new Rtss.FrameLimit(state.RtssLimitBefore ?? 0, state.RtssDenominatorBefore ?? 1);
+            Rtss.WriteLimit(before);
+            Log.Info($"Gamemode: RTSS frame limit back to {before}.");
+        });
         Step("thread director", () => ThreadDirector.Restore(state));
         Step("efficiency mode", () =>
         {
@@ -292,6 +318,13 @@ public static class GamemodeSystem
 
     /// <summary>Engine starting: a saved state belongs to a gamemode that didn't turn off (crash, PC shut down). Undo it.</summary>
     public static void RecoverAtStart()
+    {
+        // After the journal: RTSS's shared memory is the one step here that another program in the session controls.
+        try { RestoreJournal(); }
+        finally { Step("RTSS on-screen display", () => { if (Rtss.ReleaseOsd() > 0) Log.Info("RTSS on-screen display: the slot left by the last session was released."); }); }
+    }
+
+    static void RestoreJournal()
     {
         try
         {
