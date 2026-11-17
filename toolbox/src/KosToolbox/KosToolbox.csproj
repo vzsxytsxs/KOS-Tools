@@ -11,6 +11,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Resource Include="Assets\kos-logo.png" />
+    <Resource Include="Assets\mouse.png" />
     <Resource Include="Assets\kos.ico" />
     <Resource Include="Assets\kos-toolbox.ico" />
     <Resource Include="Assets\Setup\*.png" />

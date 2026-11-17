@@ -60,22 +60,13 @@
     </Style>
 
     <!-- ===================== Device pictures ===================== -->
-    <!-- Drawn here (no product photos): one top view per model family; the light (LedBrush: the color and brightness the controls show,
+    <!-- One picture per kind (mice: a rendered mouse; the dock, headset, keyboard and controller are drawn here); the light (LedBrush: the color and brightness the controls show,
          null while off) glows where the device has it. Dark plastic on the dark stage whatever the theme. -->
     <LinearGradientBrush x:Key="ArtBody" StartPoint="0,0" EndPoint="1,0">
         <GradientStop Color="#141414" Offset="0" /><GradientStop Color="#2B2B2B" Offset="0.42" /><GradientStop Color="#232323" Offset="0.6" /><GradientStop Color="#101010" Offset="1" />
     </LinearGradientBrush>
-    <RadialGradientBrush x:Key="ArtShine" Center="0.38,0.22" GradientOrigin="0.38,0.22" RadiusX="0.6" RadiusY="0.45">
-        <GradientStop Color="#1EFFFFFF" Offset="0" /><GradientStop Color="#00FFFFFF" Offset="1" />
-    </RadialGradientBrush>
-    <LinearGradientBrush x:Key="ArtWheel" StartPoint="0,0" EndPoint="1,0">
-        <GradientStop Color="#080808" Offset="0" /><GradientStop Color="#3A3A3A" Offset="0.5" /><GradientStop Color="#080808" Offset="1" />
-    </LinearGradientBrush>
-    <RadialGradientBrush x:Key="ArtStage" RadiusX="0.65" RadiusY="0.55">
-        <GradientStop Color="#1A1A1A" Offset="0" /><GradientStop Color="#0D0D0D" Offset="1" />
-    </RadialGradientBrush>
+    <SolidColorBrush x:Key="ArtStage" Color="#111111" /> <!-- the mouse picture's own background -->
     <SolidColorBrush x:Key="ArtEdge" Color="#3C3C3C" />
-    <SolidColorBrush x:Key="ArtSeam" Color="#070707" />
     <SolidColorBrush x:Key="ArtDark" Color="#0A0A0A" />
     <DropShadowEffect x:Key="ArtShadow" BlurRadius="34" ShadowDepth="10" Direction="270" Opacity="0.75" Color="#000000" />
     <BlurEffect x:Key="ArtGlow" Radius="22" />
@@ -98,89 +89,14 @@
         <Setter Property="StrokeLineJoin" Value="Round" />
         <Setter Property="Effect" Value="{StaticResource ArtGlow}" />
     </Style>
-    <Style x:Key="ArtWheelRect" TargetType="Rectangle">
-        <Setter Property="Fill" Value="{StaticResource ArtWheel}" />
-        <Setter Property="Stroke" Value="{StaticResource ArtEdge}" />
-        <Setter Property="StrokeThickness" Value="1" />
-        <Setter Property="RadiusX" Value="9" />
-        <Setter Property="RadiusY" Value="9" />
-        <Setter Property="Width" Value="18" />
-        <Setter Property="Height" Value="48" />
-    </Style>
-    <Style x:Key="ArtLine" TargetType="Path">
-        <Setter Property="Stroke" Value="{StaticResource ArtSeam}" />
-        <Setter Property="StrokeThickness" Value="2.2" />
-        <Setter Property="StrokeStartLineCap" Value="Round" />
-        <Setter Property="StrokeEndLineCap" Value="Round" />
-    </Style>
-    <Style x:Key="ArtRibs" TargetType="Path">
-        <Setter Property="Stroke" Value="#151515" />
-        <Setter Property="StrokeThickness" Value="2" />
-        <Setter Property="Data" Value="M0,6 H14 M0,14 H14 M0,22 H14 M0,30 H14 M0,38 H14" />
-    </Style>
 
-    <!-- Viper: long, low and symmetric, side buttons on both sides, the logo light on the palm. -->
-    <DataTemplate x:Key="ArtViper">
-        <Canvas Width="200" Height="344">
-            <Path x:Name="body" Fill="{StaticResource ArtBody}" Stroke="{StaticResource ArtEdge}" StrokeThickness="1.2" Effect="{StaticResource ArtShadow}"
-                  Data="M100,8 C130,8 148,22 153,50 C158,80 155,116 157,152 C159,196 170,232 168,270 C165,314 136,336 100,336 C64,336 35,314 32,270 C30,232 41,196 43,152 C45,116 42,80 47,50 C52,22 70,8 100,8 Z" />
-            <Path Fill="{StaticResource ArtShine}" Data="{Binding Data, ElementName=body}" />
-            <Path Style="{StaticResource ArtLine}" Data="M100,11 L100,128 M45,129 C72,141 128,141 155,129" />
-            <Path Style="{StaticResource ArtLine}" Stroke="#2E2E2E" Data="M44.5,90 L43.5,114 M43.5,119 L44.5,143 M155.5,90 L156.5,114 M156.5,119 L155.5,143" />
-            <Rectangle Style="{StaticResource ArtWheelRect}" Canvas.Left="91" Canvas.Top="38" />
-            <Path Style="{StaticResource ArtRibs}" Canvas.Left="93" Canvas.Top="40" />
-            <Path Style="{StaticResource ArtLens}" Data="M100,222 L115,249 L85,249 Z" StrokeLineJoin="Round" StrokeThickness="6" Stroke="{StaticResource ArtDark}" />
-            <Path Style="{StaticResource ArtGlowPath}" Data="M100,222 L115,249 L85,249 Z" />
-            <Path Style="{StaticResource ArtLit}" Data="M100,222 L115,249 L85,249 Z" StrokeLineJoin="Round" StrokeThickness="6" Stroke="{Binding LedBrush}" />
-        </Canvas>
-    </DataTemplate>
-
-    <!-- DeathAdder: right-handed, a high back and the thumb side curving in, two side buttons on the left. -->
-    <DataTemplate x:Key="ArtDeathAdder">
-        <Canvas Width="200" Height="344">
-            <Path x:Name="body" Fill="{StaticResource ArtBody}" Stroke="{StaticResource ArtEdge}" StrokeThickness="1.2" Effect="{StaticResource ArtShadow}"
-                  Data="M98,8 C126,7 146,20 153,48 C160,78 166,114 170,154 C174,202 176,252 166,290 C156,324 128,336 100,334 C68,332 44,316 37,284 C31,254 39,224 35,198 C31,172 23,150 25,122 C27,88 40,58 55,36 C66,18 80,9 98,8 Z" />
-            <Path Fill="{StaticResource ArtShine}" Data="{Binding Data, ElementName=body}" />
-            <Path Style="{StaticResource ArtLine}" Data="M99,10 L101,126 M28,130 C70,146 130,146 168,134" />
-            <Path Style="{StaticResource ArtLine}" Stroke="#2E2E2E" StrokeThickness="3" Data="M28,142 C26.5,152 26.5,160 27,168 M27.5,174 C27.5,182 28.5,190 30.5,197" />
-            <Rectangle Style="{StaticResource ArtWheelRect}" Canvas.Left="92" Canvas.Top="38" />
-            <Path Style="{StaticResource ArtRibs}" Canvas.Left="94" Canvas.Top="40" />
-            <Path Style="{StaticResource ArtLens}" Data="M104,226 A13,13 0 1 1 103.9,226 Z" />
-            <Path Style="{StaticResource ArtGlowPath}" Data="M104,226 A13,13 0 1 1 103.9,226 Z" />
-            <Path Style="{StaticResource ArtLit}" Data="M104,226 A13,13 0 1 1 103.9,226 Z" />
-        </Canvas>
-    </DataTemplate>
-
-    <!-- Naga: a wide right-handed body with the side button plate (a 2 × 6 grid) on the left. -->
-    <DataTemplate x:Key="ArtNaga">
-        <Canvas Width="200" Height="344">
-            <Path x:Name="body" Fill="{StaticResource ArtBody}" Stroke="{StaticResource ArtEdge}" StrokeThickness="1.2" Effect="{StaticResource ArtShadow}"
-                  Data="M100,10 C132,8 152,24 160,52 C168,84 170,122 174,162 C178,214 178,264 168,296 C156,328 128,338 100,336 C70,334 44,320 36,292 C28,264 30,232 26,202 C22,170 24,134 30,100 C36,66 58,20 100,10 Z" />
-            <Path Fill="{StaticResource ArtShine}" Data="{Binding Data, ElementName=body}" />
-            <Path Style="{StaticResource ArtLine}" Data="M100,12 L100,130 M32,132 C70,148 130,148 170,136" />
-            <Rectangle Canvas.Left="15" Canvas.Top="146" Width="26" Height="94" RadiusX="9" RadiusY="9" Fill="#161616" Stroke="{StaticResource ArtEdge}" />
-            <Path Fill="#2C2C2C" Data="M20,154 h7 v7 h-7 Z M30,154 h7 v7 h-7 Z M20,167 h7 v7 h-7 Z M30,167 h7 v7 h-7 Z M20,180 h7 v7 h-7 Z M30,180 h7 v7 h-7 Z
-                                     M20,193 h7 v7 h-7 Z M30,193 h7 v7 h-7 Z M20,206 h7 v7 h-7 Z M30,206 h7 v7 h-7 Z M20,219 h7 v7 h-7 Z M30,219 h7 v7 h-7 Z" />
-            <Rectangle Style="{StaticResource ArtWheelRect}" Canvas.Left="91" Canvas.Top="40" />
-            <Path Style="{StaticResource ArtRibs}" Canvas.Left="93" Canvas.Top="42" />
-            <Path Style="{StaticResource ArtLens}" Data="M104,232 A13,13 0 1 1 103.9,232 Z" />
-            <Path Style="{StaticResource ArtGlowPath}" Data="M104,232 A13,13 0 1 1 103.9,232 Z" />
-            <Path Style="{StaticResource ArtLit}" Data="M104,232 A13,13 0 1 1 103.9,232 Z" />
-        </Canvas>
-    </DataTemplate>
-
-    <!-- Any other mouse: a plain symmetric shell. -->
+    <!-- Mice: a rendered mouse (Assets/mouse.png, its own light painted out) with the light drawn over the palm, where the logo sits. -->
     <DataTemplate x:Key="ArtMouse">
-        <Canvas Width="200" Height="344">
-            <Path x:Name="body" Fill="{StaticResource ArtBody}" Stroke="{StaticResource ArtEdge}" StrokeThickness="1.2" Effect="{StaticResource ArtShadow}"
-                  Data="M100,12 C140,12 160,44 162,110 C164,190 160,268 140,308 C128,328 114,336 100,336 C86,336 72,328 60,308 C40,268 36,190 38,110 C40,44 60,12 100,12 Z" />
-            <Path Fill="{StaticResource ArtShine}" Data="{Binding Data, ElementName=body}" />
-            <Path Style="{StaticResource ArtLine}" Data="M100,14 L100,124 M40,126 C70,138 130,138 160,126" />
-            <Rectangle Style="{StaticResource ArtWheelRect}" Canvas.Left="91" Canvas.Top="38" />
-            <Path Style="{StaticResource ArtRibs}" Canvas.Left="93" Canvas.Top="40" />
-            <Path Style="{StaticResource ArtLens}" Data="M100,226 A12,12 0 1 1 99.9,226 Z" />
-            <Path Style="{StaticResource ArtGlowPath}" Data="M100,226 A12,12 0 1 1 99.9,226 Z" />
-            <Path Style="{StaticResource ArtLit}" Data="M100,226 A12,12 0 1 1 99.9,226 Z" />
+        <Canvas Width="300" Height="550" ClipToBounds="True">
+            <Image Source="pack://application:,,,/KosToolbox;component/Assets/mouse.png" Width="480" Height="640" Canvas.Left="-90" Canvas.Top="-40" RenderOptions.BitmapScalingMode="HighQuality" />
+            <Path Style="{StaticResource ArtLens}" Fill="#101010" Stroke="#1C1C1C" Data="M149,380 A13.5,13.5 0 1 1 148.9,380 Z" />
+            <Path Style="{StaticResource ArtGlowPath}" StrokeThickness="26" Data="M149,380 A13.5,13.5 0 1 1 148.9,380 Z" />
+            <Path Style="{StaticResource ArtLit}" Data="M149,380 A13.5,13.5 0 1 1 148.9,380 Z" />
         </Canvas>
     </DataTemplate>
 
@@ -279,14 +195,11 @@
         <Border Background="{StaticResource ArtStage}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="20,24,20,18">
             <StackPanel>
                 <Viewbox Height="{Binding Tag, RelativeSource={RelativeSource AncestorType=ContentControl}, FallbackValue=330}" Stretch="Uniform">
-                    <ContentControl Content="{Binding}" Focusable="False" Margin="24">
+                    <ContentControl Content="{Binding}" Focusable="False" Margin="8">
                         <ContentControl.Style>
                             <Style TargetType="ContentControl">
                                 <Setter Property="ContentTemplate" Value="{StaticResource ArtOther}" />
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding Art}" Value="Viper"><Setter Property="ContentTemplate" Value="{StaticResource ArtViper}" /></DataTrigger>
-                                    <DataTrigger Binding="{Binding Art}" Value="DeathAdder"><Setter Property="ContentTemplate" Value="{StaticResource ArtDeathAdder}" /></DataTrigger>
-                                    <DataTrigger Binding="{Binding Art}" Value="Naga"><Setter Property="ContentTemplate" Value="{StaticResource ArtNaga}" /></DataTrigger>
                                     <DataTrigger Binding="{Binding Art}" Value="Mouse"><Setter Property="ContentTemplate" Value="{StaticResource ArtMouse}" /></DataTrigger>
                                     <DataTrigger Binding="{Binding Art}" Value="Dock"><Setter Property="ContentTemplate" Value="{StaticResource ArtDock}" /></DataTrigger>
                                     <DataTrigger Binding="{Binding Art}" Value="Headset"><Setter Property="ContentTemplate" Value="{StaticResource ArtHeadset}" /></DataTrigger>
@@ -341,8 +254,8 @@
                         </DockPanel>
                         <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="10" /><ColumnDefinition Width="76" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                            <Slider Style="{StaticResource GpuSlider}" Minimum="{Binding Dpi.Min}" Maximum="{Binding Dpi.Max}" TickFrequency="{Binding DpiStep}" SmallChange="{Binding DpiStep}"
-                                    LargeChange="{Binding DpiStep}" Value="{Binding DpiSlider, Mode=TwoWay}" IsEnabled="{Binding CanDpi}" AutomationProperties.Name="{x:Static t:Txt.PeripheralDpi}" />
+                            <Slider Style="{StaticResource GpuSlider}" Minimum="{Binding DpiLogMin}" Maximum="{Binding DpiLogMax}" IsSnapToTickEnabled="False" SmallChange="0.02"
+                                    LargeChange="0.1" Value="{Binding DpiSlider, Mode=TwoWay}" IsEnabled="{Binding CanDpi}" AutomationProperties.Name="{x:Static t:Txt.PeripheralDpi}" />
                             <TextBox Grid.Column="2" Text="{Binding DpiText, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CanDpi}" AutomationProperties.Name="{x:Static t:Txt.PeripheralDpi}" />
                             <Button Grid.Column="3" Content="{x:Static t:Txt.Apply}" Command="{Binding ApplyDpiCommand}" Margin="8,0,0,0" Visibility="{Binding CanDpi, Converter={StaticResource BoolToVis}}" />
                         </Grid>
@@ -435,8 +348,8 @@
                         <CheckBox Style="{StaticResource GpuSwitch}" Content="{x:Static t:Txt.PeripheralGamemodeSetDpi}" IsChecked="{Binding GmDpiOn}" HorizontalAlignment="Left" Margin="0,0,0,6" />
                         <Grid IsEnabled="{Binding GmDpiOn}">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="10" /><ColumnDefinition Width="76" /></Grid.ColumnDefinitions>
-                            <Slider Style="{StaticResource GpuSlider}" Minimum="{Binding Dpi.Min}" Maximum="{Binding Dpi.Max}" TickFrequency="{Binding DpiStep}" SmallChange="{Binding DpiStep}"
-                                    LargeChange="{Binding DpiStep}" Value="{Binding GmDpiSlider, Mode=TwoWay}" AutomationProperties.Name="{x:Static t:Txt.PeripheralGamemodeSetDpi}" />
+                            <Slider Style="{StaticResource GpuSlider}" Minimum="{Binding DpiLogMin}" Maximum="{Binding DpiLogMax}" IsSnapToTickEnabled="False" SmallChange="0.02"
+                                    LargeChange="0.1" Value="{Binding GmDpiSlider, Mode=TwoWay}" AutomationProperties.Name="{x:Static t:Txt.PeripheralGamemodeSetDpi}" />
                             <TextBox Grid.Column="2" Text="{Binding GmDpiText, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{x:Static t:Txt.PeripheralGamemodeSetDpi}" />
                         </Grid>
                     </StackPanel>

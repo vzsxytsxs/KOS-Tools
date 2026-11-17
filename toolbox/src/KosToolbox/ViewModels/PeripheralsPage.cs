@@ -110,7 +110,7 @@ public sealed class PeripheralRowViewModel : ObservableObject
     public string GmLightText => IsDock ? Txt.PeripheralGamemodeRingOff : Txt.PeripheralGamemodeLightOff;
     public bool GmDpiOn { get => _gmDpiOn; set => Set(ref _gmDpiOn, value); }
     public string? GmDpiText { get => _gmDpiText; set { if (Set(ref _gmDpiText, value)) Raise(nameof(GmDpiSlider)); } }
-    public double GmDpiSlider { get => Int(_gmDpiText) ?? Dpi?.X ?? 0; set => GmDpiText = Snap(value).ToString(); }
+    public double GmDpiSlider { get => LogDpi(Int(_gmDpiText) ?? Dpi?.X); set => GmDpiText = Snap(Math.Exp(value)).ToString(); }
     public bool GmLightOff { get => _gmLightOff; set => Set(ref _gmLightOff, value); }
     /// <summary>"Keep" and each supported rate; the choice is saved only by Save.</summary>
     public IReadOnlyList<OptionItem> GmRates => _state?.Polling is { } p
@@ -174,13 +174,10 @@ public sealed class PeripheralRowViewModel : ObservableObject
     }
 
     // ---------- the picture: a drawing per model family, its light in the color and brightness the controls show ----------
-    /// <summary>Which drawing: Viper, DeathAdder, Naga, Dock, Mouse, Headset, Keyboard, Controller or Other.</summary>
+    /// <summary>Which picture: Dock, Mouse, Headset, Keyboard, Controller or Other.</summary>
     public string Art => (Driver?.Model ?? Name) switch
     {
-        var m when m.Contains("Dock", StringComparison.OrdinalIgnoreCase) => "Dock",
-        var m when Kind == PeripheralKind.Mouse && m.Contains("Viper", StringComparison.OrdinalIgnoreCase) => "Viper",
-        var m when Kind == PeripheralKind.Mouse && m.Contains("DeathAdder", StringComparison.OrdinalIgnoreCase) => "DeathAdder",
-        var m when Kind == PeripheralKind.Mouse && m.Contains("Naga", StringComparison.OrdinalIgnoreCase) => "Naga",
+        var m when Driver is not null && m.Contains("Dock", StringComparison.OrdinalIgnoreCase) => "Dock", // not a laptop dock's HID interface
         _ => Kind is PeripheralKind.Mouse or PeripheralKind.Headset or PeripheralKind.Keyboard or PeripheralKind.Controller ? Kind.ToString() : "Other",
     };
     /// <summary>The device has a light the toolbox reads: the drawing shows it.</summary>
@@ -288,9 +285,13 @@ public sealed class PeripheralRowViewModel : ObservableObject
 
     public string? DpiText { get => _dpiText; set { if (Set(ref _dpiText, value)) Raise(nameof(DpiSlider)); } }
     /// <summary>The sliders only move the text (and the picture); Apply is the one write.</summary>
-    public double DpiSlider { get => Int(_dpiText) ?? Dpi?.X ?? 0; set => DpiText = Snap(value).ToString(); }
-    public double DpiStep => Dpi?.Step is > 0 and var step ? step : 50;
-    int Snap(double v) => (int)(Math.Round(v / DpiStep) * DpiStep);
+    /// <summary>Logarithmic: 400, 800 and 1600 sit apart instead of in the first tenth of a 100–20000 track.</summary>
+    public double DpiSlider { get => LogDpi(Int(_dpiText) ?? Dpi?.X); set => DpiText = Snap(Math.Exp(value)).ToString(); }
+    public double DpiLogMin => LogDpi(Dpi?.Min);
+    public double DpiLogMax => LogDpi(Dpi?.Max);
+    static double LogDpi(int? v) => Math.Log(Math.Max(1, v ?? 1));
+    double DpiStep => Dpi?.Step is > 0 and var step ? step : 50;
+    int Snap(double v) => Math.Clamp((int)(Math.Round(v / DpiStep) * DpiStep), Dpi?.Min ?? 1, Dpi?.Max ?? int.MaxValue);
     public string? SleepText { get => _sleepText; set => Set(ref _sleepText, value); }
     public string? LowText { get => _lowText; set => Set(ref _lowText, value); }
     public string? BrightnessText { get => _brightText; set { if (Set(ref _brightText, value)) { Raise(nameof(BrightnessSlider)); Raise(nameof(LedBrush)); Raise(nameof(LedText)); } } }
