@@ -36,7 +36,7 @@ public sealed class LatencyPageViewModel : PageViewModel
 
     public LatencyPageViewModel() : base("latency", Txt.PageLatency, "", Txt.PageLatencySubtitle) // Stopwatch
     {
-        Tabs = new[] { new GpuTab("dpc", "DPC / ISR", "") { IsSelected = true }, new GpuTab("mouse", "Mouse", ""), new GpuTab("timer", "Timer", ""), new GpuTab("frames", "Frames", "") };
+        Tabs = new[] { new GpuTab("dpc", "DPC / ISR", "") { IsSelected = true }, new GpuTab("mouse", "Mouse", ""), new GpuTab("timer", "Timer", ""), new GpuTab("frames", "Frames", ""), new GpuTab("ping", "Ping", "") };
         SelectTabCommand = new RelayCommand(p => SelectTab((string)p!));
         ToggleCommand = new AsyncCommand(ToggleAsync, () => Elevation.IsAdmin);
         RestartAsAdminCommand = new RelayCommand(SettingsViewModel.RestartAsAdmin);
@@ -51,20 +51,25 @@ public sealed class LatencyPageViewModel : PageViewModel
     public bool IsMouseTab => Tabs[1].IsSelected;
     public bool IsTimerTab => Tabs[2].IsSelected;
     public bool IsFramesTab => Tabs[3].IsSelected;
+    public bool IsPingTab => Tabs[4].IsSelected;
     public FramesViewModel Frames { get; } = new();
     public MouseTestViewModel Mouse { get; } = new();
     public TimerBenchViewModel Timer { get; } = new();
+    public PingTestViewModel Ping { get; } = new();
 
     void SelectTab(string key)
     {
         foreach (var t in Tabs) t.IsSelected = t.Key == key;
         if (!IsMouseTab) Mouse.Stop();
+        if (!IsPingTab) Ping.Stop();
         Raise(nameof(IsDpcTab));
         Raise(nameof(IsMouseTab));
         Raise(nameof(IsTimerTab));
         Raise(nameof(IsFramesTab));
+        Raise(nameof(IsPingTab));
         if (IsTimerTab) Timer.Refresh();
         if (IsFramesTab) Frames.RefreshPrograms();
+        if (IsPingTab) Ping.RefreshHosts();
     }
     public bool NeedsAdmin => !Elevation.IsAdmin;
     public bool IsRunning => _trace is not null;
@@ -101,7 +106,7 @@ public sealed class LatencyPageViewModel : PageViewModel
         _shown = shown;
         if (shown && _trace is not null) { _timer.Start(); Update(); }
         else _timer.Stop();
-        if (!shown) Mouse.Stop(); // raw input only while the page is open
+        if (!shown) { Mouse.Stop(); Ping.Stop(); } // raw input and pings only while the page is open
     }
 
     async Task ToggleAsync()

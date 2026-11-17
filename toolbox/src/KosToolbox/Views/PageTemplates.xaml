@@ -1132,6 +1132,51 @@
                 </StackPanel>
             </StackPanel>
 
+            <!-- ===== Ping (round trip, jitter and loss) ===== -->
+            <StackPanel Visibility="{Binding IsPingTab, Converter={StaticResource BoolToVis}}">
+                <StackPanel DataContext="{Binding Ping}">
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,10">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.PingNote}" TextWrapping="Wrap" />
+                            <WrapPanel Margin="0,12,0,0">
+                                <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.PingHostLabel}" VerticalAlignment="Center" Margin="0,0,6,6" />
+                                <TextBox Text="{Binding Host, UpdateSourceTrigger=PropertyChanged}" Tag="1.1.1.1" MinWidth="160" Margin="0,0,6,6" VerticalAlignment="Center"
+                                         AutomationProperties.Name="{x:Static t:Txt.PingHostLabel}" IsEnabled="{Binding IsIdle}" />
+                                <ComboBox ItemsSource="{Binding Hosts}" SelectedItem="{Binding PickedHost}" DisplayMemberPath="Label" MinWidth="190" Margin="0,0,16,6"
+                                          AutomationProperties.Name="Suggested hosts" IsEnabled="{Binding IsIdle}" />
+                                <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.PingIntervalLabel}" VerticalAlignment="Center" Margin="0,0,6,6" />
+                                <ComboBox ItemsSource="{Binding Intervals}" SelectedItem="{Binding Interval}" DisplayMemberPath="Label" MinWidth="80" Margin="0,0,16,6"
+                                          AutomationProperties.Name="{x:Static t:Txt.PingIntervalLabel}" IsEnabled="{Binding IsIdle}" />
+                                <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.PingDurationLabel}" VerticalAlignment="Center" Margin="0,0,6,6" />
+                                <ComboBox ItemsSource="{Binding Durations}" SelectedItem="{Binding Duration}" DisplayMemberPath="Label" MinWidth="80" Margin="0,0,16,6"
+                                          AutomationProperties.Name="{x:Static t:Txt.PingDurationLabel}" IsEnabled="{Binding IsIdle}" />
+                                <Button Style="{StaticResource PrimaryButton}" Content="{Binding ToggleText}" Command="{Binding ToggleCommand}" MinWidth="90" Margin="0,0,0,6" />
+                            </WrapPanel>
+                            <TextBlock Text="{Binding HostError}" Foreground="{StaticResource ErrorBrush}" Margin="0,4,0,0" TextWrapping="Wrap"
+                                       Visibility="{Binding HostError, Converter={StaticResource NotEmptyToVis}}" />
+                            <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Margin="0,6,0,0" Visibility="{Binding Status, Converter={StaticResource NotEmptyToVis}}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource Secondary}">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsError}" Value="True"><Setter Property="Foreground" Value="{StaticResource ErrorBrush}" /></DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,10">
+                        <v:DataPlot Series="{Binding Series}" Marks="{Binding Marks}" StyleKind="Lines" XTitle="{x:Static t:Txt.PingGraphX}" YTitle="{x:Static t:Txt.PingGraphY}" Height="280" />
+                    </Border>
+                    <Border Style="{StaticResource Card}" Visibility="{Binding HasStats, Converter={StaticResource BoolToVis}}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource CardTitle}" Text="{x:Static t:Txt.PingStats}" Margin="0,0,0,8" />
+                            <ItemsControl ItemsSource="{Binding Stats}" Grid.IsSharedSizeScope="True" Focusable="False" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </StackPanel>
+
             <!-- ===== Timer (Sleep(1) precision) ===== -->
             <StackPanel Visibility="{Binding IsTimerTab, Converter={StaticResource BoolToVis}}">
                 <StackPanel DataContext="{Binding Timer}">

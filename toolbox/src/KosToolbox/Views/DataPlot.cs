@@ -7,7 +7,7 @@ namespace KosToolbox.Views;
 public enum PlotStyle { Lines, Dots, Stem }
 
 /// <summary>
-/// X/Y plot with axes and grid (mouse test and Sleep(1) graphs): one or two series (light and grey), drawn as lines, dots or stems.
+/// X/Y plot with axes and grid (mouse test, Sleep(1), frame time and ping graphs): one or two series (light and grey), drawn as lines, dots or stems.
 /// Replacing <see cref="Series"/> redraws.
 /// </summary>
 public sealed class DataPlot : FrameworkElement
@@ -21,7 +21,12 @@ public sealed class DataPlot : FrameworkElement
     public static readonly DependencyProperty YTitleProperty = DependencyProperty.Register(nameof(YTitle), typeof(string), typeof(DataPlot),
         new FrameworkPropertyMetadata("", FrameworkPropertyMetadataOptions.AffectsRender));
 
+    public static readonly DependencyProperty MarksProperty = DependencyProperty.Register(nameof(Marks), typeof(IReadOnlyList<double>), typeof(DataPlot),
+        new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
+
     public IReadOnlyList<IReadOnlyList<Point>>? Series { get => (IReadOnlyList<IReadOnlyList<Point>>?)GetValue(SeriesProperty); set => SetValue(SeriesProperty, value); }
+    /// <summary>X values drawn as vertical lines across the plot in the warning color (lost pings).</summary>
+    public IReadOnlyList<double>? Marks { get => (IReadOnlyList<double>?)GetValue(MarksProperty); set => SetValue(MarksProperty, value); }
     public PlotStyle StyleKind { get => (PlotStyle)GetValue(StyleKindProperty); set => SetValue(StyleKindProperty, value); }
     public string XTitle { get => (string)GetValue(XTitleProperty); set => SetValue(XTitleProperty, value); }
     public string YTitle { get => (string)GetValue(YTitleProperty); set => SetValue(YTitleProperty, value); }
@@ -48,14 +53,16 @@ public sealed class DataPlot : FrameworkElement
         var xt = Text(XTitle);
         dc.DrawText(xt, new Point(plot.Right - xt.Width, h - xt.Height - 1));
 
-        var series = Series?.Where(s => s.Count > 0).ToList();
-        if (series is not { Count: > 0 })
+        var series = Series?.Where(s => s.Count > 0).ToList() ?? new();
+        var marks = Marks ?? Array.Empty<double>();
+        if (series.Count == 0 && marks.Count == 0)
         {
             dc.DrawRectangle(null, Border, plot);
             return;
         }
-        double minX = series.Min(s => s.Min(p => p.X)), maxX = series.Max(s => s.Max(p => p.X));
-        double minY = series.Min(s => s.Min(p => p.Y)), maxY = series.Max(s => s.Max(p => p.Y));
+        var allX = series.SelectMany(s => s.Select(p => p.X)).Concat(marks).ToList();
+        double minX = allX.Min(), maxX = allX.Max();
+        double minY = series.Count == 0 ? 0 : series.Min(s => s.Min(p => p.Y)), maxY = series.Count == 0 ? 1 : series.Max(s => s.Max(p => p.Y));
         if (StyleKind == PlotStyle.Stem) { minY = Math.Min(minY, 0); maxY = Math.Max(maxY, 0); }
         var (x0, x1, xs) = Ticks(minX, maxX);
         var (y0, y1, ys) = Ticks(minY, maxY);
@@ -78,6 +85,16 @@ public sealed class DataPlot : FrameworkElement
         }
 
         dc.PushClip(new RectangleGeometry(plot));
+        if (marks.Count > 0)
+        {
+            var markPen = new Pen(TryFindResource("WarningBrush") as Brush ?? Brushes.Orange, 1);
+            markPen.Freeze();
+            foreach (var m in marks)
+            {
+                var x = Math.Round(X(m)) + 0.5;
+                dc.DrawLine(markPen, new Point(x, plot.Top), new Point(x, plot.Bottom));
+            }
+        }
         for (var i = series.Count - 1; i >= 0; i--) // the first series on top
         {
             var points = series[i];

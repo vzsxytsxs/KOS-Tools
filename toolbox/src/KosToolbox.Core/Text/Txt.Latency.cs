@@ -58,4 +58,17 @@ public static partial class Txt
     public static string TimerRunLabel(string request, double resolution) => $"{request} · {resolution:0.####} ms in effect";
     public static string TimerRunValue(double mean, double min, double max, double std) =>
         $"average {mean:0.0000} ms ({mean - 1:+0.0000;-0.0000} ms), {min:0.0000}–{max:0.0000} ms, spread {std:0.0000} ms";
+
+    // ---------- Ping tab (round trip, jitter and loss) ----------
+    public const string PingNote = "Pings a host at a steady pace (a lost reply is waited for up to 1 s) and graphs every round trip (white), the jitter, how much each reply changed from the previous one (grey), and each lost reply (a mark across the graph). Ping your router first: losses or spikes there come from the cable, Wi-Fi or the PC itself. Then a public server shows the route to the internet. Many game servers don't answer pings, so one that never replies isn't necessarily down.";
+    public const string PingHostLabel = "Host", PingIntervalLabel = "Every", PingDurationLabel = "For", PingStart = "Start", PingStop = "Stop",
+        PingStats = "Statistics", PingGraphX = "Seconds", PingGraphY = "Round trip (ms)", PingRouter = "Router", PingInvalidHost = "Enter a host name or an IP address, without a port.",
+        PingRepliesLabel = "Replies", PingRoundTripLabel = "Round trip", PingJitterLabel = "Jitter";
+    public static string PingRunning(string host, string address, int sent, int total) => $"Pinging {host}{(host == address ? "" : $" ({address})")}: {sent} of {total}.";
+    public static string PingDone(string host, int sent) => $"Done: {sent} pings to {host}.";
+    public static string PingStopped(int sent) => $"Stopped after {sent} pings.";
+    public static string PingResolveFailed(string host, string message) => $"{host} couldn't be resolved: {message}";
+    public static string PingReplies(int received, int sent, double lossPercent) => $"{received} of {sent} · {lossPercent:0.#}% lost";
+    public static string PingRoundTrip(double min, double avg, double max) => $"min {min:0.0} ms · average {avg:0.0} ms · max {max:0.0} ms";
+    public static string PingJitter(double avg, double max) => $"average {avg:0.00} ms · max {max:0.0} ms";
 }
