@@ -325,6 +325,28 @@ public class PeripheralDriversTests
         Assert.Throws<ReadBackException>(() => stuck.SetBrightness(70));
     }
 
+    [Fact]
+    public void ViperStageIsChosenInTheStoredAndTheLiveTable()
+    {
+        var values = ViperValues();
+        static byte[] Table(byte storage, byte active, byte third) =>
+            new byte[] { storage, active, 3, 1, 0x03, 0x20, 0x03, 0x20, 0, 0, 2, 0x06, 0x40, 0x06, 0x40, 0, 0, 3, 0x01, third, 0x01, third, 0, 0 }
+                .Concat(new byte[0x26 - 24]).ToArray();
+        // As found: stage 1 stored, stage 2 live, and the third stage differs between them (each table keeps its own)
+        var tables = new Dictionary<byte, byte[]> { [RazerCodec.Stored] = Table(1, 1, 0x90), [RazerCodec.NoStore] = Table(0, 2, 0x91) };
+        var d = Driver((req, n) =>
+        {
+            const int a = 1 + RazerCodec.ArgsOffset;
+            if (req[7] == 0x04 && req[8] == 0x06) { tables[req[a]] = req[a..(a + 0x26)]; return Reply(req, RazerStatus.Ok); }
+            if (req[7] == 0x04 && req[8] == 0x86) return Reply(req, RazerStatus.Ok, tables[req[a]]);
+            return Mouse(values)(req, n);
+        }, out _);
+        Assert.Equal(2, d.Read().Dpi!.ActiveStage); // the live table
+        Assert.Equal(3, d.SetActiveStage(3).Dpi!.ActiveStage);
+        Assert.Equal((3, 3), (tables[RazerCodec.Stored][1], tables[RazerCodec.NoStore][1]));
+        Assert.Equal((0x90, 0x91), (tables[RazerCodec.Stored][19], tables[RazerCodec.NoStore][19])); // nothing copied across
+    }
+
     [Theory]
     [InlineData(0, 0xFF0000)] [InlineData(50, 0xFFFF00)] [InlineData(100, 0x00FF00)] [InlineData(25, 0xFF7F00)]
     public void DockBatteryColorGoesFromRedToGreen(int percent, int color) => Assert.Equal(color, DockBatteryColor.For(percent));

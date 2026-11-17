@@ -107,6 +107,13 @@ public sealed class RazerDriver : PeripheralDriver
         catch (PeripheralAsleepException) { return new PeripheralBattery(null, null, Asleep: true); }
     });
 
+    /// <summary>The live effect (what the light shows now), null when unreadable. Getters only.</summary>
+    public PeripheralLighting? ReadLiveLighting() => With(_control, false, t =>
+    {
+        try { ResolveTransactionId(t); return ReadLighting(t, RazerCodec.NoStore); }
+        catch (PeripheralAsleepException) { return null; }
+    });
+
     PeripheralLighting? ReadLighting(IHidTransport t, byte storage = RazerCodec.Stored) =>
         _model.Led is { } led && Try(t, RazerCodec.EffectGet, new[] { storage, led }) is { } e ? RazerCodec.DecodeEffect(e) : null;
 
@@ -158,12 +165,21 @@ public sealed class RazerDriver : PeripheralDriver
 
     public override PeripheralState SetActiveStage(int stage) => Write(t =>
     {
-        var table = Get(t, RazerCodec.StagesGet, new[] { _model.DpiStorage }); // read-modify-write: only the active byte changes
-        var copy = RazerCodec.WithActiveStage(table, stage);
-        copy[0] = RazerCodec.Stored;
-        Set(t, RazerCodec.StagesSet, copy);
-        var now = RazerCodec.DecodeStages(Get(t, RazerCodec.StagesGet, new[] { _model.DpiStorage })).Active;
-        return now == stage ? null : $"The mouse shows stage {now} instead of {stage}.";
+        // Like the DPI: the generation that reads live keeps a stored and a live table (the Viper had stage 1 stored, 2 live); each is
+        // a read-modify-write of its own table (only the active byte changes), then each is read back.
+        var storages = _model.DpiStorage == RazerCodec.NoStore ? Both : new[] { RazerCodec.Stored };
+        foreach (var s in storages)
+        {
+            var copy = RazerCodec.WithActiveStage(Get(t, RazerCodec.StagesGet, new[] { s }), stage);
+            copy[0] = s;
+            Set(t, RazerCodec.StagesSet, copy);
+        }
+        foreach (var s in storages)
+        {
+            var now = RazerCodec.DecodeStages(Get(t, RazerCodec.StagesGet, new[] { s })).Active;
+            if (now != stage) return $"The mouse shows stage {now} instead of {stage}.";
+        }
+        return null;
     });
 
     public override PeripheralState SetPollingRate(int hz)

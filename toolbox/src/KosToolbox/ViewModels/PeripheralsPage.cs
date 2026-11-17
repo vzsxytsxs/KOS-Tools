@@ -80,6 +80,7 @@ public sealed class PeripheralRowViewModel : ObservableObject
             config.Save();
             DockBattery = on;
             Toasts.Show(on ? Txt.PeripheralDockBatterySaved : Txt.PeripheralDockBatteryRemoved);
+            if (on && _state?.Brightness == 0) Toasts.Show(Txt.PeripheralDockBatteryDark, ToastKind.Warning);
             Log.Info($"Peripherals: {Name}: mouse battery on the ring {(on ? "on" : "off")}.");
         }
         catch (Exception ex) when (ex is InvalidOperationException or System.IO.IOException or UnauthorizedAccessException or System.Text.Json.JsonException)

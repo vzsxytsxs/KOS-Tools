@@ -116,7 +116,6 @@ internal sealed class PeripheralBatteryMonitor
     readonly Action<string, string> _balloon;
     readonly ManualResetEvent _stop = new(false);
     readonly AutoResetEvent _poke = new(false);
-    PeripheralLighting? _dockShown;
     Thread? _thread;
 
     /// <summary>A config change (the toolbox saved): scan now rather than at the next interval.</summary>
@@ -185,22 +184,24 @@ internal sealed class PeripheralBatteryMonitor
         return ShowOnDock(dock, mouse) || asleep;
     }
 
-    /// <summary>The mouse battery as the dock's live color, written only when it changes. True while the option is on and a dock is there.</summary>
+    /// <summary>
+    /// The mouse battery as the dock's live color, written only when the ring shows something else (read each time: a replugged dock or
+    /// an effect applied on the toolbox is corrected too). True while the option is on and a dock is there.
+    /// </summary>
     bool ShowOnDock(RazerDriver? dock, PeripheralBattery? mouse)
     {
-        if (dock is null) { _dockShown = null; return false; }
+        if (dock is null) return false;
         bool on;
         try { on = GamemodePeripheral.Load()?.DockBattery == true; }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException) { return false; }
-        if (!on) { _dockShown = null; return false; }
+        if (!on) return false;
         if (mouse?.Percent is not { } p) return true; // asleep or not there: the dock keeps the last color
         var want = new PeripheralLighting(mouse.Charging == true ? LightingEffect.Breathing : LightingEffect.Static, DockBatteryColor.For(p));
-        if (want == _dockShown) return true;
         try
         {
+            if (dock.ReadLiveLighting() == want) return true;
             if (dock.TransactionId is null) dock.Read(); // the dock reports no battery, so nothing has resolved its id yet
             dock.SetLightingLive(want.Effect, want.Color!.Value);
-            _dockShown = want;
             Log.Info($"Dock: mouse battery {p} %{(mouse.Charging == true ? ", charging" : "")} shown as #{want.Color:X6}.");
         }
         catch (Exception ex) when (ex is PeripheralException or ArgumentException or NotSupportedException or System.ComponentModel.Win32Exception or IOException or TimeoutException)

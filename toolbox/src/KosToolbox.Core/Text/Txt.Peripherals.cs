@@ -53,7 +53,8 @@ public static partial class Txt
         PeripheralTurnOn = "Turn on", PeripheralTurnOff = "Turn off",
         PeripheralDockBatteryNote = "KOS Governor colors the ring by the Razer mouse's battery: red when low, then yellow, green when full, breathing while charging. It checks every minute and stores nothing in the dock; Turn off puts back the effect saved in the dock.",
         PeripheralDockBatterySaved = "The ring shows the mouse battery: KOS Governor sets it in a few seconds.",
-        PeripheralDockBatteryRemoved = "The ring no longer shows the mouse battery.";
+        PeripheralDockBatteryRemoved = "The ring no longer shows the mouse battery.",
+        PeripheralDockBatteryDark = "The ring's brightness is 0, so the battery colors won't show: raise Brightness.";
 
     public static string LightingEffectName(LightingEffect e) => e switch
     {
