@@ -34,6 +34,9 @@ public sealed record StoreProduct(string ProductId, string Title, string FamilyN
 /// with the Windows PackageManager, which also checks their signature. Needs AppXSvc and ClipSVC; free apps only (paid and
 /// protected apps come encrypted and need the Store's license).
 /// </summary>
+/// <summary>A free app found by name in the Store's search.</summary>
+public sealed record StoreSearchResult(string ProductId, string Title, string Publisher);
+
 public static class StoreDownloader
 {
     const string Service = "https://fe3.delivery.mp.microsoft.com/ClientWebService/client.asmx";
@@ -60,6 +63,32 @@ public static class StoreDownloader
 
     /// <summary>The AppX services are disabled (Windows › System › App installs and licenses): nothing can install.</summary>
     public static bool ServicesDisabled => new[] { "AppXSvc", "ClipSVC" }.Any(s => RegistrySetting.ServiceStart(s).Read() == "4");
+
+    /// <summary>Searches the Store by name, as the Store app does (desktop apps, US catalog); only free apps, since paid ones can't be installed here.</summary>
+    public static async Task<IReadOnlyList<StoreSearchResult>> SearchAsync(string query, CancellationToken ct)
+    {
+        var url = $"https://storeedgefd.dsx.mp.microsoft.com/v9.0/search?market=US&locale=en-US&deviceFamily=windows.desktop&query={Uri.EscapeDataString(query.Trim())}";
+        using var response = await Downloader.Http.GetAsync(url, ct).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        return ParseSearch(await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false));
+    }
+
+    internal static List<StoreSearchResult> ParseSearch(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        var list = new List<StoreSearchResult>();
+        if (!doc.RootElement.TryGetProperty("Payload", out var payload) || !payload.TryGetProperty("SearchResults", out var results)
+            || results.ValueKind != JsonValueKind.Array) return list;
+        foreach (var r in results.EnumerateArray())
+        {
+            var id = r.TryGetProperty("ProductId", out var p) ? ProductId(p.GetString() ?? "") : null;
+            var free = !r.TryGetProperty("Price", out var price) || price.ValueKind != JsonValueKind.Number || price.GetDouble() == 0;
+            if (id is null || !free || list.Exists(x => x.ProductId == id)) continue;
+            list.Add(new StoreSearchResult(id, r.TryGetProperty("Title", out var t) ? t.GetString() ?? id : id,
+                r.TryGetProperty("PublisherName", out var pub) ? pub.GetString() ?? "" : ""));
+        }
+        return list;
+    }
 
     public static async Task<StoreProduct> FindAsync(string productId, CancellationToken ct)
     {

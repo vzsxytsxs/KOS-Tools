@@ -23,6 +23,24 @@ public class StoreDownloaderTests
         $"""<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"><s:Body><SyncUpdatesResponse xmlns="{Ws}"><SyncUpdatesResult><NewUpdates>{string.Concat(packages.Select(p => p.Info))}</NewUpdates><ExtendedUpdateInfo><Updates>{string.Concat(packages.Select(p => p.Update))}</Updates></ExtendedUpdateInfo></SyncUpdatesResult></SyncUpdatesResponse></s:Body></s:Envelope>""";
 
     [Fact]
+    public void SearchKeepsFreeAppsOnce()
+    {
+        var json = """
+            {"Payload":{"SearchResults":[
+              {"ProductId":"9NKSQGP7F2NH","Title":"WhatsApp","PublisherName":"WhatsApp Inc.","Price":0.0},
+              {"ProductId":"9NKSQGP7F2NH","Title":"WhatsApp","PublisherName":"WhatsApp Inc.","Price":0.0},
+              {"ProductId":"XP89119P9F2PCQ","Title":"Signal Private Messenger","Price":0.0},
+              {"ProductId":"9PAIDAPP0001","Title":"Paid","PublisherName":"X","Price":4.99},
+              {"ProductId":"not-an-id","Title":"Bad"}]}}
+            """;
+        var results = StoreDownloader.ParseSearch(json);
+        Assert.Equal(new[] { "9NKSQGP7F2NH", "XP89119P9F2PCQ" }, results.Select(r => r.ProductId));
+        Assert.Equal(("WhatsApp", "WhatsApp Inc."), (results[0].Title, results[0].Publisher));
+        Assert.Equal("", results[1].Publisher);
+        Assert.Empty(StoreDownloader.ParseSearch("""{"Payload":{}}"""));
+    }
+
+    [Fact]
     public void ParsesPackagesWithTheirFilesAndHashes()
     {
         var list = StoreDownloader.Parse(Response(

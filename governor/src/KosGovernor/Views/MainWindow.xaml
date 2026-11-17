@@ -661,6 +661,10 @@
                                                       IsEnabled="{Binding CanStartWithWindows}" />
                                             <TextBlock Text="{Binding SignInProblem}" Style="{StaticResource Secondary}" Foreground="{StaticResource WarningBrush}" Margin="26,6,0,0"
                                                        Visibility="{Binding SignInProblem, Converter={StaticResource VisibleIf}, ConverterParameter=text}" />
+                                            <CheckBox Margin="0,10,0,0" IsChecked="{Binding SessionReport}">
+                                                <TextBlock TextWrapping="Wrap" MaxWidth="390"
+                                                           Text="Record a session report during gamemode (CPU, memory, GPU and what interfered; shown on the toolbox's Stability page)" />
+                                            </CheckBox>
                                             <TextBlock Style="{StaticResource Secondary}" FontSize="11.5" Margin="0,14,0,0"
                                                        Text="Closing this window keeps the rules running; exit from the tray icon to stop them. The engine needs no window and uses little memory." />
 

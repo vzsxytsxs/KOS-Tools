@@ -20,9 +20,6 @@ public sealed class ActionItem
     public bool RunElevated { get; init; }
     public bool RequiresReboot { get; init; }
     public string Source { get; init; } = "";
-
-    /// <summary>Set by the app: a file chosen by the user (title, filter as in an Open dialog), or null when cancelled. Actions that need a file use it.</summary>
-    public static Func<string, string, string?>? PickFile { get; set; }
     public bool NeedsAdmin => Script?.RequiresAdmin == true || RunElevated;
     public string SearchText => $"{Name} {Description} {Tab} {Group}";
 }

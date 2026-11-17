@@ -3,7 +3,6 @@ using System.Windows.Threading;
 using KosToolbox.Core.Execution;
 using KosToolbox.Core.Persistence;
 using KosToolbox.Core.Text;
-using KosToolbox.Core.Tweaks;
 using KosToolbox.ViewModels;
 using KosToolbox.Views;
 
@@ -17,11 +16,6 @@ public partial class App : Application
         DispatcherUnhandledException += OnUnhandled;
         Log.Info($"KOS Toolbox {typeof(App).Assembly.GetName().Version} started (administrator: {Elevation.IsAdmin}).");
         Motion.Install();
-        ActionItem.PickFile = (title, filter) =>
-        {
-            var dialog = new Microsoft.Win32.OpenFileDialog { Title = title, Filter = filter, CheckFileExists = true };
-            return dialog.ShowDialog() == true ? dialog.FileName : null;
-        };
         var vm = new MainViewModel();
         var window = new MainWindow { DataContext = vm };
         MainWindow = window;

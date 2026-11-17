@@ -48,30 +48,6 @@ public static partial class KosCatalog
         ("DP2X_IGNORE_CABLE_ID_CAPS", 1),
     };
 
-    static async Task<string> LoadVbiosAsync(CancellationToken ct)
-    {
-        var path = ActionItem.PickFile?.Invoke("Load VBIOS", "VBIOS (*.rom;*.bin)|*.rom;*.bin|All files (*.*)|*.*");
-        if (path is null) return "No file chosen: nothing was changed.";
-        VbiosLoader.Check(path);
-        var job = new VbiosJob { Path = path };
-        if (Elevation.IsAdmin) VbiosLoader.Execute(job);
-        else await TweakEngine.Instance.RunElevated(new ElevatedJob { Vbios = job }, ct);
-        if (VbiosLoader.Loaded(path) != true) throw new InvalidOperationException("The VBIOS wasn't found in the driver's key after loading it.");
-        TweakEngine.Instance.Pending.Mark("nv-vbios-load");
-        return "VBIOS loaded (read back from the driver's key). The driver uses it after a restart.";
-    }
-
-    static async Task<string> RemoveVbiosAsync(CancellationToken ct)
-    {
-        if (VbiosLoader.Loaded() != true) return "No VBIOS is loaded from a file: the card uses its own.";
-        var job = new VbiosJob();
-        if (Elevation.IsAdmin) VbiosLoader.Execute(job);
-        else await TweakEngine.Instance.RunElevated(new ElevatedJob { Vbios = job }, ct);
-        if (VbiosLoader.Loaded() == true) throw new InvalidOperationException("The loaded VBIOS is still in the driver's key.");
-        TweakEngine.Instance.Pending.Mark("nv-vbios-remove");
-        return "Loaded VBIOS removed (read back). The card uses its own VBIOS after a restart.";
-    }
-
     static List<(string InstanceId, string? DriverKey)> NvidiaGpus()
     {
         try { return GpuTuner.NvidiaAdapters(); }
@@ -177,22 +153,6 @@ public static partial class KosCatalog
 
     static IEnumerable<ActionItem> NvidiaActions()
     {
-        const string Vbios = "VBIOS";
-        yield return new()
-        {
-            Id = "nv-vbios-load", Name = "Load VBIOS from file", Page = Pages.Gpu, Group = Vbios, ButtonText = "Load", RequiresReboot = true,
-            Description = "Loads a VBIOS without flashing it, by writing it to the driver's registry key (driver 616.56 or later); the driver uses it after a restart. " +
-                          "The file is checked first: an NVIDIA image for an installed card, with a correct checksum, of at most 512 KB. " +
-                          "Warning: a modified VBIOS can run the card past its power, clock and voltage limits and damage it. Remove loaded VBIOS goes back to the card's own.",
-            Run = LoadVbiosAsync, Source = "Display class key: vbios (REG_BINARY), EnableGpuFirmware",
-        };
-        yield return new()
-        {
-            Id = "nv-vbios-remove", Name = "Remove loaded VBIOS", Page = Pages.Gpu, Group = Vbios, ButtonText = "Remove", RequiresReboot = true,
-            Description = "Deletes the VBIOS loaded from a file and puts EnableGpuFirmware back as it was: the card uses its own (flashed) VBIOS after a restart.",
-            Run = RemoveVbiosAsync, Source = "Display class key: vbios (REG_BINARY), EnableGpuFirmware",
-        };
-
         const string Profiles = "Driver profiles (NVIDIA Profile Inspector)", Maintenance = "Maintenance";
         foreach (var (id, name, label) in new[] { ("basic", "Basic profile", "Basic Profile"), ("latency", "Latency profile", "Latency Profile"), ("fps", "FPS average profile", "Fps Average") })
             yield return new()

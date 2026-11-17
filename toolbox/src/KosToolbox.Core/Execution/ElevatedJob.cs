@@ -96,15 +96,13 @@ public sealed class ElevatedJob
     public KosState.KosFixJob? KosFix { get; set; }
     /// <summary>sfc /scannow or DISM /RestoreHealth (only the tool's name; the command line is fixed). Progress and result go to files.</summary>
     public KosState.RepairJob? Repair { get; set; }
-    /// <summary>A VBIOS file to load into the NVIDIA driver's key (checked again here), or remove the loaded one.</summary>
-    public VbiosJob? Vbios { get; set; }
     /// <summary>Only prepares Logs\Toolbox (Log.Initialize runs at the start of the elevated process).</summary>
     public bool PrepareLogs { get; set; }
 
     string Describe() => TweakId ?? ActionId ?? (Writes.Count > 0 ? "startup entries" : null) ?? (TaskChange is not null ? $"task {TaskChange.Path}" : null)
         ?? (Service is not null ? $"service {Service.Name}" : null) ?? (Power.Count > 0 ? "power plan" : null) ?? (PowerPlan is not null ? $"power plan {PowerPlan.Op}" : null) ?? (PrepareLogs ? "log folder" : null)
         ?? (Interrupts is not null ? $"interrupts {Interrupts.InstanceId}" : null) ?? (RemoveDevices.Count > 0 ? $"remove {RemoveDevices.Count} devices" : null) ?? (Gpu is not null ? "GPU tuning" : null) ?? (CleanJunk.Count > 0 ? $"cleanup {string.Join(",", CleanJunk)}" : null) ?? (NetAdapter is not null ? $"network adapter {NetAdapter.InstanceId}" : null) ?? (Drivers is not null ? "driver store" : null) ?? (Display is not null ? "display" : null)
-        ?? (Bios is not null ? $"BIOS {Bios.Mode}" : null) ?? (Debloat is not null ? $"debloat {Debloat.App}/{Debloat.Option}" : null) ?? (Ddu is not null ? $"DDU {Ddu.Vendor}" : null) ?? (NvidiaInstall is not null ? "NVIDIA driver install" : null) ?? (KosFix is not null ? $"KOS state ({KosFix.Ids.Count} items)" : null) ?? (Repair is not null ? $"Windows repair ({Repair.Tool})" : null) ?? (Vbios is not null ? (Vbios.Path is null ? "VBIOS removal" : "VBIOS load") : null) ?? $"service snapshots ({Snapshot?.Mode})";
+        ?? (Bios is not null ? $"BIOS {Bios.Mode}" : null) ?? (Debloat is not null ? $"debloat {Debloat.App}/{Debloat.Option}" : null) ?? (Ddu is not null ? $"DDU {Ddu.Vendor}" : null) ?? (NvidiaInstall is not null ? "NVIDIA driver install" : null) ?? (KosFix is not null ? $"KOS state ({KosFix.Ids.Count} items)" : null) ?? (Repair is not null ? $"Windows repair ({Repair.Tool})" : null) ?? $"service snapshots ({Snapshot?.Mode})";
 
     /// <summary>Unelevated side: opens UAC with the request and waits. Returns the elevated process's exit code.</summary>
     public async Task<int> RunElevatedAsync(CancellationToken ct = default)
@@ -155,7 +153,7 @@ public sealed class ElevatedJob
 
     int Kinds() => new[] { TweakId is not null, ActionId is not null, Writes.Count > 0, TaskChange is not null, Service is not null, Power.Count > 0, PowerPlan is not null, Snapshot is not null, PrepareLogs,
         Interrupts is not null, RemoveDevices.Count > 0, Gpu is not null, CleanJunk.Count > 0, NetAdapter is not null, Drivers is not null, Display is not null,
-        Bios is not null, Debloat is not null, Ddu is not null, NvidiaInstall is not null, KosFix is not null, Repair is not null, Vbios is not null }.Count(b => b);
+        Bios is not null, Debloat is not null, Ddu is not null, NvidiaInstall is not null, KosFix is not null, Repair is not null }.Count(b => b);
 
     /// <summary>Refuses mixed requests and anything that is not exactly an allowed value.</summary>
     internal void Validate()
@@ -190,7 +188,6 @@ public sealed class ElevatedJob
         if (NvidiaInstall is not null) { NvidiaDriver.Validate(NvidiaInstall); return; }
         if (KosFix is not null) { KosState.KosStateFix.Validate(KosFix); return; }
         if (Repair is not null) { KosState.WindowsRepair.Validate(Repair); return; }
-        if (Vbios is not null) { VbiosLoader.Validate(Vbios); return; }
         if (PrepareLogs) { if (Option is not null) throw new InvalidOperationException("Mixed request."); return; }
 
         var tweak = Catalog.KosCatalog.Find(TweakId!) ?? throw new InvalidOperationException($"Unknown setting: {TweakId}");
@@ -286,7 +283,6 @@ public sealed class ElevatedJob
         if (KosFix is not null) return KosState.KosStateFix.Execute(KosFix);
         // The tool's verdict goes to its result file; the exit code only says the request ran.
         if (Repair is not null) { await KosState.WindowsRepair.RunAsync(Repair).ConfigureAwait(false); return ExitOk; }
-        if (Vbios is not null) { VbiosLoader.Execute(Vbios); return ExitOk; }
         if (RemoveDevices.Count > 0) return PnpDevices.RemoveNotPresent(RemoveDevices, out _).All(r => r.Error is null) ? ExitOk : ExitPartial;
         if (Snapshot is not null)
         {

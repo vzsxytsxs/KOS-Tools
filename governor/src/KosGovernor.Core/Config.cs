@@ -150,6 +150,8 @@ public sealed class GeneralSettings
     public int GuiIntervalMs { get; set; } = 500;
     /// <summary>Engine interval (tray): how often new programs are checked.</summary>
     public int EngineIntervalMs { get; set; } = 3000;
+    /// <summary>Records the gamemode session report (CPU, memory, GPU and what interfered) while gamemode is on.</summary>
+    public bool SessionReport { get; set; } = true;
 }
 
 public sealed class GovernorConfig

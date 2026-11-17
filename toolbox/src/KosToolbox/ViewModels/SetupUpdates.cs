@@ -78,24 +78,30 @@ public sealed class StoreInstallViewModel : ObservableObject
     bool _busy, _isError;
     double _percent;
     IReadOnlyList<StorePackageRow> _packages = Array.Empty<StorePackageRow>();
+    IReadOnlyList<StoreSearchResult> _results = Array.Empty<StoreSearchResult>();
     CancellationTokenSource? _cts;
 
     public StoreInstallViewModel()
     {
-        FindCommand = new AsyncCommand(FindAsync, () => !_busy && StoreDownloader.ProductId(_link) is not null);
+        FindCommand = new AsyncCommand(FindAsync, () => !_busy && (StoreDownloader.ProductId(_link) is not null || _link.Trim().Length >= 2));
+        PickCommand = new RelayCommand(o => { if (o is StoreSearchResult r) Open(r.ProductId); }, _ => !_busy);
         InstallCommand = new AsyncCommand(InstallAsync, () => !_busy && _product is not null);
         CancelCommand = new RelayCommand(() => _cts?.Cancel(), () => _busy);
     }
 
     public ICommand FindCommand { get; }
+    /// <summary>A search result: looks up its packages.</summary>
+    public ICommand PickCommand { get; }
     public ICommand InstallCommand { get; }
     public ICommand CancelCommand { get; }
 
-    /// <summary>A Store link (apps.microsoft.com/detail/…) or the product id alone.</summary>
+    /// <summary>A Store link (apps.microsoft.com/detail/…), the product id alone, or a name to search for.</summary>
     public string Link { get => _link; set { if (Set(ref _link, value ?? "")) CommandManager.InvalidateRequerySuggested(); } }
     public string? Title => _product?.Title;
     public bool HasProduct => _product is not null;
     public IReadOnlyList<StorePackageRow> Packages { get => _packages; private set => Set(ref _packages, value); }
+    public IReadOnlyList<StoreSearchResult> Results { get => _results; private set { if (Set(ref _results, value)) Raise(nameof(HasResults)); } }
+    public bool HasResults => _results.Count > 0;
     public string? Status { get => _status; private set => Set(ref _status, value); }
     public bool IsError { get => _isError; private set => Set(ref _isError, value); }
     public double Percent { get => _percent; private set => Set(ref _percent, value); }
@@ -123,9 +129,9 @@ public sealed class StoreInstallViewModel : ObservableObject
 
     async Task FindAsync()
     {
-        var id = StoreDownloader.ProductId(_link)!;
         Raise(nameof(ServicesNote));
         Show(null);
+        if (StoreDownloader.ProductId(_link) is not { } id) { await SearchAsync(_link.Trim()); return; }
         IsBusy = true;
         Report($"Looking up {id} in the Store…");
         try
@@ -137,6 +143,24 @@ public sealed class StoreInstallViewModel : ObservableObject
         catch (Exception ex)
         {
             Log.Warn($"Store: looking up {id} failed: {ex.Message}");
+            Report(ex is System.Net.Http.HttpRequestException ? $"The Store couldn't be reached: {ex.Message}" : ex.Message, error: true);
+        }
+        finally { IsBusy = false; }
+    }
+
+    async Task SearchAsync(string query)
+    {
+        IsBusy = true;
+        Report($"Searching the Store for \"{query}\"…");
+        try
+        {
+            Results = await Task.Run(() => StoreDownloader.SearchAsync(query, CancellationToken.None));
+            Report(Results.Count == 0 ? $"No free app found for \"{query}\"." : "Pick the app to see its packages.", error: Results.Count == 0);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Store: searching \"{query}\" failed: {ex.Message}");
+            Results = Array.Empty<StoreSearchResult>();
             Report(ex is System.Net.Http.HttpRequestException ? $"The Store couldn't be reached: {ex.Message}" : ex.Message, error: true);
         }
         finally { IsBusy = false; }

@@ -124,6 +124,12 @@ public sealed class Engine
         _extras.Tick(snapshot, p => p.SessionId == _session ? _active.GetValueOrDefault(p.Name) : null, Gamemode && Config.Active.System.PowerPlan);
         GameTimers(snapshot);
         if (Gamemode) Memory(snapshot, nowMs);
+        if (_recorder is not null && !Config.General.SessionReport)
+        {
+            _recorder.Dispose(); // turned off during the session: nothing saved
+            _recorder = null;
+            Log.Info("Session report: turned off; this session isn't recorded.");
+        }
         if (Gamemode && _recorder is not null)
         {
             try { _recorder.Tick(snapshot, _usage, _games.IsGame, _games.Label); }
@@ -374,7 +380,7 @@ public sealed class Engine
             _gamemodeFlag ??= new EventWaitHandle(false, EventResetMode.ManualReset, Names.GamemodeOn);
             // Windows changes (plan, services, transparency...): the previous state is saved so it can be undone.
             if (_system is null) _system = GamemodeSystem.Apply(profile.System);
-            try { _recorder ??= new SessionRecorder(profile.Name); }
+            try { if (Config.General.SessionReport) _recorder ??= new SessionRecorder(profile.Name); }
             catch (Exception ex) { Log.Warn($"Session report: recording didn't start: {ex.Message}"); }
             _gamemodeSinceMs = Environment.TickCount64;
             _memoryCleaned = false;

@@ -247,7 +247,7 @@
                     <Border Style="{StaticResource Card}" Margin="0,0,0,10">
                         <StackPanel>
                             <TextBlock Style="{StaticResource Secondary}" TextWrapping="Wrap"
-                                       Text="Installs a free Microsoft Store app without the Store app, a Microsoft account or Windows Update: its packages come from the Store's own delivery service, are checked against the hash it lists and installed for this user. Paste the app's Store link (apps.microsoft.com) or its id." />
+                                       Text="Installs a free Microsoft Store app without the Store app, a Microsoft account or Windows Update: its packages come from the Store's own delivery service, are checked against the hash it lists and installed for this user. Type the app's name, or paste its Store link (apps.microsoft.com) or its id." />
                             <TextBlock Style="{StaticResource Secondary}" Text="{Binding ServicesNote}" Foreground="{StaticResource WarningBrush}" TextWrapping="Wrap" Margin="0,6,0,0"
                                        Visibility="{Binding ServicesNote, Converter={StaticResource NotEmptyToVis}}" />
                             <DockPanel Margin="0,12,0,0">
@@ -255,7 +255,7 @@
                                         Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" />
                                 <Button DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Content="Find" Command="{Binding FindCommand}" Margin="6,0,0,0" MinWidth="80" />
                                 <TextBox Text="{Binding Link, UpdateSourceTrigger=PropertyChanged}" Tag="https://apps.microsoft.com/detail/9WZDNCRFHVN5" VerticalContentAlignment="Center"
-                                         AutomationProperties.Name="Store link or product id" />
+                                         AutomationProperties.Name="App name, Store link or product id" />
                             </DockPanel>
                             <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Margin="0,8,0,0" Visibility="{Binding Status, Converter={StaticResource NotEmptyToVis}}">
                                 <TextBlock.Style>
@@ -268,6 +268,24 @@
                             </TextBlock>
                             <ProgressBar Value="{Binding Percent, Mode=OneWay}" Maximum="100" Margin="0,8,0,0" Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" />
                         </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,10" Visibility="{Binding HasResults, Converter={StaticResource BoolToVis}}">
+                        <ItemsControl ItemsSource="{Binding Results}" Focusable="False">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <DockPanel Margin="0,3,0,3">
+                                        <Button DockPanel.Dock="Right" Content="Select" Margin="12,0,0,0" VerticalAlignment="Center"
+                                                Command="{Binding DataContext.PickCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}" />
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Style="{StaticResource Secondary}" TextTrimming="CharacterEllipsis">
+                                                <Run Text="{Binding Publisher, Mode=OneWay}" /><Run Text=" · " /><Run Text="{Binding ProductId, Mode=OneWay}" />
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                     </Border>
                     <Border Style="{StaticResource Card}" Visibility="{Binding HasProduct, Converter={StaticResource BoolToVis}}">
                         <StackPanel>

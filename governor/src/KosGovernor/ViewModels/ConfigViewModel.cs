@@ -163,7 +163,7 @@ public sealed class ConfigViewModel : ObservableObject
     {
         foreach (var n in new[] { nameof(ProfileName), nameof(RuleRows), nameof(GamemodeRows), nameof(MaskRows), nameof(HotkeyText), nameof(GuiInterval), nameof(AutoGamemode),
                      nameof(AutoOffDelay), nameof(AutoOpensPrograms), nameof(GameListText), nameof(GameRows),
-                     nameof(EngineInterval), nameof(ProcessColumnOptions), nameof(ThreadColumnOptions), nameof(StartWithWindows), nameof(SignInProblem) })
+                     nameof(EngineInterval), nameof(SessionReport), nameof(ProcessColumnOptions), nameof(ThreadColumnOptions), nameof(StartWithWindows), nameof(SignInProblem) })
             Raise(n);
         foreach (var n in SystemNames) Raise(n);
         ColumnsChanged?.Invoke();
@@ -807,6 +807,12 @@ public sealed class ConfigViewModel : ObservableObject
     {
         get => _config.General.EngineIntervalMs;
         set { if (value != _config.General.EngineIntervalMs) Mutate(c => c.General.EngineIntervalMs = value); }
+    }
+
+    public bool SessionReport
+    {
+        get => _config.General.SessionReport;
+        set { if (value != _config.General.SessionReport) Mutate(c => c.General.SessionReport = value); }
     }
 
     public string? SignInProblem => SignIn.FolderProblem(Environment.ProcessPath ?? "");
