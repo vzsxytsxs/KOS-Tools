@@ -54,7 +54,8 @@ public sealed class MainViewModel : ObservableObject
                 new CatalogPageViewModel(Core.Catalog.Pages.Windows, Txt.PageWindows, "", Txt.PageWindowsSubtitle, ItemsOf(Core.Catalog.Pages.Windows)),
                 new PowerPageViewModel(ItemsOf(Core.Catalog.Pages.Power)),
                 gpu, // includes the former Display page as a tab, the NVIDIA tool tweaks and the Driver tab
-                new NetworkPageViewModel()),
+                new NetworkPageViewModel(),
+                new PeripheralsPageViewModel()), // HID mice, keyboards and other devices: the list and each one's collections
             new NavListViewModel(select, Txt.NavSystem, new StartupPageViewModel(), new ServicesPageViewModel(), new DevicesPageViewModel(),
                 new BiosPageViewModel()), // BIOS settings through SCEWIN, with a backup on every write
             new NavListViewModel(select, Txt.NavSoftware, setup,

@@ -17,6 +17,7 @@
                 <ResourceDictionary Source="Views/SetupTemplates.xaml" />
                 <ResourceDictionary Source="Views/BiosTemplates.xaml" />
                 <ResourceDictionary Source="Views/KosStateTemplates.xaml" />
+                <ResourceDictionary Source="Views/PeripheralTemplates.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>

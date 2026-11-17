@@ -1,0 +1,118 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:vm="clr-namespace:KosToolbox.ViewModels"
+                    xmlns:v="clr-namespace:KosToolbox.Views"
+                    xmlns:t="clr-namespace:KosToolbox.Core.Text;assembly=KosToolbox.Core">
+
+    <!-- ===================== Peripherals ===================== -->
+    <!-- A device of the list: icon by its guessed kind, name, VID:PID (after Bluetooth when it is connected that way). -->
+    <DataTemplate x:Key="PeripheralRow">
+        <Button Style="{StaticResource HomeRow}" Height="52" AutomationProperties.Name="{Binding Name}">
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                <TextBlock Style="{StaticResource Icon}" Text="{Binding Glyph}" FontSize="18" Width="22" Margin="0,0,14,0" ToolTip="{Binding KindText}" />
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock x:Name="name" Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}" />
+                    <TextBlock Text="{Binding Sub}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+            </Grid>
+        </Button>
+        <DataTemplate.Triggers>
+            <DataTrigger Binding="{Binding IsSelected}" Value="True"><Setter TargetName="name" Property="FontWeight" Value="SemiBold" /></DataTrigger>
+        </DataTemplate.Triggers>
+    </DataTemplate>
+
+    <Style x:Key="HidHeader" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Margin" Value="0,0,16,6" />
+    </Style>
+    <Style x:Key="HidCell" TargetType="TextBlock">
+        <Setter Property="Margin" Value="0,5,16,5" />
+        <Setter Property="Typography.NumeralAlignment" Value="Tabular" />
+    </Style>
+
+    <!-- The selected device: name, Not supported, what that means beside Copy device report, Info and its HID collections. -->
+    <DataTemplate DataType="{x:Type vm:PeripheralRowViewModel}">
+        <StackPanel>
+            <TextBlock Style="{StaticResource Secondary}" FontSize="12" Text="{Binding KindText}" />
+            <WrapPanel Margin="0,4,0,8">
+                <TextBlock Text="{Binding Name}" FontSize="24" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0" />
+                <Border Style="{StaticResource Pill}" Margin="0,2,0,0">
+                    <TextBlock Text="{x:Static t:Txt.PeripheralNotSupported}" FontSize="11.5" Foreground="{StaticResource TextSecondaryBrush}" />
+                </Border>
+            </WrapPanel>
+            <Grid Margin="0,0,8,14">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.PeripheralNotSupportedNote}" Margin="0,0,16,0" VerticalAlignment="Center" />
+                <Button Grid.Column="1" Content="{x:Static t:Txt.CopyDeviceReport}" Command="{Binding CopyReportCommand}" VerticalAlignment="Center" />
+            </Grid>
+            <ContentControl Content="{Binding Info}" Focusable="False" />
+            <Border Style="{StaticResource Card}" Margin="0,0,8,8">
+                <StackPanel Grid.IsSharedSizeScope="True">
+                    <TextBlock Style="{StaticResource CardTitle}" Text="{x:Static t:Txt.PeripheralCollections}" Margin="0,0,0,8" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="HidLocation" /><ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="HidInput" /><ColumnDefinition Width="Auto" SharedSizeGroup="HidOutput" />
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="HidFeature" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource HidHeader}" Text="{x:Static t:Txt.HidInterfaceHeader}" />
+                        <TextBlock Grid.Column="1" Style="{StaticResource HidHeader}" Text="{x:Static t:Txt.HidUsageHeader}" />
+                        <TextBlock Grid.Column="2" Style="{StaticResource HidHeader}" Text="{x:Static t:Txt.HidInputHeader}" TextAlignment="Right" />
+                        <TextBlock Grid.Column="3" Style="{StaticResource HidHeader}" Text="{x:Static t:Txt.HidOutputHeader}" TextAlignment="Right" />
+                        <TextBlock Grid.Column="4" Style="{StaticResource HidHeader}" Text="{x:Static t:Txt.HidFeatureHeader}" TextAlignment="Right" Margin="0,0,0,6" />
+                    </Grid>
+                    <ItemsControl ItemsSource="{Binding Collections}" Focusable="False">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" SharedSizeGroup="HidLocation" /><ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" SharedSizeGroup="HidInput" /><ColumnDefinition Width="Auto" SharedSizeGroup="HidOutput" />
+                                            <ColumnDefinition Width="Auto" SharedSizeGroup="HidFeature" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Style="{StaticResource HidCell}" Text="{Binding Location}" />
+                                        <WrapPanel Grid.Column="1" Margin="0,5,16,5">
+                                            <TextBlock Text="{Binding Usage}" Margin="0,0,8,0" />
+                                            <TextBlock Text="{Binding UsageName}" Foreground="{StaticResource TextSecondaryBrush}" />
+                                        </WrapPanel>
+                                        <TextBlock Grid.Column="2" Style="{StaticResource HidCell}" Text="{Binding Input}" TextAlignment="Right" />
+                                        <TextBlock Grid.Column="3" Style="{StaticResource HidCell}" Text="{Binding Output}" TextAlignment="Right" />
+                                        <TextBlock Grid.Column="4" Style="{StaticResource HidCell}" Text="{Binding Feature}" TextAlignment="Right" Margin="0,5" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Style="{StaticResource Secondary}" FontSize="11.5" Text="{x:Static t:Txt.HidLengthsNote}" Margin="0,8,0,0" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </DataTemplate>
+
+    <!-- Peripherals: the device list (280 px, so the collections table fits beside it at the window's minimum width) and the selected
+         device, each scrolling on its own. -->
+    <DataTemplate DataType="{x:Type vm:PeripheralsPageViewModel}">
+        <Grid>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="280" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+            <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+                    <StackPanel Margin="0,4,0,12">
+                        <TextBlock Style="{StaticResource HomeHeader}" Text="{x:Static t:Txt.PeripheralsNotSupportedHeader}"
+                                   Visibility="{Binding HasDevices, Converter={StaticResource BoolToVis}}" />
+                        <ItemsControl ItemsSource="{Binding Devices}" ItemTemplate="{StaticResource PeripheralRow}" Focusable="False" />
+                        <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.PeripheralsNone}" Margin="16,12"
+                                   Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVis}}" />
+                        <TextBlock Style="{StaticResource Secondary}" Text="{Binding LoadError}" Foreground="{StaticResource ErrorBrush}" Margin="16,12"
+                                   Visibility="{Binding LoadError, Converter={StaticResource NotEmptyToVis}}" />
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+            <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False" Margin="24,0,0,0">
+                <ContentControl Content="{Binding Selected}" Focusable="False" Margin="0,0,8,0" v:Motion.Transition="{Binding Selected}" />
+            </ScrollViewer>
+        </Grid>
+    </DataTemplate>
+</ResourceDictionary>
