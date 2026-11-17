@@ -18,6 +18,48 @@ public static partial class Txt
     public const string PeripheralVidPid = "VID:PID", PeripheralProduct = "Product string", PeripheralConnection = "Connection", PeripheralRevision = "Revision",
         PeripheralKindLabel = "Kind (guessed)", Bluetooth = "Bluetooth";
 
+    public const string PeripheralsSupportedHeader = "DEVICES", PeripheralUntested = "Untested model",
+        PeripheralUntestedNote = "This model hasn't been checked on hardware yet. Every change is read back from the device, but check it behaves as expected.",
+        PeripheralBatteryOnlyNote = "The toolbox reads this device's battery only; it has no settings here.",
+        PeripheralPerformance = "Performance", PeripheralPower = "Power", PeripheralLighting = "Lighting",
+        PeripheralDpi = "DPI", PeripheralDpiStages = "DPI stages", PeripheralPolling = "Polling rate", PeripheralBatteryLabel = "Battery",
+        PeripheralCharging = "Charging", PeripheralSleep = "Sleep after (minutes)", PeripheralLowBattery = "Low-battery warning (%)",
+        PeripheralBrightness = "Brightness (%)", PeripheralFirmware = "Firmware", PeripheralSerial = "Serial number", PeripheralFamily = "Protocol",
+        PeripheralLayers = "Layers", PeripheralReading = "Reading the device…", PeripheralAsleep = "Asleep",
+        PeripheralAsleepNote = "The receiver answered but the device didn't: it may be asleep, off or out of range. Move it and press Refresh.",
+        PeripheralOnboardNote = "The mouse runs its onboard profile, so its live DPI and report rate come from that profile. Host mode lets the toolbox set them until the mouse is unplugged or another program switches it back; the profile itself isn't changed.",
+        PeripheralUseHostMode = "Use host mode", PeripheralChargingSuffix = ", charging", PeripheralWireless = "Wireless receiver", PeripheralWired = "Cable";
+
+    public static string PeripheralBatteryText(Peripherals.PeripheralBattery? b) => b switch
+    {
+        null => "",
+        { Asleep: true } => PeripheralAsleep,
+        { Percent: { } p } => $"{p} %",
+        { Level: { } l } => l,
+        _ => "",
+    };
+
+    public static string PeripheralConnectionName(Peripherals.PeripheralConnection c) => c switch
+    {
+        Peripherals.PeripheralConnection.Receiver => PeripheralWireless, Peripherals.PeripheralConnection.Bluetooth => Bluetooth, _ => PeripheralWired,
+    };
+
+    public const string PeripheralGamemode = "Gamemode", PeripheralUseInGamemode = "Use these in gamemode", PeripheralGamemodeClear = "Remove",
+        PeripheralGamemodeNote = "KOS Governor sets the live DPI and polling rate saved here when gamemode turns on, and puts back what the mouse had when it turns off. Nothing is stored in the mouse.",
+        PeripheralGamemodeSaved = "Saved for gamemode: KOS Governor applies them when gamemode turns on.", PeripheralGamemodeRemoved = "Removed from gamemode.";
+
+    public static string PeripheralGamemodeValues(int? dpi, int? hz) =>
+        string.Join(" · ", new[] { dpi is { } d ? $"{d} DPI" : null, hz is { } h ? $"{h} Hz" : null }.OfType<string>()) is { Length: > 0 } s ? s : "—";
+
+    public static string PeripheralVendorApp(string app) => $"{app} is running and may overwrite these settings.";
+    public static string PeripheralReadFailed(string message) => $"The device couldn't be read: {message}";
+    public static string PeripheralWriteFailed(string message) => $"Not changed: {message}";
+    public static string PeripheralApplied(string what) => $"{what} changed and read back from the device.";
+    public static string PeripheralPollingApplied(int hz) => $"Polling rate set to {hz} Hz and read back. Check it in Latency › Mouse.";
+    public static string PeripheralUntestedApplied(string what) => $"{what} changed on an untested model: check the device behaves as expected.";
+    public static string PeripheralStage(int n, DpiStage s) => s.X == s.Y ? $"{n}: {s.X}" : $"{n}: {s.X}×{s.Y}";
+    public static string PeripheralDpiRange(PeripheralDpi d) => $"{d.Min}–{d.Max}";
+
     public static string PeripheralsReadFailed(string message) => $"The HID devices couldn't be read: {message}";
     public static string PeripheralUnnamed(ushort vendorId, ushort productId) => $"HID device {HidIds(vendorId, productId)}";
     public static string HidIds(ushort vendorId, ushort productId) => $"{vendorId:X4}:{productId:X4}";

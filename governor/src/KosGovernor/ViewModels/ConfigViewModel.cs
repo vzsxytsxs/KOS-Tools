@@ -89,11 +89,12 @@ public sealed class ConfigViewModel : ObservableObject
     public string Tab
     {
         get => _tab;
-        set { if (Set(ref _tab, value)) foreach (var n in new[] { nameof(IsRules), nameof(IsMasks), nameof(IsGamemode), nameof(IsGeneral) }) Raise(n); }
+        set { if (Set(ref _tab, value)) foreach (var n in new[] { nameof(IsRules), nameof(IsMasks), nameof(IsGamemode), nameof(IsRtss), nameof(IsGeneral) }) Raise(n); }
     }
     public bool IsRules { get => _tab == "Rules"; set { if (value) Tab = "Rules"; } }
     public bool IsMasks { get => _tab == "Masks"; set { if (value) Tab = "Masks"; } }
     public bool IsGamemode { get => _tab == "Gamemode"; set { if (value) Tab = "Gamemode"; } }
+    public bool IsRtss { get => _tab == "Rtss"; set { if (value) Tab = "Rtss"; } }
     public bool IsGeneral { get => _tab == "General"; set { if (value) Tab = "General"; } }
 
     public string RuleSearch { get => _search; set { if (Set(ref _search, value ?? "")) Raise(nameof(RuleRows)); } }
@@ -550,7 +551,7 @@ public sealed class ConfigViewModel : ObservableObject
         nameof(SysTransparency), nameof(SysCStates), nameof(SysCleanMemory), nameof(SysBackgroundEfficiency), nameof(SysGameCores), nameof(SysGameCoresSpec),
         nameof(GameCoresOptions), nameof(SysCleanDelay), nameof(SysPurgeStandby), nameof(SysPurgeStandbyMb), nameof(SysPurgeFreeMb), nameof(SysRestrain),
         nameof(SysKeepAwake), nameof(SysDwmMmcss), nameof(SysDirector), nameof(SysHeavyThreads), nameof(SysMoveBackground),
-        nameof(SysNormalizePriorities), nameof(SysAvoidInterrupts), nameof(SysWifi), nameof(SysAudio), nameof(SysRtssOsd), nameof(SysRtssFrameLimit),
+        nameof(SysNormalizePriorities), nameof(SysAvoidInterrupts), nameof(SysWifi), nameof(SysAudio), nameof(SysRtssOsd), nameof(SysRtssFrameLimit), nameof(RtssOsdOptions), nameof(SysRtssLimiterMode),
         nameof(TimerMode), nameof(TimerResolution), nameof(TimerOn), nameof(TimerNote) };
     GamemodeSystemSettings Sys => _config.Active.System;
 
@@ -669,13 +670,47 @@ public sealed class ConfigViewModel : ObservableObject
         set { if (value != Sys.RtssOsd) SetSystem(s => s.RtssOsd = value, "Saved."); }
     }
 
-    public IReadOnlyList<IntOption> FrameLimitOptions { get; } = new[] { 0, 30, 60, 75, 90, 117, 120, 141, 144, 162, 165, 237, 240 }
-        .Select(f => new IntOption(f == 0 ? "RTSS's own setting" : $"{f} FPS", f)).ToList();
-
-    public int SysRtssFrameLimit
+    static readonly (RtssOsdItems Item, string Label)[] OsdItems =
     {
-        get => Sys.RtssFrameLimit;
-        set { if (value != Sys.RtssFrameLimit) SetSystem(s => s.RtssFrameLimit = value, "Saved."); }
+        (RtssOsdItems.Fps, "FPS"), (RtssOsdItems.FrameTime, "Frame time"), (RtssOsdItems.FrametimeGraph, "Frame time graph"),
+        (RtssOsdItems.GpuLoad, "GPU load"), (RtssOsdItems.GpuTemperature, "GPU temperature"), (RtssOsdItems.GpuClock, "GPU clock"),
+        (RtssOsdItems.GpuPower, "GPU power"), (RtssOsdItems.Vram, "VRAM"), (RtssOsdItems.Cpu, "CPU load"), (RtssOsdItems.Ram, "Memory"),
+    };
+
+    /// <summary>One check box per item of the OSD (the GPU ones need an NVIDIA card).</summary>
+    public IReadOnlyList<ColumnOption> RtssOsdOptions => OsdItems.Select(o => new ColumnOption(o.Label, (Sys.RtssOsdItems & o.Item) != 0,
+        (_, on) => SetSystem(s => s.RtssOsdItems = on ? s.RtssOsdItems | o.Item : s.RtssOsdItems & ~o.Item, "Saved."))).ToList();
+
+    /// <summary>The frame limit as typed: empty or 0 keeps RTSS's own; the range is checked by <see cref="Validation"/> when saving.</summary>
+    public string SysRtssFrameLimit
+    {
+        get => Sys.RtssFrameLimit == 0 ? "" : Sys.RtssFrameLimit.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        set
+        {
+            var text = value?.Trim() ?? "";
+            if (!int.TryParse(text.Length == 0 ? "0" : text, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var fps))
+            {
+                _main.Report("Type the frame limit as a whole number of FPS (10–1000), or leave it empty for RTSS's own.", true);
+                Raise(nameof(SysRtssFrameLimit));
+                return;
+            }
+            if (fps != Sys.RtssFrameLimit) SetSystem(s => s.RtssFrameLimit = fps, fps == 0 ? "Saved: RTSS's own frame limit stays." : $"Saved: {fps} FPS while gamemode is on.");
+            else Raise(nameof(SysRtssFrameLimit)); // "0141" shows as 141 again
+        }
+    }
+
+    public sealed record LimiterOption(string Label, RtssLimiterMode Value);
+
+    public IReadOnlyList<LimiterOption> LimiterModeOptions { get; } = new LimiterOption[]
+    {
+        new("RTSS's own setting", RtssLimiterMode.Own), new("Async", RtssLimiterMode.Async), new("Front edge sync", RtssLimiterMode.FrontEdgeSync),
+        new("Back edge sync", RtssLimiterMode.BackEdgeSync), new("NVIDIA Reflex", RtssLimiterMode.Reflex),
+    };
+
+    public RtssLimiterMode SysRtssLimiterMode
+    {
+        get => Sys.RtssLimiterMode;
+        set { if (value != Sys.RtssLimiterMode) SetSystem(s => s.RtssLimiterMode = value, "Saved."); }
     }
 
     public bool SysDirector

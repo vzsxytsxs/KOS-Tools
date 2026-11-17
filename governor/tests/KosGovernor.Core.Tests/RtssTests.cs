@@ -138,8 +138,78 @@ public class RtssTests
     {
         var gpu = new GpuSensors { GpuLoad = 97, TemperatureC = 66, GraphicsMhz = 1935, PowerMw = 212_400, VramUsed = 6UL << 30, VramTotal = 8UL << 30 };
         Assert.Equal("FPS  <FR>  <FT> ms\nGPU  97%  66°C  1935 MHz  212 W  VRAM 6.0/8.0 GB\nCPU  41%  RAM 9.5/15.9 GB",
-            Rtss.OsdText(41.2, (ulong)(9.5 * (1 << 30)), (ulong)(15.9 * (1 << 30)), gpu));
-        Assert.Equal("FPS  <FR>  <FT> ms\nCPU  5%  RAM 1.0/2.0 GB", Rtss.OsdText(5, 1UL << 30, 2UL << 30, null));
+            Rtss.OsdText(RtssOsdItems.Default, 41.2, (ulong)(9.5 * (1 << 30)), (ulong)(15.9 * (1 << 30)), gpu));
+        Assert.Equal("FPS  <FR>  <FT> ms\nCPU  5%  RAM 1.0/2.0 GB", Rtss.OsdText(RtssOsdItems.Default, 5, 1UL << 30, 2UL << 30, null));
+    }
+
+    [Fact]
+    public void OsdTextShowsOnlyTheChosenItems()
+    {
+        var gpu = new GpuSensors { GpuLoad = 97, TemperatureC = 66, GraphicsMhz = 1935, PowerMw = 212_400, VramUsed = 6UL << 30, VramTotal = 8UL << 30 };
+        Assert.Equal("FPS  <FR>\n" + Rtss.GraphTag + "\nGPU  66°C  VRAM 6.0/8.0 GB\nRAM 1.0/2.0 GB",
+            Rtss.OsdText(RtssOsdItems.Fps | RtssOsdItems.FrametimeGraph | RtssOsdItems.GpuTemperature | RtssOsdItems.Vram | RtssOsdItems.Ram, 5, 1UL << 30, 2UL << 30, gpu));
+        Assert.Equal("Frame time  <FT> ms\nCPU  5%", Rtss.OsdText(RtssOsdItems.FrameTime | RtssOsdItems.Cpu, 5, 1UL << 30, 2UL << 30, gpu));
+        Assert.Equal("", Rtss.OsdText(RtssOsdItems.None, 5, 1UL << 30, 2UL << 30, gpu));
+    }
+
+    [Fact]
+    public void TheFrametimeGraphGoesInTheSlotBufferUnderItsTag()
+    {
+        const int big = 4608 + 64;
+        var mem = Memory(entrySize: big, length: Offset + big * Slots);
+        Assert.Equal(Rtss.OsdResult.Written, Rtss.Write(mem, "FPS <FR>\n" + Rtss.GraphTag));
+        var at = Offset + big + 4608; // slot 1's buffer
+        uint U(int i) => BinaryPrimitives.ReadUInt32LittleEndian(mem.AsSpan(at + 4 * i));
+        Assert.Equal(0x47523030u, U(0)); // 'GR00'
+        Assert.Equal(36u, U(1));
+        Assert.Equal(unchecked((uint)-32), U(2));
+        Assert.Equal(4u, U(5)); // frametime: RTSS supplies the samples
+        Assert.Equal(50000f, BitConverter.Int32BitsToSingle((int)U(7)));
+        Assert.Equal(0u, U(8));
+        Assert.Equal(0u, U(9)); // nothing past the object
+        Assert.Equal("FPS <FR>\n" + Rtss.GraphTag, Text(mem, 0, big + 512, 4096));
+
+        // No buffer in the slot (or a layout before v2.12): the tag goes, nothing is written past the text.
+        foreach (var small in new[] { Memory(), Memory(version: 0x0002000B, entrySize: big, length: Offset + big * Slots) })
+        {
+            var size = (int)BinaryPrimitives.ReadUInt32LittleEndian(small.AsSpan(20));
+            Assert.Equal(Rtss.OsdResult.Written, Rtss.Write(small, "FPS <FR>\n" + Rtss.GraphTag));
+            Assert.Equal("FPS <FR>\n", Encoding.Latin1.GetString(small, Offset + size + 512, 4096).Split('\0')[0]);
+            Assert.All(small.AsSpan(Offset + size + 4608, size - 4608).ToArray(), b => Assert.Equal(0, b));
+        }
+    }
+
+    [Fact]
+    public void RtssSettingsKeepOldConfigsAndAreValidated()
+    {
+        var old = System.Text.Json.JsonSerializer.Deserialize("""{"RtssOsd":true,"RtssFrameLimit":141}""", GovernorJson.Default.GamemodeSystemSettings)!;
+        Assert.True(old.RtssOsd);
+        Assert.Equal(141, old.RtssFrameLimit);
+        Assert.Equal(RtssOsdItems.Default, old.RtssOsdItems); // the OSD shows what it showed before
+        Assert.Equal(RtssLimiterMode.Own, old.RtssLimiterMode); // RTSS's mode isn't touched
+        var json = System.Text.Json.JsonSerializer.Serialize(new GamemodeSystemSettings { RtssLimiterMode = RtssLimiterMode.BackEdgeSync, RtssOsdItems = RtssOsdItems.Fps | RtssOsdItems.Cpu },
+            GovernorJson.Default.GamemodeSystemSettings);
+        Assert.Contains("\"RtssLimiterMode\": \"BackEdgeSync\"", json);
+        Assert.Equal(RtssOsdItems.Fps | RtssOsdItems.Cpu, System.Text.Json.JsonSerializer.Deserialize(json, GovernorJson.Default.GamemodeSystemSettings)!.RtssOsdItems);
+
+        var c = new GovernorConfig();
+        string[] Problems() => Validation.Problems(c, CpuTopology.Current).Where(p => p.Contains("RTSS")).ToArray();
+        foreach (var ok in new[] { 0, 10, 1000 }) { c.Active.System.RtssFrameLimit = ok; Assert.Empty(Problems()); }
+        foreach (var bad in new[] { -1, 9, 1001 }) { c.Active.System.RtssFrameLimit = bad; Assert.Single(Problems()); }
+        c.Active.System.RtssFrameLimit = 0;
+        c.Active.System.RtssLimiterMode = (RtssLimiterMode)5;
+        Assert.Single(Problems());
+        c.Active.System.RtssLimiterMode = RtssLimiterMode.Reflex;
+        c.Active.System.RtssOsdItems = (RtssOsdItems)1024;
+        Assert.Single(Problems());
+    }
+
+    [Fact]
+    public void LimiterModesMapToRtssList()
+    {
+        Assert.Equal(Rtss.MaxMode, (uint)RtssLimiterMode.Reflex - 1);
+        Assert.Equal("back edge sync", Rtss.ModeName((uint)RtssLimiterMode.BackEdgeSync - 1));
+        Assert.Equal("async", Rtss.ModeName(0));
     }
 
     [Fact]

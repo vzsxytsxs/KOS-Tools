@@ -1,0 +1,127 @@
+using KosToolbox.Core.Peripherals.Hid;
+
+namespace KosToolbox.Core.Peripherals;
+
+/// <summary>How the device reaches the PC: its own cable, a vendor receiver (2.4 GHz) or Bluetooth.</summary>
+public enum PeripheralConnection { Wired, Receiver, Bluetooth }
+
+/// <summary>
+/// A battery reading. <paramref name="Percent"/> null with <paramref name="Level"/> set: the device reports a coarse level only.
+/// <paramref name="Asleep"/>: the receiver answered but the device didn't (asleep, off or out of range); the values are unknown.
+/// </summary>
+public sealed record PeripheralBattery(int? Percent, bool? Charging, bool Asleep = false, string? Level = null);
+
+public sealed record DpiStage(int X, int Y);
+
+/// <summary>Current DPI and, when the device stores them, its stages (<paramref name="ActiveStage"/> is 1-based).</summary>
+public sealed record PeripheralDpi(int X, int Y, int Min, int Max, int Step, IReadOnlyList<DpiStage>? Stages = null, int? ActiveStage = null);
+
+public sealed record PeripheralPolling(int Hz, IReadOnlyList<int> Supported);
+
+/// <summary>
+/// What a driver read from the device. Every part is nullable: null means the device doesn't have it or it couldn't be read, and the
+/// page hides it. A field exists only because a driver fills it.
+/// </summary>
+public sealed record PeripheralState
+{
+    /// <summary>The device's own name when it reports one (HID++ name feature); else the catalog's model name.</summary>
+    public string? Name { get; init; }
+    public string? Firmware { get; init; }
+    public string? Serial { get; init; }
+    public PeripheralBattery? Battery { get; init; }
+    public PeripheralDpi? Dpi { get; init; }
+    public PeripheralPolling? Polling { get; init; }
+    public int? SleepSeconds { get; init; }
+    /// <summary>The battery level under which the device dims or warns, in percent.</summary>
+    public int? LowBatteryPercent { get; init; }
+    /// <summary>Lighting brightness in percent (all zones).</summary>
+    public int? Brightness { get; init; }
+    /// <summary>Logitech: true while the onboard profile drives the mouse (its live settings then come from the profile).</summary>
+    public bool? OnboardMode { get; init; }
+    /// <summary>A keyboard protocol and its version (VIA 12).</summary>
+    public string? Protocol { get; init; }
+    public int? Layers { get; init; }
+}
+
+/// <summary>A setting a driver can write; the page offers only these.</summary>
+public enum PeripheralSetting { Dpi, ActiveStage, PollingRate, Sleep, LowBattery, Brightness, HostMode }
+
+/// <summary>The device answered, but not as expected (status, timeout, a reply to something else). Shown as an error toast.</summary>
+public class PeripheralException(string message) : Exception(message);
+
+/// <summary>The receiver answered for a wireless device that didn't (asleep, off or out of range).</summary>
+public sealed class PeripheralAsleepException() : PeripheralException("The device didn't answer: it may be asleep, off or out of range.");
+
+/// <summary>A write that the read-back doesn't confirm; <see cref="State"/> holds what the device has now.</summary>
+public sealed class ReadBackException(string message, PeripheralState state) : PeripheralException(message)
+{
+    public PeripheralState State { get; } = state;
+}
+
+/// <summary>
+/// Talks to one physical device through <see cref="IHidTransport"/> only. Getters may retry; a setter is sent once, read back, and
+/// reported as the read-back shows it. Every value is checked against the catalog before anything is sent. Not thread-safe: one
+/// caller at a time (the page and the engine each keep their own).
+/// </summary>
+public abstract class PeripheralDriver
+{
+    /// <summary>Opens a collection (read/write = overlapped output and input reports; otherwise feature reports only). Tests swap it.</summary>
+    public static Func<HidCollection, bool, IHidTransport> Opener { get; set; } =
+        (c, readWrite) => readWrite ? HidHandle.OpenReadWrite(c) : HidHandle.OpenFeatureOnly(c);
+    /// <summary>Waits between a request and its reply; tests make it instant.</summary>
+    public static Action<int> Delay { get; set; } = Thread.Sleep;
+
+    protected PeripheralDriver(HidDevice device, string family, string? model, bool tested)
+    {
+        Device = device;
+        Family = family;
+        Model = model;
+        Tested = tested;
+    }
+
+    public HidDevice Device { get; }
+    /// <summary>The protocol family (Razer, Logitech HID++…), shown in Info.</summary>
+    public string Family { get; }
+    /// <summary>The catalog's model name; null when the device names itself.</summary>
+    public string? Model { get; }
+    /// <summary>Checked on hardware (by us or upstream for this exact PID and connection); false shows "Untested model".</summary>
+    public bool Tested { get; }
+    /// <summary>Only reads the battery (headsets, controllers, generic HID): no settings, and the page shows Power and Info only.</summary>
+    public virtual bool BatteryOnly => false;
+    public virtual PeripheralKind Kind => Device.Kind;
+    public virtual PeripheralConnection? Connection => Device.Bluetooth ? PeripheralConnection.Bluetooth : null;
+    public virtual IReadOnlySet<PeripheralSetting> Writable => new HashSet<PeripheralSetting>();
+
+    /// <summary>Everything the driver knows how to read. Getters only.</summary>
+    public abstract PeripheralState Read();
+
+    /// <summary>Just the battery (the 60 s refresh and the governor engine). Getters only.</summary>
+    public virtual PeripheralBattery? ReadBattery() => Read().Battery;
+
+    public virtual PeripheralState SetDpi(int x, int y) => throw Unsupported();
+    /// <summary>The DPI in volatile memory only, never the stored value (gamemode); unsupported where the device can't tell them apart.</summary>
+    public virtual PeripheralState SetDpiLive(int x, int y) => throw Unsupported();
+    /// <summary>Whether <see cref="SetDpiLive"/> works on this device.</summary>
+    public virtual bool HasLiveDpi => false;
+    public virtual PeripheralState SetActiveStage(int stage) => throw Unsupported();
+    public virtual PeripheralState SetPollingRate(int hz) => throw Unsupported();
+    public virtual PeripheralState SetSleep(int seconds) => throw Unsupported();
+    public virtual PeripheralState SetLowBattery(int percent) => throw Unsupported();
+    public virtual PeripheralState SetBrightness(int percent) => throw Unsupported();
+    public virtual PeripheralState SetHostMode() => throw Unsupported();
+
+    protected static NotSupportedException Unsupported() => new("This device doesn't offer that setting.");
+
+    /// <summary>Opens <paramref name="collection"/> through <see cref="Opener"/>, runs <paramref name="work"/> and closes it.</summary>
+    protected static T With<T>(HidCollection collection, bool readWrite, Func<IHidTransport, T> work)
+    {
+        var transport = Opener(collection, readWrite);
+        try { return work(transport); }
+        finally { (transport as IDisposable)?.Dispose(); }
+    }
+
+    protected static void Require(bool ok, string problem)
+    {
+        if (!ok) throw new ArgumentOutOfRangeException(null, problem);
+    }
+}

@@ -559,22 +559,6 @@
                                                                    Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" TextWrapping="Wrap" MaxWidth="440" />
                                                     </StackPanel>
                                                 </CheckBox>
-                                                <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysRtssOsd}" Margin="0,8,24,0" HorizontalAlignment="Left">
-                                                    <StackPanel>
-                                                        <TextBlock Text="On-screen display in RivaTuner (RTSS)" />
-                                                        <TextBlock Text="FPS and frame time, GPU load, temperature, clock, power and VRAM (NVIDIA), CPU and memory on RTSS's overlay. Needs RivaTuner Statistics Server installed and running: it hooks into the game, which some anti-cheats refuse."
-                                                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" TextWrapping="Wrap" MaxWidth="440" />
-                                                    </StackPanel>
-                                                </CheckBox>
-                                                <StackPanel Margin="0,8,24,0">
-                                                    <StackPanel Orientation="Horizontal">
-                                                        <TextBlock Text="RTSS frame limit" VerticalAlignment="Center" />
-                                                        <ComboBox ItemsSource="{Binding FrameLimitOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding SysRtssFrameLimit}"
-                                                                  Width="170" Margin="14,0,0,0" VerticalAlignment="Center" AutomationProperties.Name="RTSS frame limit" />
-                                                    </StackPanel>
-                                                    <TextBlock Text="RTSS's global limit while gamemode is on, back to what it was when gamemode turns off. A game's own RTSS profile with a limit of its own wins over it."
-                                                               Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" TextWrapping="Wrap" MaxWidth="440" Margin="0,2,0,0" />
-                                                </StackPanel>
                                                 <StackPanel Margin="0,8,24,0">
                                                     <StackPanel Orientation="Horizontal">
                                                         <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysGameCores}">
@@ -619,6 +603,49 @@
                                     <TextBlock DockPanel.Dock="Top" Text="{Binding PhaseHint}" Foreground="{StaticResource TextSecondaryBrush}" Margin="12,0,12,8" TextWrapping="Wrap" />
                                     <ListBox Style="{StaticResource DataList}" ItemsSource="{Binding GamemodeRows}" ItemTemplate="{StaticResource RuleRowTemplate}" Margin="4,0" />
                                 </DockPanel>
+
+                                <!-- RTSS: on-screen display and frame limit while gamemode is on (active profile). -->
+                                <ScrollViewer Visibility="{Binding IsRtss, Converter={StaticResource BoolToVis}}" VerticalScrollBarVisibility="Auto">
+                                    <StackPanel Margin="14,12" MaxWidth="640" HorizontalAlignment="Left">
+                                        <TextBlock Style="{StaticResource Secondary}" FontSize="11.5" TextWrapping="Wrap"
+                                                   Text="RivaTuner Statistics Server, when it is installed: the governor never installs or starts it. Everything here applies while gamemode is on (this profile). RTSS hooks into the game to draw and limit, which some anti-cheats refuse." />
+
+                                        <TextBlock Style="{StaticResource SectionLabel}" Text="On-screen display" Margin="0,20,0,10" />
+                                        <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysRtssOsd}" HorizontalAlignment="Left">
+                                            <StackPanel>
+                                                <TextBlock Text="Show on RTSS's overlay" />
+                                                <TextBlock Text="Updated every second in an OSD slot of the governor's own, freed when gamemode turns off. Needs RTSS running."
+                                                           Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" TextWrapping="Wrap" MaxWidth="440" />
+                                            </StackPanel>
+                                        </CheckBox>
+                                        <ItemsControl ItemsSource="{Binding RtssOsdOptions}" Margin="0,10,0,0" IsEnabled="{Binding SysRtssOsd}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate><UniformGrid Columns="3" /></ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate><CheckBox Content="{Binding Key}" IsChecked="{Binding IsVisible}" Margin="0,0,0,10" /></DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        <TextBlock Style="{StaticResource Secondary}" FontSize="11.5" TextWrapping="Wrap"
+                                                   Text="FPS, frame time and the frame time graph are RTSS's own measurements of the game. The GPU items need an NVIDIA card. Changes show within a few seconds." />
+
+                                        <TextBlock Style="{StaticResource SectionLabel}" Text="Frame limit" Margin="0,22,0,10" />
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="Limit" VerticalAlignment="Center" Width="110" />
+                                            <TextBox Text="{Binding SysRtssFrameLimit}" Width="90" MinHeight="26" Tag="RTSS's own" AutomationProperties.Name="RTSS frame limit" />
+                                            <TextBlock Text="FPS" VerticalAlignment="Center" Margin="8,0,0,0" />
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                            <TextBlock Text="Limiter mode" VerticalAlignment="Center" Width="110" />
+                                            <ComboBox ItemsSource="{Binding LimiterModeOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding SysRtssLimiterMode}"
+                                                      Width="200" AutomationProperties.Name="RTSS limiter mode" />
+                                        </StackPanel>
+                                        <TextBlock Style="{StaticResource Secondary}" FontSize="11.5" TextWrapping="Wrap" Margin="0,8,0,0"
+                                                   Text="10 to 1000 FPS, saved on Enter or when you leave the box; empty keeps RTSS's own limit. Async keeps the strictest limit and the lowest latency; front edge sync gives the evenest frame presentation (flat frame times) at some latency; back edge sync evens out frame starts and behaves close to async; NVIDIA Reflex uses the driver's limiter (NVIDIA, Direct3D 11/12; works with DLSS frame generation; RTSS falls back to async elsewhere)." />
+                                        <TextBlock Style="{StaticResource Secondary}" FontSize="11.5" TextWrapping="Wrap" Margin="0,6,0,0"
+                                                   Text="Both go into RTSS's global profile when gamemode turns on (changes here count from the next time) and are put back when it turns off, only if still as set. A game's own RTSS profile with settings of its own wins over the global one." />
+                                    </StackPanel>
+                                </ScrollViewer>
 
                                 <!-- General -->
                                 <ScrollViewer Visibility="{Binding IsGeneral, Converter={StaticResource BoolToVis}}" VerticalScrollBarVisibility="Auto">

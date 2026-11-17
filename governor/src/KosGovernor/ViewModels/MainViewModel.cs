@@ -43,7 +43,7 @@ public sealed class MainViewModel : ObservableObject
         Sections = new[]
         {
             new SectionItem("Processes", "Processes", "\uE8FD"), new SectionItem("Rules", "Rules", "\uE9D5"), new SectionItem("Gamemode", "Gamemode", "\uE7FC"),
-            new SectionItem("Masks", "CPU masks", "\uE950"), new SectionItem("Settings", "Settings", "\uE713"),
+            new SectionItem("Masks", "CPU masks", "\uE950"), new SectionItem("Rtss", "RTSS", "\uE7F4"), new SectionItem("Settings", "Settings", "\uE713"),
         };
         _section = Sections[0];
         Panel = new ProcessPanelViewModel(this);
@@ -66,7 +66,7 @@ public sealed class MainViewModel : ObservableObject
     /// <summary>The details panel under the process list (the selected processes).</summary>
     public ProcessPanelViewModel Panel { get; }
 
-    /// <summary>Processes, or one of the configuration views (Rules, Gamemode, CPU masks, Settings = ConfigViewModel's tabs).</summary>
+    /// <summary>Processes, or one of the configuration views (Rules, Gamemode, CPU masks, RTSS, Settings = ConfigViewModel's tabs).</summary>
     public SectionItem SelectedSection
     {
         get => _section;

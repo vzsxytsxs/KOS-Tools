@@ -57,15 +57,18 @@ public static class Rtss
             Owner.CopyTo(entry.Slice(OwnerAt));
         }
         var field = version >= ExtendedText && size >= OsdExAt + OsdExSize ? entry.Slice(OsdExAt, OsdExSize) : entry.Slice(0, OsdSize);
+        // The frametime graph: an object in the slot's buffer (v2.12+) that the text places with <OBJ=offset>; without the buffer, no graph line.
+        var graph = text.Contains(GraphTag) && version >= EmbeddedObjects && size >= BufferAt + GraphSize ? entry.Slice(BufferAt, GraphSize) : Span<byte>.Empty;
+        if (graph.IsEmpty) text = text.Replace(GraphTag + "\n", "").Replace(GraphTag, "");
         if (version >= Locking)
         {
             // Bit 0 is set while RTSS renders the OSD: skip this update rather than wait.
             ref var busy = ref MemoryMarshal.Cast<byte, int>(mem.Slice(BusyAt, 4))[0];
             if ((Interlocked.Or(ref busy, 1) & 1) != 0) return OsdResult.Busy;
-            try { Fill(field, text); }
+            try { Fill(field, text); FrametimeGraph(graph); }
             finally { Interlocked.And(ref busy, ~1); }
         }
-        else Fill(field, text);
+        else { Fill(field, text); FrametimeGraph(graph); }
         Interlocked.Increment(ref MemoryMarshal.Cast<byte, int>(mem.Slice(OsdFrameAt, 4))[0]);
         return OsdResult.Written;
     }
@@ -109,26 +112,57 @@ public static class Rtss
         bytes.AsSpan(0, Math.Min(bytes.Length, field.Length - 1)).CopyTo(field);
     }
 
+    // RTSS_SHARED_MEMORY_OSD_ENTRY.buffer (v2.12+) and RTSS_EMBEDDED_OBJECT_GRAPH: signature 'GR00', size, width, height, margin, flags, min, max, data count.
+    const int BufferAt = OsdExAt + OsdExSize, GraphSize = 36;
+    const uint EmbeddedObjects = 0x0002000C, GraphSignature = 0x47523030, GraphFrametime = 4;
+    /// <summary>The graph object sits at offset 0 of the slot's buffer.</summary>
+    internal const string GraphTag = "<OBJ=00000000>";
+
     /// <summary>
-    /// The OSD text: RTSS fills in &lt;FR&gt; (frames per second) and &lt;FT&gt; (frame time) for each game; the rest comes from the
-    /// governor's readings (NVIDIA cards only for the GPU line).
+    /// A frametime graph RTSS fills from the game's own frames (no samples from us), 32 characters wide and 3 lines high, 0–50 ms,
+    /// as the SDK's sample embeds it.
     /// </summary>
-    internal static string OsdText(double cpuPercent, ulong memUsed, ulong memTotal, GpuSensors? gpu)
+    static void FrametimeGraph(Span<byte> obj)
+    {
+        if (obj.IsEmpty) return;
+        var w = MemoryMarshal.Cast<byte, int>(obj);
+        (w[0], w[1], w[2], w[3], w[4], w[5]) = ((int)GraphSignature, GraphSize, -32, -3, 1, (int)GraphFrametime);
+        (w[6], w[7]) = (BitConverter.SingleToInt32Bits(0f), BitConverter.SingleToInt32Bits(50000f));
+        w[8] = 0;
+    }
+
+    /// <summary>
+    /// The OSD text: RTSS fills in &lt;FR&gt; (frames per second), &lt;FT&gt; (frame time) and the frametime graph for each game; the rest
+    /// comes from the governor's readings (NVIDIA cards only for the GPU line). Only the chosen <paramref name="items"/>.
+    /// </summary>
+    internal static string OsdText(RtssOsdItems items, double cpuPercent, ulong memUsed, ulong memTotal, GpuSensors? gpu)
     {
         var c = CultureInfo.InvariantCulture;
-        var sb = new StringBuilder("FPS  <FR>  <FT> ms\n");
+        var lines = new List<string>();
+        void Line(string label, List<string> parts) { if (parts.Count > 0) lines.Add(label + string.Join("  ", parts)); }
+        bool Has(RtssOsdItems item) => (items & item) != 0;
+
+        var frames = new List<string>();
+        if (Has(RtssOsdItems.Fps)) frames.Add("<FR>");
+        if (Has(RtssOsdItems.FrameTime)) frames.Add("<FT> ms");
+        Line(Has(RtssOsdItems.Fps) ? "FPS  " : "Frame time  ", frames);
+        if (Has(RtssOsdItems.FrametimeGraph)) lines.Add(GraphTag);
         if (gpu is { } g)
         {
             var parts = new List<string>();
-            if (g.GpuLoad is { } load) parts.Add(string.Format(c, "{0:0}%", load));
-            if (g.TemperatureC is { } temp) parts.Add(string.Format(c, "{0:0}°C", temp));
-            if (g.GraphicsMhz is { } mhz) parts.Add(string.Format(c, "{0} MHz", mhz));
-            if (g.PowerMw is { } mw) parts.Add(string.Format(c, "{0:0} W", mw / 1000.0));
-            if (g.VramUsed is { } used && g.VramTotal is { } total and > 0) parts.Add(string.Format(c, "VRAM {0:0.0}/{1:0.0} GB", used / 1073741824.0, total / 1073741824.0));
-            if (parts.Count > 0) sb.Append("GPU  ").Append(string.Join("  ", parts)).Append('\n');
+            if (Has(RtssOsdItems.GpuLoad) && g.GpuLoad is { } load) parts.Add(string.Format(c, "{0:0}%", load));
+            if (Has(RtssOsdItems.GpuTemperature) && g.TemperatureC is { } temp) parts.Add(string.Format(c, "{0:0}°C", temp));
+            if (Has(RtssOsdItems.GpuClock) && g.GraphicsMhz is { } mhz) parts.Add(string.Format(c, "{0} MHz", mhz));
+            if (Has(RtssOsdItems.GpuPower) && g.PowerMw is { } mw) parts.Add(string.Format(c, "{0:0} W", mw / 1000.0));
+            if (Has(RtssOsdItems.Vram) && g.VramUsed is { } used && g.VramTotal is { } total and > 0)
+                parts.Add(string.Format(c, "VRAM {0:0.0}/{1:0.0} GB", used / 1073741824.0, total / 1073741824.0));
+            Line("GPU  ", parts);
         }
-        sb.Append(string.Format(c, "CPU  {0:0}%  RAM {1:0.0}/{2:0.0} GB", cpuPercent, memUsed / 1073741824.0, memTotal / 1073741824.0));
-        return sb.ToString();
+        var system = new List<string>();
+        if (Has(RtssOsdItems.Cpu)) system.Add(string.Format(c, "CPU  {0:0}%", cpuPercent));
+        if (Has(RtssOsdItems.Ram)) system.Add(string.Format(c, "RAM {0:0.0}/{1:0.0} GB", memUsed / 1073741824.0, memTotal / 1073741824.0));
+        Line("", system);
+        return string.Join("\n", lines);
     }
 
     delegate T ViewFn<T>(Span<byte> mem);
@@ -171,18 +205,41 @@ public static class Rtss
         return new FrameLimit(hooks.Get("FramerateLimit"), hooks.Get("FramerateLimitDenominator"));
     }
 
-    /// <summary>Writes the global profile, reads it back from the file and tells the running games to reload it.</summary>
     internal static void WriteLimit(FrameLimit limit)
     {
         limit = limit with { Denominator = Math.Max(1, limit.Denominator) };
+        WriteGlobal(("FramerateLimitDenominator", limit.Denominator), ("FramerateLimit", limit.Limit));
+    }
+
+    /// <summary>The frame limiting mode: profile property SyncLimiter, 0 async, 1 front edge sync, 2 back edge sync, 3 NVIDIA Reflex (RTSS's list order).</summary>
+    internal const uint MaxMode = 3;
+
+    internal static uint ReadMode()
+    {
+        using var hooks = new Hooks();
+        hooks.Load("");
+        return hooks.Get("SyncLimiter");
+    }
+
+    internal static void WriteMode(uint mode) => WriteGlobal(("SyncLimiter", mode <= MaxMode ? mode : throw new ArgumentOutOfRangeException(nameof(mode))));
+
+    internal static string ModeName(uint mode) => mode switch { 0 => "async", 1 => "front edge sync", 2 => "back edge sync", 3 => "NVIDIA Reflex", _ => $"mode {mode}" };
+
+    /// <summary>Writes the global profile, reads every value back from the file and tells the running games to reload it.</summary>
+    static void WriteGlobal(params (string Name, uint Value)[] values)
+    {
         using (var hooks = new Hooks())
         {
             hooks.Load("");
-            hooks.Set("FramerateLimitDenominator", limit.Denominator);
-            hooks.Set("FramerateLimit", limit.Limit);
+            foreach (var (name, value) in values) hooks.Set(name, value);
             hooks.Save("");
         }
-        if (ReadLimit() is var saved && saved != limit) throw new InvalidOperationException($"RTSS's global profile reads {saved} after writing {limit}.");
+        using (var hooks = new Hooks())
+        {
+            hooks.Load("");
+            foreach (var (name, value) in values)
+                if (hooks.Get(name) is var saved && saved != value) throw new InvalidOperationException($"RTSS's global profile reads {name} = {saved} after writing {value}.");
+        }
         // Not the DLL's UpdateProfiles: it walks the shared memory without checking it, inside this elevated process.
         WithView(RequestProfileUpdate);
     }
@@ -303,9 +360,11 @@ internal sealed class RtssOsd : IDisposable
     readonly object _gate = new();
     bool _disposed, _warned;
     bool? _shown;
+    readonly Func<RtssOsdItems> _items;
 
-    public RtssOsd()
+    public RtssOsd(Func<RtssOsdItems> items)
     {
+        _items = items;
         try { _bus = GpuTuner.List().FirstOrDefault()?.BusId; }
         catch (Exception ex) { Log.Info($"RTSS on-screen display: no GPU line ({ex.Message})."); }
         _load.CpuPercent(); // baseline
@@ -324,7 +383,7 @@ internal sealed class RtssOsd : IDisposable
                 try { gpu = GpuTuner.ReadSensors(_bus, throughput: false); }
                 catch { } // a driver reset makes the card unreadable for a moment
             var (_, used, total) = SystemLoad.Memory();
-            var shown = Rtss.ShowOsd(Rtss.OsdText(_load.CpuPercent(), used, total, gpu));
+            var shown = Rtss.ShowOsd(Rtss.OsdText(_items(), _load.CpuPercent(), used, total, gpu));
             if (shown == _shown) return;
             _shown = shown;
             Log.Info(shown ? "RTSS on-screen display: showing." : "RTSS on-screen display: waiting for RTSS (not running, or every OSD slot is taken).");

@@ -39,14 +39,89 @@
             <WrapPanel Margin="0,4,0,8">
                 <TextBlock Text="{Binding Name}" FontSize="24" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0" />
                 <Border Style="{StaticResource Pill}" Margin="0,2,0,0">
-                    <TextBlock Text="{x:Static t:Txt.PeripheralNotSupported}" FontSize="11.5" Foreground="{StaticResource TextSecondaryBrush}" />
+                    <TextBlock Text="{Binding StatusText}" FontSize="11.5" Foreground="{StaticResource TextSecondaryBrush}" />
                 </Border>
             </WrapPanel>
             <Grid Margin="0,0,8,14">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.PeripheralNotSupportedNote}" Margin="0,0,16,0" VerticalAlignment="Center" />
+                <TextBlock Style="{StaticResource Secondary}" Text="{Binding Note}" Margin="0,0,16,0" VerticalAlignment="Center" />
                 <Button Grid.Column="1" Content="{x:Static t:Txt.CopyDeviceReport}" Command="{Binding CopyReportCommand}" VerticalAlignment="Center" />
             </Grid>
+            <TextBlock Style="{StaticResource Secondary}" Text="{Binding VendorNote}" Foreground="{StaticResource WarningBrush}" Margin="0,0,8,10"
+                       Visibility="{Binding VendorNote, Converter={StaticResource NotEmptyToVis}}" />
+            <TextBlock Style="{StaticResource Secondary}" Text="{Binding Error}" Foreground="{StaticResource ErrorBrush}" Margin="0,0,8,10"
+                       Visibility="{Binding Error, Converter={StaticResource NotEmptyToVis}}" />
+            <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.PeripheralReading}" Margin="0,0,8,10"
+                       Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" />
+            <!-- Performance: DPI, stages, polling rate. A control shows only when the driver read its value; Apply only when it can write it. -->
+            <Border Style="{StaticResource Card}" Margin="0,0,8,8" Visibility="{Binding HasPerformance, Converter={StaticResource BoolToVis}}">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource CardTitle}" Text="{x:Static t:Txt.PeripheralPerformance}" Margin="0,0,0,10" />
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10" Visibility="{Binding Dpi, Converter={StaticResource NotEmptyToVis}}">
+                        <TextBlock Text="{x:Static t:Txt.PeripheralDpi}" Width="150" VerticalAlignment="Center" />
+                        <TextBox Text="{Binding DpiText, UpdateSourceTrigger=PropertyChanged}" Width="90" IsEnabled="{Binding CanDpi}" AutomationProperties.Name="{x:Static t:Txt.PeripheralDpi}" />
+                        <Button Content="{x:Static t:Txt.Apply}" Command="{Binding ApplyDpiCommand}" Margin="8,0,0,0" Visibility="{Binding CanDpi, Converter={StaticResource BoolToVis}}" />
+                        <TextBlock Style="{StaticResource Secondary}" Text="{Binding DpiRange}" Margin="12,0,0,0" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10" Visibility="{Binding HasStages, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="{x:Static t:Txt.PeripheralDpiStages}" Width="150" VerticalAlignment="Center" />
+                        <ItemsControl Style="{StaticResource Segmented}" ItemsSource="{Binding Stages}" Tag="{Binding StageCommand}" IsEnabled="{Binding CanStage}"
+                                      AutomationProperties.Name="{x:Static t:Txt.PeripheralDpiStages}" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Visibility="{Binding HasPolling, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="{x:Static t:Txt.PeripheralPolling}" Width="150" VerticalAlignment="Center" />
+                        <ItemsControl Style="{StaticResource Segmented}" ItemsSource="{Binding Rates}" Tag="{Binding PollingCommand}" IsEnabled="{Binding CanPolling}"
+                                      AutomationProperties.Name="{x:Static t:Txt.PeripheralPolling}" />
+                    </StackPanel>
+                    <!-- Gamemode: the KOS Governor engine writes these live values while gamemode is on. -->
+                    <Grid Margin="0,12,0,0" Visibility="{Binding CanGamemode, Converter={StaticResource BoolToVis}}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <TextBlock Text="{x:Static t:Txt.PeripheralGamemode}" VerticalAlignment="Center" ToolTip="{x:Static t:Txt.PeripheralGamemodeNote}" />
+                        <TextBlock Grid.Column="1" Style="{StaticResource Secondary}" Text="{Binding GamemodeText}" VerticalAlignment="Center" ToolTip="{x:Static t:Txt.PeripheralGamemodeNote}" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal">
+                            <Button Content="{x:Static t:Txt.PeripheralUseInGamemode}" Command="{Binding GamemodeCommand}" ToolTip="{x:Static t:Txt.PeripheralGamemodeNote}" />
+                            <Button Content="{x:Static t:Txt.PeripheralGamemodeClear}" Command="{Binding GamemodeClearCommand}" Margin="8,0,0,0"
+                                    Visibility="{Binding HasGamemode, Converter={StaticResource BoolToVis}}" />
+                        </StackPanel>
+                    </Grid>
+                    <Grid Margin="0,12,0,0" Visibility="{Binding OnboardMode, Converter={StaticResource BoolToVis}}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.PeripheralOnboardNote}" Margin="0,0,16,0" />
+                        <Button Grid.Column="1" Content="{x:Static t:Txt.PeripheralUseHostMode}" Command="{Binding HostModeCommand}" VerticalAlignment="Center" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+            <!-- Power: battery, sleep timer, low-battery threshold. -->
+            <Border Style="{StaticResource Card}" Margin="0,0,8,8" Visibility="{Binding HasPower, Converter={StaticResource BoolToVis}}">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource CardTitle}" Text="{x:Static t:Txt.PeripheralPower}" Margin="0,0,0,10" />
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10" Visibility="{Binding HasBattery, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="{x:Static t:Txt.PeripheralBatteryLabel}" Width="190" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding BatteryText}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10" Visibility="{Binding HasSleep, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="{x:Static t:Txt.PeripheralSleep}" Width="190" VerticalAlignment="Center" />
+                        <TextBox Text="{Binding SleepText, UpdateSourceTrigger=PropertyChanged}" Width="60" IsEnabled="{Binding CanSleep}" AutomationProperties.Name="{x:Static t:Txt.PeripheralSleep}" />
+                        <Button Content="{x:Static t:Txt.Apply}" Command="{Binding ApplySleepCommand}" Margin="8,0,0,0" Visibility="{Binding CanSleep, Converter={StaticResource BoolToVis}}" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Visibility="{Binding HasLow, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="{x:Static t:Txt.PeripheralLowBattery}" Width="190" VerticalAlignment="Center" />
+                        <TextBox Text="{Binding LowText, UpdateSourceTrigger=PropertyChanged}" Width="60" IsEnabled="{Binding CanLow}" AutomationProperties.Name="{x:Static t:Txt.PeripheralLowBattery}" />
+                        <Button Content="{x:Static t:Txt.Apply}" Command="{Binding ApplyLowCommand}" Margin="8,0,0,0" Visibility="{Binding CanLow, Converter={StaticResource BoolToVis}}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+            <!-- Lighting: brightness only (effects are not offered: most can't be read back). -->
+            <Border Style="{StaticResource Card}" Margin="0,0,8,8" Visibility="{Binding HasBrightness, Converter={StaticResource BoolToVis}}">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource CardTitle}" Text="{x:Static t:Txt.PeripheralLighting}" Margin="0,0,0,10" />
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="{x:Static t:Txt.PeripheralBrightness}" Width="190" VerticalAlignment="Center" />
+                        <TextBox Text="{Binding BrightnessText, UpdateSourceTrigger=PropertyChanged}" Width="60" IsEnabled="{Binding CanBrightness}" AutomationProperties.Name="{x:Static t:Txt.PeripheralBrightness}" />
+                        <Button Content="{x:Static t:Txt.Apply}" Command="{Binding ApplyBrightnessCommand}" Margin="8,0,0,0" Visibility="{Binding CanBrightness, Converter={StaticResource BoolToVis}}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
             <ContentControl Content="{Binding Info}" Focusable="False" />
             <Border Style="{StaticResource Card}" Margin="0,0,8,8">
                 <StackPanel Grid.IsSharedSizeScope="True">
@@ -100,9 +175,12 @@
             <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
                     <StackPanel Margin="0,4,0,12">
+                        <TextBlock Style="{StaticResource HomeHeader}" Text="{x:Static t:Txt.PeripheralsSupportedHeader}"
+                                   Visibility="{Binding HasSupported, Converter={StaticResource BoolToVis}}" />
+                        <ItemsControl ItemsSource="{Binding Supported}" ItemTemplate="{StaticResource PeripheralRow}" Focusable="False" />
                         <TextBlock Style="{StaticResource HomeHeader}" Text="{x:Static t:Txt.PeripheralsNotSupportedHeader}"
-                                   Visibility="{Binding HasDevices, Converter={StaticResource BoolToVis}}" />
-                        <ItemsControl ItemsSource="{Binding Devices}" ItemTemplate="{StaticResource PeripheralRow}" Focusable="False" />
+                                   Visibility="{Binding HasUnsupported, Converter={StaticResource BoolToVis}}" />
+                        <ItemsControl ItemsSource="{Binding Unsupported}" ItemTemplate="{StaticResource PeripheralRow}" Focusable="False" />
                         <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.PeripheralsNone}" Margin="16,12"
                                    Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVis}}" />
                         <TextBlock Style="{StaticResource Secondary}" Text="{Binding LoadError}" Foreground="{StaticResource ErrorBrush}" Margin="16,12"

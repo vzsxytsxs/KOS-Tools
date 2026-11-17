@@ -455,7 +455,7 @@ public sealed class Engine
         if (want == (_osd is not null)) return;
         if (want)
         {
-            try { _osd = new RtssOsd(); }
+            try { _osd = new RtssOsd(() => Config.Active.System.RtssOsdItems); }
             catch (Exception ex) { Log.Warn($"RTSS on-screen display didn't start: {ex.Message}"); }
             return;
         }

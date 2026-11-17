@@ -34,11 +34,16 @@ public static class EngineHost
         var gpu = new GamemodeGpuHost(fans);
         gpu.RecoverAtStart();
         engine.GamemodeSwitched += gpu.Switch;
+        var mice = new GamemodePeripheralHost(); // peripherals: gamemode mouse settings
+        mice.RecoverAtStart();
+        engine.GamemodeSwitched += mice.Switch;
         var recovery = new GpuRecovery();
         using var tray = new Tray(engine, stop);
         engine.ConfigChanged += tray.Refresh;
         engine.SessionEnded += report => tray.Balloon("Gamemode session", $"{report.Summary}. Report on the toolbox's Stability page.",
             report.Sections.Any(s => s.Lines.Any(l => l.Warning)));
+        var batteries = new PeripheralBatteryMonitor((title, text) => tray.Balloon(title, text, warning: true)); // peripherals: tray batteries
+        batteries.Start();
 
         var worker = new Thread(() =>
         {
@@ -62,6 +67,8 @@ public static class EngineHost
             }
             engine.Shutdown();
             if (engine.Gamemode) gpu.Switch(false);
+            if (engine.Gamemode) mice.Switch(false);
+            batteries.Stop();
             fans.Shutdown();
             tray.Close();
         }) { IsBackground = true, Name = "Governor engine" };
@@ -205,10 +212,13 @@ internal sealed class Tray : IDisposable
         var data = new NotifyIconData
         {
             cbSize = Marshal.SizeOf<NotifyIconData>(), hWnd = _hwnd, uID = 1, uFlags = NifMessage | NifIcon | NifTip,
-            uCallbackMessage = WmTray, hIcon = _icon, szTip = _engine.Tooltip, szInfo = "", szInfoTitle = "",
+            uCallbackMessage = WmTray, hIcon = _icon, szTip = Tip(), szInfo = "", szInfoTitle = "",
         };
         Shell_NotifyIcon(message, ref data);
     }
+
+    /// <summary>The engine's tooltip, then the device batteries when there are any (a tooltip holds 127 characters).</summary>
+    string Tip() => (PeripheralBatteryMonitor.Line is { Length: > 0 } line ? _engine.Tooltip + "\n" + line : _engine.Tooltip) is var t && t.Length > 127 ? t[..127] : t;
 
     void ShowMenu()
     {

@@ -6,7 +6,7 @@ namespace KosToolbox.Core.Persistence;
 
 /// <summary>
 /// Source-generated JSON for the files the governor engine (Native AOT, no reflection) also reads or writes: the fan
-/// curve and its state, the GPU tuning saved for sign-in, the clock-lock record, the gamemode GPU profiles and the gamemode session reports. Same options as <see cref="JsonFile"/>.
+/// curve and its state, the GPU tuning saved for sign-in, the clock-lock record, the gamemode GPU profiles, the gamemode mouse settings and the gamemode session reports. Same options as <see cref="JsonFile"/>.
 /// </summary>
 [JsonSourceGenerationOptions(WriteIndented = true)]
 [JsonSerializable(typeof(GovernorFanCurve))]
@@ -16,4 +16,6 @@ namespace KosToolbox.Core.Persistence;
 [JsonSerializable(typeof(GamemodeGpu))]
 [JsonSerializable(typeof(GamemodeGpuState))]
 [JsonSerializable(typeof(GamemodeSessionList))]
+[JsonSerializable(typeof(KosToolbox.Core.Peripherals.GamemodePeripheral))]
+[JsonSerializable(typeof(KosToolbox.Core.Peripherals.GamemodePeripheralState))]
 internal sealed partial class KosJson : JsonSerializerContext { }

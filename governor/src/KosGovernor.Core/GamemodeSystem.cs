@@ -57,10 +57,27 @@ public sealed class GamemodeSystemSettings
     public bool RtssOsd { get; set; }
     /// <summary>RTSS's global frame limit while gamemode is on, in frames per second (0 = RTSS's own setting stays). Put back on disable if still as set.</summary>
     public int RtssFrameLimit { get; set; }
+    /// <summary>What the RTSS on-screen display shows; the default is what it showed before this was a choice.</summary>
+    public RtssOsdItems RtssOsdItems { get; set; } = RtssOsdItems.Default;
+    /// <summary>RTSS's frame limiting mode (global profile) while gamemode is on; <see cref="RtssLimiterMode.Own"/> leaves RTSS's setting.</summary>
+    public RtssLimiterMode RtssLimiterMode { get; set; }
 
     [JsonIgnore] public bool Any => PowerPlan || StopWindowsUpdate || StopSearch || TransparencyOff || CStatesOff || CleanMemory || BackgroundEfficiency
-        || PurgeStandby || KeepAwake || WifiLowLatency || RestrainBackground || LowLatencyAudio || DwmMmcss || ThreadDirector || RtssOsd || RtssFrameLimit > 0;
+        || PurgeStandby || KeepAwake || WifiLowLatency || RestrainBackground || LowLatencyAudio || DwmMmcss || ThreadDirector || RtssOsd || RtssFrameLimit > 0
+        || RtssLimiterMode != RtssLimiterMode.Own;
 }
+
+/// <summary>The lines of the RTSS on-screen display.</summary>
+[Flags]
+public enum RtssOsdItems
+{
+    None = 0, Fps = 1, FrameTime = 2, FrametimeGraph = 4, GpuLoad = 8, GpuTemperature = 16, GpuClock = 32, GpuPower = 64, Vram = 128, Cpu = 256, Ram = 512,
+    Default = Fps | FrameTime | GpuLoad | GpuTemperature | GpuClock | GpuPower | Vram | Cpu | Ram,
+    All = Default | FrametimeGraph,
+}
+
+/// <summary>RTSS's framerate limiting modes, in the order of its own list (profile property SyncLimiter = value − 1).</summary>
+public enum RtssLimiterMode { Own, Async, FrontEdgeSync, BackEdgeSync, Reflex }
 
 public sealed class ThrottledProcess
 {
@@ -102,6 +119,9 @@ public sealed class GamemodeSystemState
     public uint? RtssLimitBefore { get; set; }
     public uint? RtssDenominatorBefore { get; set; }
     public uint? RtssLimitSet { get; set; }
+    /// <summary>RTSS's limiting mode (SyncLimiter) before gamemode, and the one it set.</summary>
+    public uint? RtssModeBefore { get; set; }
+    public uint? RtssModeSet { get; set; }
 }
 
 /// <summary>Applies and undoes the <see cref="GamemodeSystemSettings"/>. Each step continues even if another fails (it goes to the log).</summary>
@@ -182,6 +202,19 @@ public static class GamemodeSystem
             Rtss.WriteLimit(want);
             Log.Info($"Gamemode: RTSS frame limit {want} (was {before}).");
         });
+        Step("RTSS limiter mode", () =>
+        {
+            if (s.RtssLimiterMode == RtssLimiterMode.Own) return;
+            var before = Rtss.ReadMode();
+            var want = (uint)s.RtssLimiterMode - 1;
+            if (before == want) return;
+            // A mode this version doesn't know (a newer RTSS) couldn't be put back: leave it.
+            if (before > Rtss.MaxMode) { Log.Warn($"Gamemode: RTSS limiter mode left as it is ({Rtss.ModeName(before)}, unknown to the governor)."); return; }
+            (state.RtssModeBefore, state.RtssModeSet) = (before, want);
+            Save(state);
+            Rtss.WriteMode(want);
+            Log.Info($"Gamemode: RTSS limiter mode {Rtss.ModeName(want)} (was {Rtss.ModeName(before)}).");
+        });
         return state;
     }
 
@@ -254,6 +287,13 @@ public static class GamemodeSystem
     /// </summary>
     public static void Restore(GamemodeSystemState state)
     {
+        Step("RTSS limiter mode", () =>
+        {
+            // The journal is admin-only, but the value still goes to the elevated DLL call: only RTSS's own modes.
+            if (state.RtssModeSet is not { } set || state.RtssModeBefore is not { } before || before > Rtss.MaxMode || Rtss.ReadMode() != set) return;
+            Rtss.WriteMode(before);
+            Log.Info($"Gamemode: RTSS limiter mode back to {Rtss.ModeName(before)}.");
+        });
         Step("RTSS frame limit", () =>
         {
             if (state.RtssLimitSet is not { } set || Rtss.ReadLimit() != new Rtss.FrameLimit(set, 1)) return;
