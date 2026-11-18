@@ -103,6 +103,12 @@ public sealed class HidHandle : IHidTransport, IDisposable
         lock (_lock) Check(HidNative.HidD_FlushQueue(_handle));
     }
 
+    /// <summary>How many input reports Windows queues for this handle (32 by default) before it drops the oldest.</summary>
+    public void SetInputBuffers(int count)
+    {
+        lock (_lock) Check(HidNative.HidD_SetNumInputBuffers(_handle, count));
+    }
+
     public void Write(byte reportId, ReadOnlySpan<byte> payload, int timeoutMs = DefaultTimeout)
     {
         var buffer = HidBuffer.Build(reportId, payload, Collection.OutputLength);
@@ -255,4 +261,7 @@ internal static class HidNative
 
     [DllImport("hid.dll", SetLastError = true)]
     public static extern bool HidD_FlushQueue(SafeFileHandle handle);
+
+    [DllImport("hid.dll", SetLastError = true)]
+    public static extern bool HidD_SetNumInputBuffers(SafeFileHandle handle, int count);
 }

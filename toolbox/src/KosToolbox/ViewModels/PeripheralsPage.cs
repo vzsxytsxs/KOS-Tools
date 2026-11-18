@@ -5,6 +5,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using KosToolbox.Core.Peripherals;
+using KosToolbox.Core.Peripherals.Royuan;
 using KosToolbox.Core.Peripherals.Hid;
 using KosToolbox.Core.Persistence;
 using KosToolbox.Core.SystemInfo;
@@ -22,8 +23,8 @@ public sealed record HidCollectionRow(string Location, string Usage, string? Usa
 public sealed class PeripheralRowViewModel : ObservableObject
 {
     PeripheralState? _state;
-    string? _error, _dpiText, _sleepText, _lowText, _brightText, _colorText;
-    bool _selected, _busy;
+    string? _error, _dpiText, _sleepText, _lowText, _brightText, _colorText, _actText, _rtPressText, _rtReleaseText, _deadZoneText;
+    bool _selected, _busy, _rapidTrigger;
 
     public PeripheralRowViewModel(HidDevice device, PeripheralDriver? driver)
     {
@@ -36,6 +37,29 @@ public sealed class PeripheralRowViewModel : ObservableObject
         Collections = device.Collections.Select(c => new HidCollectionRow(Txt.HidLocation(c.Interface, c.Collection), $"{c.UsagePage:X4}:{c.Usage:X4}",
             Txt.HidUsageName(c.UsagePage, c.Usage), Length(c.InputLength), Length(c.OutputLength), Length(c.FeatureLength))).ToList();
         ApplyDpiCommand = new AsyncCommand(() => Int(_dpiText) is { } v ? Write(Txt.PeripheralDpi, d => d.SetDpi(v, v)) : Invalid());
+        ApplySwitchesCommand = new AsyncCommand(() => Mm(_actText) is { } a && Mm(_deadZoneText) is { } dz
+            && (!_rapidTrigger || Mm(_rtPressText) is not null && Mm(_rtReleaseText) is not null)
+            ? Write(Txt.PeripheralSwitches, d => new PeripheralMagnetic(a, _rapidTrigger, Mm(_rtPressText) ?? 0, Mm(_rtReleaseText) ?? 0, dz) is var travel
+                    && d is RoyuanDriver r && _chosen.Count > 0 ? r.SetKeyTravel(_chosen.ToList(), travel) : d.SetMagnetic(travel),
+                warning: Txt.PeripheralSwitchesStored(_state?.Profile))
+            : Invalid(Txt.PeripheralSwitchesInvalid));
+        TravelCommand = new AsyncCommand(ToggleTravel);
+        KeyCommand = new RelayCommand(p => { if (p is int slot) Choose(new[] { slot }); });
+        ModeKindCommand = new RelayCommand(p => { if (p is string k && byte.TryParse(k, out var kind)) { _modeKind = kind; RaiseMode(); } });
+        ApplyModeCommand = new AsyncCommand(ApplyMode);
+        ApplyRemapCommand = new AsyncCommand(ApplyRemap);
+        RemapDefaultCommand = new AsyncCommand(RemapDefault);
+        MacroLoadCommand = new AsyncCommand(MacroLoad);
+        PaintCommand = new AsyncCommand(() => Paint(false));
+        FillCommand = new AsyncCommand(() => Paint(true));
+        SendPictureCommand = new AsyncCommand(SendPicture);
+        MacroSaveCommand = new AsyncCommand(MacroSave);
+        MacroClearCommand = new AsyncCommand(MacroClear);
+        MacroBindCommand = new AsyncCommand(MacroBind);
+        SelectAllKeysCommand = new RelayCommand(_ => Choose(_caps.Select(c => c.Slot), true));
+        ClearKeysCommand = new RelayCommand(_ => Choose(_caps.Select(c => c.Slot), false));
+        ProfileCommand = new AsyncCommand(p => p is string k && int.TryParse(k, out var n) && n != _state?.Profile
+            ? Write(Txt.PeripheralProfile, d => d.SetProfile(n), Txt.PeripheralProfileApplied(n)) : Task.CompletedTask);
         StageCommand = new AsyncCommand(p => p is string k && int.TryParse(k, out var n) ? Write(Txt.PeripheralDpiStages, d => d.SetActiveStage(n)) : Task.CompletedTask);
         PollingCommand = new AsyncCommand(p => p is string k && int.TryParse(k, out var hz) && hz != _state?.Polling?.Hz
             ? Write(Txt.PeripheralPolling, d => d.SetPollingRate(hz), Txt.PeripheralPollingApplied(hz)) : Task.CompletedTask);
@@ -107,7 +131,7 @@ public sealed class PeripheralRowViewModel : ObservableObject
     public bool CanGmDpi => Driver is { HasLiveDpi: true } && CanDpi && Dpi is not null;
     public bool CanGmPolling => CanPolling && HasPolling;
     public bool CanGmLight => Driver is { HasLiveBrightness: true } && HasLight;
-    public bool CanGamemode => Driver is { BatteryOnly: false } && (CanGmDpi || CanGmPolling || CanGmLight);
+    public bool CanGamemode => Driver is { BatteryOnly: false, GamemodeWrites: true } && (CanGmDpi || CanGmPolling || CanGmLight);
     public string GmLightText => IsDock ? Txt.PeripheralGamemodeRingOff : Txt.PeripheralGamemodeLightOff;
     public bool GmDpiOn { get => _gmDpiOn; set => Set(ref _gmDpiOn, value); }
     public string? GmDpiText { get => _gmDpiText; set { if (Set(ref _gmDpiText, value)) Raise(nameof(GmDpiSlider)); } }
@@ -246,7 +270,7 @@ public sealed class PeripheralRowViewModel : ObservableObject
     public string? VendorNote { get; private set; }
     public string? Error { get => _error; private set => Set(ref _error, value); }
     public bool IsBusy { get => _busy; private set => Set(ref _busy, value); }
-    public bool IsSelected { get => _selected; set => Set(ref _selected, value); }
+    public bool IsSelected { get => _selected; set { if (Set(ref _selected, value) && !value) StopTravel(); } }
 
     public InfoSection Info { get; }
     public IReadOnlyList<HidCollectionRow> Collections { get; }
@@ -272,9 +296,357 @@ public sealed class PeripheralRowViewModel : ObservableObject
     public IReadOnlyList<OptionItem> Rates => _state?.Polling is { } p
         ? p.Supported.Select(hz => new OptionItem(hz.ToString(), $"{hz} Hz") { IsSelected = hz == p.Hz }).ToList()
         : Array.Empty<OptionItem>();
+    /// <summary>Up to four rates per row: seven don't fit one row of the controls column.</summary>
+    public int RateColumns => Math.Clamp(_state?.Polling?.Supported.Count ?? 1, 1, 4);
     public bool HasPolling => _state?.Polling is not null;
     public bool CanPolling => Writable.Contains(PeripheralSetting.PollingRate);
-    public bool HasPerformance => Dpi is not null || HasPolling;
+    public bool HasPerformance => Dpi is not null || HasPolling || HasProfile;
+    public bool HasSwitches => _state?.Magnetic is not null;
+    public bool CanSwitches => Writable.Contains(PeripheralSetting.Magnetic);
+    public bool SwitchesMixed => SwitchTravel is { Uniform: false };
+    public string SwitchesMixedText => _chosen.Count > 0 ? Txt.PeripheralKeysMixed : Txt.PeripheralSwitchesMixed;
+    public string KeysChosenText => _chosen.Count > 0 ? Txt.PeripheralKeysChosen(_chosen.Count) : Txt.PeripheralKeysAll;
+    /// <summary>The travel the editor shows: the chosen keys', or every key's.</summary>
+    PeripheralMagnetic? SwitchTravel => _chosen.Count > 0 && Driver is RoyuanDriver r ? r.KeyTravel(_chosen) : _state?.Magnetic;
+
+    // ---------- the keyboard: one cap per key, chosen by click; the Switches editor then applies to the chosen keys only ----------
+    readonly HashSet<int> _chosen = new();
+    IReadOnlyList<KeyCapViewModel> _caps = Array.Empty<KeyCapViewModel>();
+    public IReadOnlyList<KeyCapViewModel> KeyCaps { get => _caps; private set => Set(ref _caps, value); }
+    public bool HasKeyCaps => _caps.Count > 0;
+    public ICommand KeyCommand { get; }
+    public ICommand SelectAllKeysCommand { get; }
+    public ICommand ClearKeysCommand { get; }
+
+    void BuildCaps()
+    {
+        if (Driver is not RoyuanDriver { Layout: { } layout, Keymap: { } keymap } r) { KeyCaps = Array.Empty<KeyCapViewModel>(); return; }
+        _chosen.IntersectWith(layout.Select(k => k.Slot));
+        KeyCaps = layout.Select(k => new KeyCapViewModel(k, keymap[k.Slot].Label, r.KeyTravel(new[] { k.Slot }) is { } t ? MmText(t.ActuationMm) : null)
+            { IsSelected = _chosen.Contains(k.Slot), Paint = k.Slot < RoyuanCodec.PictureKeys ? _picture[k.Slot] : 0 }).ToList();
+    }
+
+    void Choose(IEnumerable<int> slots, bool? on = null)
+    {
+        foreach (var slot in slots)
+        {
+            var cap = _caps.FirstOrDefault(c => c.Slot == slot);
+            if (cap is null) continue;
+            cap.IsSelected = on ?? !cap.IsSelected;
+            if (cap.IsSelected) _chosen.Add(slot); else _chosen.Remove(slot);
+        }
+        LoadSwitchFields();
+        LoadKeyMode();
+        LoadRemap();
+        Raise(nameof(SwitchesMixed));
+        Raise(nameof(SwitchesMixedText));
+        Raise(nameof(KeysChosenText));
+    }
+
+    // ---------- key mode (one chosen key; two for snap tap) ----------
+    byte _modeKind;
+    bool _modeRepeat;
+    string? _holdMsText, _dksPointText;
+    UsageOption? _holdKey, _tapKey;
+    /// <summary>The key codes a sub-layer can take: none, then the HID keyboard usages with their names.</summary>
+    public static IReadOnlyList<UsageOption> Usages { get; } = new[] { new UsageOption(0, Txt.PeripheralModeNone) }
+        .Concat(Enumerable.Range(0x04, 0x70).Concat(Enumerable.Range(0xE0, 8)).Select(u => new UsageOption((byte)u, RoyuanKey.Usage((byte)u)))).ToList();
+    public IReadOnlyList<DksRowViewModel> DksRows { get; } = Enumerable.Range(0, 4).Select(i => new DksRowViewModel(i)).ToList();
+    public bool CanKeyMode => Driver is RoyuanDriver && CanSwitches && _chosen.Count is 1 or 2;
+    public string KeyModeHint => _chosen.Count switch { 1 when _modeKind == RoyuanCodec.KindSnap => Txt.PeripheralModeSnapNeedsTwo, 1 => "", 2 when _modeKind == RoyuanCodec.KindSnap => Txt.PeripheralModeSnapNote, 2 => Txt.PeripheralModeSnapNeedsTwo, _ => Txt.PeripheralModeOneKey };
+    public IReadOnlyList<OptionItem> ModeKinds => new (byte Kind, string Label)[]
+    {
+        (RoyuanCodec.KindPlain, Txt.PeripheralModePlain), (RoyuanCodec.KindSnap, Txt.PeripheralModeSnap), (RoyuanCodec.KindToggle, Txt.PeripheralModeToggle),
+        (RoyuanCodec.KindModTap, Txt.PeripheralModeModTap), (RoyuanCodec.KindDks, Txt.PeripheralModeDks),
+    }.Select(k => new OptionItem(k.Kind.ToString(), k.Label) { IsSelected = k.Kind == (_modeKind == RoyuanCodec.KindToggleRepeat ? RoyuanCodec.KindToggle : _modeKind) }).ToList();
+    public ICommand ModeKindCommand { get; }
+    public ICommand ApplyModeCommand { get; }
+    public bool ModeIsToggle => _modeKind is RoyuanCodec.KindToggle or RoyuanCodec.KindToggleRepeat;
+    public bool ModeIsModTap => _modeKind == RoyuanCodec.KindModTap;
+    public bool ModeIsDks => _modeKind == RoyuanCodec.KindDks;
+    public string ModeNote => _modeKind switch
+    {
+        RoyuanCodec.KindToggle or RoyuanCodec.KindToggleRepeat => Txt.PeripheralModeToggleNote, RoyuanCodec.KindModTap => Txt.PeripheralModeModTapNote,
+        RoyuanCodec.KindDks => Txt.PeripheralModeDksNote, _ => "",
+    };
+    public bool ModeRepeat { get => _modeRepeat; set => Set(ref _modeRepeat, value); }
+    public string? HoldMsText { get => _holdMsText; set => Set(ref _holdMsText, value); }
+    public string? DksPointText { get => _dksPointText; set => Set(ref _dksPointText, value); }
+    public UsageOption? HoldKey { get => _holdKey; set => Set(ref _holdKey, value); }
+    public UsageOption? TapKey { get => _tapKey; set => Set(ref _tapKey, value); }
+
+    static UsageOption? Option(RoyuanKey k) => k.Type == 0 ? Usages.FirstOrDefault(u => u.Code == k.B) : null;
+
+    void LoadKeyMode()
+    {
+        if (Driver is not RoyuanDriver r || _chosen.Count == 0 || r.KeyMode(_chosen.First()) is not { } m) { RaiseMode(); return; }
+        _modeKind = _chosen.Count == 2 ? RoyuanCodec.KindSnap : m.Kind;
+        ModeRepeat = m.Kind == RoyuanCodec.KindToggleRepeat;
+        HoldMsText = (m.HoldMs > 0 ? m.HoldMs : 200).ToString();
+        DksPointText = MmText(m.DksPointMm > 0 ? m.DksPointMm : 0.5);
+        HoldKey = Option(m.Layers[0]);
+        TapKey = Option(m.Layers[1]);
+        for (var i = 0; i < 4; i++) DksRows[i].Load(Option(m.Layers[i]), m.Actions[i]);
+        RaiseMode();
+    }
+
+    void RaiseMode()
+    {
+        foreach (var n in new[] { nameof(CanKeyMode), nameof(KeyModeHint), nameof(ModeKinds), nameof(ModeIsToggle), nameof(ModeIsModTap), nameof(ModeIsDks), nameof(ModeNote) }) Raise(n);
+    }
+
+    Task ApplyMode()
+    {
+        if (Driver is not RoyuanDriver r || _chosen.Count == 0 || r.KeyMode(_chosen.First()) is not { } now) return Task.CompletedTask;
+        var slot = _chosen.First();
+        RoyuanKeyMode? want = _modeKind switch
+        {
+            RoyuanCodec.KindSnap when _chosen.Count == 2 => now with { Kind = RoyuanCodec.KindSnap, Partner = _chosen.Last() },
+            RoyuanCodec.KindPlain when _chosen.Count == 1 => now with { Kind = RoyuanCodec.KindPlain, Partner = null },
+            RoyuanCodec.KindToggle or RoyuanCodec.KindToggleRepeat when _chosen.Count == 1 =>
+                now with { Kind = _modeRepeat ? RoyuanCodec.KindToggleRepeat : RoyuanCodec.KindToggle, Partner = null },
+            RoyuanCodec.KindModTap when _chosen.Count == 1 && Int(_holdMsText) is { } ms && _holdKey is { Code: > 0 } hold && _tapKey is { Code: > 0 } tap =>
+                now with { Kind = RoyuanCodec.KindModTap, Partner = null, HoldMs = ms, Layers = new[] { hold.Key, tap.Key, now.Layers[2], now.Layers[3] } },
+            RoyuanCodec.KindDks when _chosen.Count == 1 && Mm(_dksPointText) is { } mm && DksRows[0].Key is { Code: > 0 } =>
+                now with { Kind = RoyuanCodec.KindDks, Partner = null, DksPointMm = mm, Actions = DksRows.Select(d => d.Actions).ToArray(),
+                    Layers = DksRows.Select(d => d.Key?.Key ?? default).ToArray() },
+            _ => null,
+        };
+        return want is null ? Invalid(Txt.PeripheralModeInvalid)
+            : Write(Txt.PeripheralKeyMode, d => ((RoyuanDriver)d).SetKeyMode(slot, want), warning: Txt.PeripheralSwitchesStored(_state?.Profile));
+    }
+
+    // ---------- remap (one chosen key): base layer, Fn layer, factory default ----------
+    UsageOption? _remapKey, _remapFn;
+    public bool CanRemap => Driver is RoyuanDriver && CanSwitches && _chosen.Count == 1;
+    public UsageOption? RemapKey { get => _remapKey; set => Set(ref _remapKey, value); }
+    public UsageOption? RemapFn { get => _remapFn; set => Set(ref _remapFn, value); }
+    /// <summary>What the chosen key has now, whatever its kind (a consumer key, Fn, a macro): a list choice left empty keeps it.</summary>
+    public string RemapKeyLabel => $"{Txt.PeripheralRemapKey}: {KeyNow(r => r.Keymap)}";
+    public string RemapFnLabel => $"{Txt.PeripheralRemapFn}: {KeyNow(r => r.FnLayer)}";
+    string KeyNow(Func<RoyuanDriver, IReadOnlyList<RoyuanKey>?> layer) =>
+        Driver is RoyuanDriver r && _chosen.Count == 1 && layer(r) is { } l && l[_chosen.First()] is var k ? (k.IsEmpty ? Txt.PeripheralModeNone : k.Label) : "";
+    public ICommand ApplyRemapCommand { get; }
+    public ICommand RemapDefaultCommand { get; }
+
+    void LoadRemap()
+    {
+        if (Driver is RoyuanDriver r && _chosen.Count == 1)
+        {
+            var slot = _chosen.First();
+            RemapKey = r.Keymap is { } k ? Option(k[slot]) : null;
+            RemapFn = r.FnLayer is { } f ? Option(f[slot]) : null;
+        }
+        Raise(nameof(CanRemap));
+        Raise(nameof(RemapKeyLabel));
+        Raise(nameof(RemapFnLabel));
+    }
+
+    Task ApplyRemap()
+    {
+        if (Driver is not RoyuanDriver || _chosen.Count != 1) return Task.CompletedTask;
+        var slot = _chosen.First();
+        var key = _remapKey?.Key; // an empty choice keeps what the key has (it can be a kind the list doesn't offer)
+        var fn = _remapFn?.Key;
+        return Write(Txt.PeripheralRemap, d =>
+        {
+            var driver = (RoyuanDriver)d;
+            var state = key is { } k && driver.Keymap?[slot] != k ? driver.SetKey(slot, 0, k) : d.Read();
+            return fn is { } f && driver.FnLayer?[slot] != f ? driver.SetFnKey(slot, f) : state;
+        }, warning: Txt.PeripheralSwitchesStored(_state?.Profile));
+    }
+
+    Task RemapDefault()
+    {
+        if (Driver is not RoyuanDriver { Identified: { } model } || _chosen.Count != 1 || model.Default(_chosen.First()) is not { } key) return Task.CompletedTask;
+        var slot = _chosen.First();
+        return Write(Txt.PeripheralRemapDefault, d => ((RoyuanDriver)d).SetKey(slot, 0, key));
+    }
+
+    // ---------- per-key colors: painted here (the keyboard can't report them), sent whole, never confirmed by a read ----------
+    readonly int[] _picture = Enumerable.Repeat(0xFFFFFF, RoyuanCodec.PictureKeys).ToArray();
+    string? _paintText = "#FFFFFF";
+    public string? PaintText { get => _paintText; set => Set(ref _paintText, value); }
+    public ICommand PaintCommand { get; }
+    public ICommand FillCommand { get; }
+    public ICommand SendPictureCommand { get; }
+
+    Task Paint(bool all)
+    {
+        if (Hex(_paintText) is not { } color) return Invalid(Txt.PeripheralColorInvalid);
+        foreach (var cap in _caps.Where(c => all || _chosen.Contains(c.Slot)))
+            if (cap.Slot < RoyuanCodec.PictureKeys) { _picture[cap.Slot] = color; cap.Paint = color; }
+        return Task.CompletedTask;
+    }
+
+    async Task SendPicture()
+    {
+        await Write(Txt.PeripheralPictureSend, d => ((RoyuanDriver)d).SendPicture(_picture.ToArray()), Txt.PeripheralPictureSent);
+    }
+
+    // ---------- macros ----------
+    int _macroSlot, _macroMode;
+    string? _macroRepeat = "1", _macroSteps;
+    public bool HasMacros => Driver is RoyuanDriver { MacroWrites: true } && CanSwitches;
+    public bool HasPicture => Driver is RoyuanDriver && CanSwitches;
+    public IReadOnlyList<int> MacroSlots { get; } = Enumerable.Range(1, RoyuanMacro.Slots).ToList();
+    public int MacroSlot { get => _macroSlot + 1; set => Set(ref _macroSlot, Math.Clamp(value - 1, 0, RoyuanMacro.Slots - 1)); }
+    public string? MacroRepeat { get => _macroRepeat; set => Set(ref _macroRepeat, value); }
+    public string? MacroSteps { get => _macroSteps; set => Set(ref _macroSteps, value); }
+    public IReadOnlyList<string> MacroModes => Txt.PeripheralMacroModes;
+    public int MacroMode { get => _macroMode; set => Set(ref _macroMode, value); }
+    public ICommand MacroLoadCommand { get; }
+    public ICommand MacroSaveCommand { get; }
+    public ICommand MacroClearCommand { get; }
+    public ICommand MacroBindCommand { get; }
+
+    async Task MacroLoad()
+    {
+        if (Driver is not RoyuanDriver r || _busy) return;
+        StopTravel();
+        IsBusy = true;
+        try
+        {
+            var m = await Task.Run(() => r.ReadMacro(_macroSlot));
+            MacroRepeat = m?.Repeat.ToString();
+            MacroSteps = m is null ? null : string.Join(Environment.NewLine, m.Steps.Select(StepText));
+        }
+        catch (Exception ex) when (ex is PeripheralException or ArgumentException or System.ComponentModel.Win32Exception or System.IO.IOException)
+        {
+            Toasts.Show(Txt.PeripheralWriteFailed(ex.Message), ToastKind.Error);
+        }
+        finally { IsBusy = false; }
+    }
+
+    static string StepText(RoyuanMacroStep s) => $"{(s.MouseButton ? $"Mouse{s.Code + 1}" : RoyuanKey.Usage(s.Code))} {(s.Pressed ? "down" : "up")} {s.DelayMs}";
+
+    /// <summary>"key down|up ms" per line; null with the bad line's number.</summary>
+    static (RoyuanMacroStep[]? Steps, int BadLine) ParseSteps(string? text)
+    {
+        var steps = new List<RoyuanMacroStep>();
+        var lines = (text ?? "").Split('\n').Select(l => l.Trim()).ToList();
+        for (var i = 0; i < lines.Count; i++)
+        {
+            if (lines[i].Length == 0) continue;
+            var p = lines[i].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (p.Length != 3 || p[1] is not ("down" or "up") || !int.TryParse(p[2], out var ms)) return (null, i + 1);
+            if (p[0].StartsWith("Mouse", StringComparison.OrdinalIgnoreCase) && int.TryParse(p[0][5..], out var b) && b is >= 1 and <= 5)
+                steps.Add(new RoyuanMacroStep((byte)(b - 1), true, p[1] == "down", ms));
+            else if (Usages.FirstOrDefault(u => u.Code > 0 && string.Equals(u.Label, p[0], StringComparison.OrdinalIgnoreCase)) is { } u)
+                steps.Add(new RoyuanMacroStep(u.Code, false, p[1] == "down", ms));
+            else return (null, i + 1);
+        }
+        return (steps.ToArray(), 0);
+    }
+
+    Task MacroSave()
+    {
+        var (steps, bad) = ParseSteps(_macroSteps);
+        if (steps is null) return Invalid(Txt.PeripheralMacroInvalid(bad));
+        if (Int(_macroRepeat) is not { } repeat) return Invalid();
+        var slot = _macroSlot;
+        return Write(Txt.PeripheralMacros, d => ((RoyuanDriver)d).SetMacro(slot, new RoyuanMacro(repeat, steps)));
+    }
+
+    Task MacroClear()
+    {
+        var slot = _macroSlot;
+        MacroSteps = null;
+        return Write(Txt.PeripheralMacroClear, d => ((RoyuanDriver)d).SetMacro(slot, new RoyuanMacro(0, Array.Empty<RoyuanMacroStep>())));
+    }
+
+    Task MacroBind()
+    {
+        if (_chosen.Count != 1) return Invalid(Txt.PeripheralMacroBindNote);
+        var slot = _chosen.First();
+        var key = new RoyuanKey(9, (byte)_macroMode, (byte)_macroSlot, 0);
+        return Write(Txt.PeripheralMacroBind, d => ((RoyuanDriver)d).SetKey(slot, 0, key), warning: Txt.PeripheralSwitchesStored(_state?.Profile));
+    }
+
+    void LoadSwitchFields()
+    {
+        if (SwitchTravel is not { } m) return;
+        ActuationText = MmText(m.ActuationMm);
+        RapidTrigger = m.RapidTrigger;
+        RtPressText = MmText(m.RtPressMm);
+        RtReleaseText = MmText(m.RtReleaseMm);
+        DeadZoneText = MmText(m.BottomDeadZoneMm);
+    }
+    public string SwitchesRange => Txt.PeripheralSwitchesRange(_state?.Magnetic?.StepMm ?? 0.01);
+    public ICommand ApplySwitchesCommand { get; }
+
+    // ---------- live key travel (ROYUAN magnetic boards; a RAM flag on the keyboard, off when the page or the device is left) ----------
+    RoyuanTravelStream? _travel;
+    CancellationTokenSource? _travelStop;
+    string? _travelText;
+    double _travelMm;
+    public bool CanTravel => Driver is RoyuanDriver && CanSwitches;
+    public bool TravelOn => _travel is not null;
+    public string TravelButtonText => TravelOn ? Txt.PeripheralTravelStop : Txt.PeripheralTravelStart;
+    public string? TravelText { get => _travelText; private set => Set(ref _travelText, value); }
+    public double TravelMm { get => _travelMm; private set => Set(ref _travelMm, value); }
+    public ICommand TravelCommand { get; }
+
+    async Task ToggleTravel()
+    {
+        if (TravelOn) { StopTravel(); return; }
+        if (Driver is not RoyuanDriver driver || _busy) return;
+        try { _travel = await Task.Run(driver.StartTravelStream); }
+        catch (Exception ex) when (ex is PeripheralException or System.ComponentModel.Win32Exception or System.IO.IOException or TimeoutException)
+        {
+            Toasts.Show(Txt.PeripheralTravelFailed(ex.Message), ToastKind.Error);
+            return;
+        }
+        TravelText = Txt.PeripheralTravelHint;
+        TravelMm = 0;
+        Raise(nameof(TravelOn));
+        Raise(nameof(TravelButtonText));
+        var stream = _travel;
+        var stop = _travelStop = new CancellationTokenSource();
+        var ui = System.Windows.Threading.Dispatcher.CurrentDispatcher;
+        _ = Task.Run(() =>
+        {
+            while (!stop.IsCancellationRequested)
+                if (stream.Next(200) is { } k)
+                    ui.BeginInvoke(() =>
+                    {
+                        if (stop.IsCancellationRequested) return;
+                        TravelText = Txt.PeripheralTravelKey(k.Slot, k.Mm);
+                        TravelMm = k.Mm;
+                        if (_caps.FirstOrDefault(c => c.Slot == k.Slot) is { } cap) cap.LiveMm = k.Mm;
+                    });
+            stream.Dispose(); // turns the stream off on the keyboard
+        });
+    }
+
+    /// <summary>Stops the live travel (the reading loop turns it off on the keyboard and closes the collection).</summary>
+    public void StopTravel()
+    {
+        if (_travel is null) return;
+        _travelStop?.Cancel();
+        _travel = null;
+        TravelText = null;
+        TravelMm = 0;
+        foreach (var cap in _caps) cap.LiveMm = 0;
+        Raise(nameof(TravelOn));
+        Raise(nameof(TravelButtonText));
+    }
+    public string? ActuationText { get => _actText; set { if (Set(ref _actText, value)) Raise(nameof(ActuationSlider)); } }
+    public double ActuationSlider { get => Mm(_actText) ?? _state?.Magnetic?.ActuationMm ?? 2; set => ActuationText = MmText(SnapMm(value)); }
+    public bool RapidTrigger { get => _rapidTrigger; set => Set(ref _rapidTrigger, value); }
+    public string? RtPressText { get => _rtPressText; set => Set(ref _rtPressText, value); }
+    public string? RtReleaseText { get => _rtReleaseText; set => Set(ref _rtReleaseText, value); }
+    public string? DeadZoneText { get => _deadZoneText; set => Set(ref _deadZoneText, value); }
+    double SnapMm(double mm) => _state?.Magnetic?.StepMm is { } s and > 0 ? Math.Round(mm / s) * s : Math.Round(mm, 2);
+    static string MmText(double mm) => mm.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+    /// <summary>Millimetres typed with a dot or a comma.</summary>
+    static double? Mm(string? s) => double.TryParse(s?.Trim().Replace(',', '.'), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : null;
+    public ICommand ProfileCommand { get; }
+    public IReadOnlyList<OptionItem> Profiles => _state is { Profile: { } active, Profiles: { } count }
+        ? Enumerable.Range(1, count).Select(n => new OptionItem(n.ToString(), Txt.PeripheralProfileItem(n)) { IsSelected = n == active }).ToList()
+        : Array.Empty<OptionItem>();
+    public bool HasProfile => Profiles.Count > 0;
+    public bool CanProfile => Writable.Contains(PeripheralSetting.Profile);
     public bool OnboardMode => _state?.OnboardMode == true && Writable.Contains(PeripheralSetting.HostMode);
 
     public bool HasBattery => _state?.Battery is not null;
@@ -289,8 +661,8 @@ public sealed class PeripheralRowViewModel : ObservableObject
     public bool CanLighting => Writable.Contains(PeripheralSetting.Lighting);
     public bool HasLightingCard => HasBrightness || HasLighting || IsDock;
     /// <summary>The effects offered; none is selected when the device has one the toolbox doesn't offer.</summary>
-    public IReadOnlyList<OptionItem> Effects => _state?.Lighting is { } l
-        ? new[] { LightingEffect.Off, LightingEffect.Static, LightingEffect.Breathing, LightingEffect.Spectrum }
+    public IReadOnlyList<OptionItem> Effects => _state?.Lighting is { } l && Driver is { } d
+        ? d.Effects
             .Select(e => new OptionItem(e.ToString(), Txt.LightingEffectName(e)) { IsSelected = e == l.Effect }).ToList()
         : Array.Empty<OptionItem>();
     public ICommand EffectCommand { get; }
@@ -315,6 +687,7 @@ public sealed class PeripheralRowViewModel : ObservableObject
     public async Task ReadAsync()
     {
         if (Driver is not { } driver || _busy) return;
+        StopTravel(); // the travel reads hold the device's HID lock while they wait
         IsBusy = true;
         try
         {
@@ -355,14 +728,16 @@ public sealed class PeripheralRowViewModel : ObservableObject
     static int? Hex(string? s) => s?.Trim().TrimStart('#') is { Length: 6 } h
         && int.TryParse(h, System.Globalization.NumberStyles.AllowHexSpecifier, System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : null;
 
-    async Task Write(string what, Func<PeripheralDriver, PeripheralState> set, string? success = null)
+    async Task Write(string what, Func<PeripheralDriver, PeripheralState> set, string? success = null, string? warning = null)
     {
         if (Driver is not { } driver || _busy) return;
+        StopTravel(); // the travel reads hold the device's HID lock while they wait
         IsBusy = true;
         try
         {
             Show(await Task.Run(() => set(driver)));
             Toasts.Show(success ?? Txt.PeripheralApplied(what));
+            if (warning is not null) Toasts.Show(warning, ToastKind.Warning);
             if (driver is { Tested: false }) Toasts.Show(Txt.PeripheralUntestedApplied(what), ToastKind.Warning);
             Log.Info($"Peripherals: {Name}: {what} written and read back.");
         }
@@ -389,6 +764,10 @@ public sealed class PeripheralRowViewModel : ObservableObject
         LowText = state.LowBatteryPercent?.ToString();
         BrightnessText = state.Brightness?.ToString();
         if (state.Lighting?.Color is { } color) ColorText = $"#{color:X6}"; // an effect without a color keeps what was typed
+        BuildCaps();
+        LoadSwitchFields();
+        LoadKeyMode();
+        LoadRemap();
         Info.Rows = InfoRows();
         LoadGamemodeEditor();
         Raise(string.Empty); // every derived property
@@ -538,6 +917,7 @@ public sealed class PeripheralsPageViewModel : PageViewModel
         }
         else
         {
+            foreach (var d in _devices) d.StopTravel();
             _battery.Stop();
             _window?.RemoveHook(OnMessage);
             _window = null;
@@ -553,5 +933,60 @@ public sealed class PeripheralsPageViewModel : PageViewModel
             _debounce.Start();
         }
         return IntPtr.Zero;
+    }
+}
+
+/// <summary>One key of the keyboard picture: where it sits (in pixels of <see cref="Unit"/> per key), what it does, its actuation, and
+/// how far it is pressed while the live travel runs.</summary>
+public sealed class KeyCapViewModel(RoyuanKeyPosition position, string label, string? actuation) : ObservableObject
+{
+    public const double Unit = 40, MaxTravelMm = 4;
+    bool _selected;
+    double _liveMm;
+    public int Slot => position.Slot;
+    public string Label => label;
+    public string? Actuation => actuation;
+    public double Left => position.X * Unit;
+    public double Top => position.Row * Unit;
+    public double Width => position.Width * Unit - 4;
+    public double Height => Unit - 4;
+    public bool IsSelected { get => _selected; set => Set(ref _selected, value); }
+    int _paint;
+    /// <summary>The key's color in the page's per-key picture (0xRRGGBB).</summary>
+    public int Paint { get => _paint; set { if (Set(ref _paint, value)) Raise(nameof(PaintBrush)); } }
+    public System.Windows.Media.Brush PaintBrush => new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb((byte)(_paint >> 16), (byte)(_paint >> 8), (byte)_paint));
+    /// <summary>The live travel in mm (0 when released or the stream is off); the cap fills from the bottom with it.</summary>
+    public double LiveMm { get => _liveMm; set { if (Set(ref _liveMm, value)) Raise(nameof(LiveHeight)); } }
+    public double LiveHeight => Math.Clamp(_liveMm / MaxTravelMm, 0, 1) * Height;
+}
+
+/// <summary>A key code the key-mode editor offers.</summary>
+public sealed record UsageOption(byte Code, string Label)
+{
+    public RoyuanKey Key => Code == 0 ? default : new RoyuanKey(0, 0, Code, 0);
+    public override string ToString() => Label;
+}
+
+/// <summary>One dynamic-keystroke row: a key (sub-layer <see cref="Layer"/>) and what it does at each of the four events.</summary>
+public sealed class DksRowViewModel(int layer) : ObservableObject
+{
+    UsageOption? _key;
+    readonly int[] _cells = new int[4];
+    public int Layer => layer;
+    public UsageOption? Key { get => _key; set => Set(ref _key, value); }
+    public IReadOnlyList<string> CellChoices => Txt.PeripheralDksCells;
+    public int Cell0 { get => _cells[0]; set => SetCell(0, value); }
+    public int Cell1 { get => _cells[1]; set => SetCell(1, value); }
+    public int Cell2 { get => _cells[2]; set => SetCell(2, value); }
+    public int Cell3 { get => _cells[3]; set => SetCell(3, value); }
+    /// <summary>The action byte: event A in bits 0..1, then B, C, D.</summary>
+    public byte Actions => (byte)(_cells[0] | _cells[1] << 2 | _cells[2] << 4 | _cells[3] << 6);
+
+    void SetCell(int i, int v) { if (_cells[i] == v) return; _cells[i] = Math.Clamp(v, 0, 3); Raise($"Cell{i}"); }
+
+    public void Load(UsageOption? key, byte actions)
+    {
+        Key = key;
+        for (var i = 0; i < 4; i++) SetCell(i, actions >> 2 * i & 3);
     }
 }

@@ -265,10 +265,19 @@
                         <ItemsControl Style="{StaticResource PeriSegmented}" ItemsSource="{Binding Stages}" Tag="{Binding StageCommand}" IsEnabled="{Binding CanStage}"
                                       AutomationProperties.Name="{x:Static t:Txt.PeripheralDpiStages}" />
                     </StackPanel>
+                    <StackPanel Style="{StaticResource PeriField}" Visibility="{Binding HasProfile, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Style="{StaticResource PeriLabel}" Text="{x:Static t:Txt.PeripheralProfile}" />
+                        <ItemsControl Style="{StaticResource PeriSegmented}" ItemsSource="{Binding Profiles}" Tag="{Binding ProfileCommand}" IsEnabled="{Binding CanProfile}"
+                                      AutomationProperties.Name="{x:Static t:Txt.PeripheralProfile}" />
+                    </StackPanel>
                     <StackPanel Style="{StaticResource PeriField}" Margin="0" Visibility="{Binding HasPolling, Converter={StaticResource BoolToVis}}">
                         <TextBlock Style="{StaticResource PeriLabel}" Text="{x:Static t:Txt.PeripheralPolling}" />
                         <ItemsControl Style="{StaticResource PeriSegmented}" ItemsSource="{Binding Rates}" Tag="{Binding PollingCommand}" IsEnabled="{Binding CanPolling}"
-                                      AutomationProperties.Name="{x:Static t:Txt.PeripheralPolling}" />
+                                      AutomationProperties.Name="{x:Static t:Txt.PeripheralPolling}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><UniformGrid Columns="{Binding RateColumns}" /></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                        </ItemsControl>
                     </StackPanel>
                     <Grid Margin="0,12,0,0" Visibility="{Binding OnboardMode, Converter={StaticResource BoolToVis}}">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
@@ -335,6 +344,209 @@
                             </StackPanel>
                         </DockPanel>
                         <TextBlock Style="{StaticResource GpuHint}" Text="{x:Static t:Txt.PeripheralDockBatteryNote}" Margin="0,8,0,0" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Switches (magnetic keyboards): one travel for every key of the active profile, stored in the keyboard; one Apply writes it all and reads it back. -->
+            <Border Style="{StaticResource Card}" Margin="0,0,8,8" Visibility="{Binding HasSwitches, Converter={StaticResource BoolToVis}}">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource CardTitle}" Text="{x:Static t:Txt.PeripheralSwitches}" />
+                    <TextBlock Style="{StaticResource GpuHint}" Text="{x:Static t:Txt.PeripheralSwitchesNote}" Margin="0,2,0,4" />
+                    <!-- The keyboard: click keys to choose them (the editor below then shows and sets those keys only); the live travel fills a key from the bottom. -->
+                    <StackPanel Visibility="{Binding HasKeyCaps, Converter={StaticResource BoolToVis}}" Margin="0,8,0,0">
+                        <Viewbox Stretch="Uniform" HorizontalAlignment="Left">
+                            <ItemsControl ItemsSource="{Binding KeyCaps}" Focusable="False" Width="640" Height="240" IsEnabled="{Binding CanSwitches}"
+                                          AutomationProperties.Name="{x:Static t:Txt.PeripheralSwitches}">
+                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><Canvas /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemContainerStyle>
+                                    <Style TargetType="ContentPresenter">
+                                        <Setter Property="Canvas.Left" Value="{Binding Left}" />
+                                        <Setter Property="Canvas.Top" Value="{Binding Top}" />
+                                    </Style>
+                                </ItemsControl.ItemContainerStyle>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button Width="{Binding Width}" Height="{Binding Height}" Cursor="Hand" FocusVisualStyle="{StaticResource FocusVisual}"
+                                                Command="{Binding DataContext.KeyCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding Slot}"
+                                                AutomationProperties.Name="{Binding Label}" ToolTip="{Binding Actuation}">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Grid>
+                                                        <Border x:Name="cap" CornerRadius="4" Background="{StaticResource ControlBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" />
+                                                        <Border CornerRadius="4" Background="{StaticResource SelectionBrush}" VerticalAlignment="Bottom" Height="{Binding LiveHeight}" />
+                                                        <Ellipse Width="6" Height="6" Fill="{Binding PaintBrush}" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,4,4,0" />
+                                                        <StackPanel VerticalAlignment="Center">
+                                                            <TextBlock Text="{Binding Label}" FontSize="14" HorizontalAlignment="Center" Foreground="{StaticResource TextBrush}" />
+                                                            <TextBlock Text="{Binding Actuation}" FontSize="12" HorizontalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                        </StackPanel>
+                                                        <Border CornerRadius="4" Background="{StaticResource TextBrush}" Opacity="0" v:Motion.ShowWhen="{Binding IsSelected}">
+                                                            <StackPanel VerticalAlignment="Center">
+                                                                <TextBlock Text="{Binding Label}" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center" Foreground="{StaticResource OnLightBrush}" />
+                                                                <TextBlock Text="{Binding Actuation}" FontSize="12" HorizontalAlignment="Center" Foreground="{StaticResource OnLightBrush}" />
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </Grid>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="cap" Property="BorderBrush" Value="{StaticResource TextBrush}" /></Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Viewbox>
+                        <DockPanel Margin="0,8,0,0">
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                <Button Content="{x:Static t:Txt.PeripheralKeysSelectAll}" Command="{Binding SelectAllKeysCommand}" />
+                                <Button Content="{x:Static t:Txt.PeripheralKeysClear}" Command="{Binding ClearKeysCommand}" Margin="8,0,0,0" />
+                            </StackPanel>
+                            <TextBlock Style="{StaticResource GpuHint}" Text="{Binding KeysChosenText}" VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,8,0" />
+                        </DockPanel>
+                    </StackPanel>
+                    <TextBlock Style="{StaticResource GpuHint}" Text="{Binding SwitchesMixedText}" Foreground="{StaticResource WarningBrush}" Margin="0,4,0,4"
+                               Visibility="{Binding SwitchesMixed, Converter={StaticResource BoolToVis}}" />
+                    <StackPanel Style="{StaticResource PeriField}" Margin="0,8,0,12">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Right" Style="{StaticResource PeriLabel}" Text="{Binding SwitchesRange}" />
+                            <TextBlock Style="{StaticResource PeriLabel}" Text="{x:Static t:Txt.PeripheralActuation}" />
+                        </DockPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="10" /><ColumnDefinition Width="76" /></Grid.ColumnDefinitions>
+                            <Slider Style="{StaticResource GpuSlider}" Minimum="0.1" Maximum="3.3" SmallChange="0.05" LargeChange="0.1" Value="{Binding ActuationSlider, Mode=TwoWay}"
+                                    IsEnabled="{Binding CanSwitches}" AutomationProperties.Name="{x:Static t:Txt.PeripheralActuation}" />
+                            <TextBox Grid.Column="2" Text="{Binding ActuationText, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CanSwitches}" AutomationProperties.Name="{x:Static t:Txt.PeripheralActuation}" />
+                        </Grid>
+                    </StackPanel>
+                    <CheckBox Style="{StaticResource GpuSwitch}" Content="{x:Static t:Txt.PeripheralRapidTrigger}" IsChecked="{Binding RapidTrigger}" IsEnabled="{Binding CanSwitches}"
+                              HorizontalAlignment="Left" Margin="0,0,0,12" />
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="12" /><ColumnDefinition Width="*" /><ColumnDefinition Width="12" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <StackPanel IsEnabled="{Binding RapidTrigger}">
+                            <TextBlock Style="{StaticResource PeriLabel}" Text="{x:Static t:Txt.PeripheralRtPress}" />
+                            <TextBox Text="{Binding RtPressText, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CanSwitches}" AutomationProperties.Name="{x:Static t:Txt.PeripheralRtPress}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" IsEnabled="{Binding RapidTrigger}">
+                            <TextBlock Style="{StaticResource PeriLabel}" Text="{x:Static t:Txt.PeripheralRtRelease}" />
+                            <TextBox Text="{Binding RtReleaseText, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CanSwitches}" AutomationProperties.Name="{x:Static t:Txt.PeripheralRtRelease}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="4">
+                            <TextBlock Style="{StaticResource PeriLabel}" Text="{x:Static t:Txt.PeripheralDeadZone}" />
+                            <TextBox Text="{Binding DeadZoneText, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CanSwitches}" AutomationProperties.Name="{x:Static t:Txt.PeripheralDeadZone}" />
+                        </StackPanel>
+                    </Grid>
+                    <Button Content="{x:Static t:Txt.Apply}" Command="{Binding ApplySwitchesCommand}" HorizontalAlignment="Left" Visibility="{Binding CanSwitches, Converter={StaticResource BoolToVis}}" />
+                    <!-- Key mode: one chosen key (two for snap tap); written to the active profile and read back. -->
+                    <StackPanel Margin="0,16,0,0" Visibility="{Binding HasKeyCaps, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Style="{StaticResource PeriLabel}" Text="{x:Static t:Txt.PeripheralKeyMode}" />
+                        <TextBlock Style="{StaticResource GpuHint}" Text="{Binding KeyModeHint}" Margin="0,0,0,6" TextWrapping="Wrap"
+                                   Visibility="{Binding KeyModeHint, Converter={StaticResource NotEmptyToVis}}" />
+                        <StackPanel Visibility="{Binding CanKeyMode, Converter={StaticResource BoolToVis}}">
+                            <ItemsControl Style="{StaticResource PeriSegmented}" ItemsSource="{Binding ModeKinds}" Tag="{Binding ModeKindCommand}" AutomationProperties.Name="{x:Static t:Txt.PeripheralKeyMode}">
+                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="3" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                            </ItemsControl>
+                            <TextBlock Style="{StaticResource GpuHint}" Text="{Binding ModeNote}" Margin="0,6,0,0" TextWrapping="Wrap" Visibility="{Binding ModeNote, Converter={StaticResource NotEmptyToVis}}" />
+                            <CheckBox Style="{StaticResource GpuSwitch}" Content="{x:Static t:Txt.PeripheralModeRepeat}" IsChecked="{Binding ModeRepeat}" HorizontalAlignment="Left" Margin="0,8,0,0"
+                                      Visibility="{Binding ModeIsToggle, Converter={StaticResource BoolToVis}}" />
+                            <Grid Margin="0,8,0,0" Visibility="{Binding ModeIsModTap, Converter={StaticResource BoolToVis}}">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="12" /><ColumnDefinition Width="*" /><ColumnDefinition Width="12" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource PeriLabel}" Text="{x:Static t:Txt.PeripheralModeTapKey}" />
+                                    <ComboBox ItemsSource="{Binding Source={x:Static vm:PeripheralRowViewModel.Usages}}" SelectedItem="{Binding TapKey}" AutomationProperties.Name="{x:Static t:Txt.PeripheralModeTapKey}" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Style="{StaticResource PeriLabel}" Text="{x:Static t:Txt.PeripheralModeHoldKey}" />
+                                    <ComboBox ItemsSource="{Binding Source={x:Static vm:PeripheralRowViewModel.Usages}}" SelectedItem="{Binding HoldKey}" AutomationProperties.Name="{x:Static t:Txt.PeripheralModeHoldKey}" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="4">
+                                    <TextBlock Style="{StaticResource PeriLabel}" Text="{x:Static t:Txt.PeripheralModeHoldMs}" />
+                                    <TextBox Text="{Binding HoldMsText, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{x:Static t:Txt.PeripheralModeHoldMs}" />
+                                </StackPanel>
+                            </Grid>
+                            <StackPanel Margin="0,8,0,0" Visibility="{Binding ModeIsDks, Converter={StaticResource BoolToVis}}">
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBlock Style="{StaticResource PeriLabel}" Text="{x:Static t:Txt.PeripheralModeFirstPoint}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                    <TextBox Text="{Binding DksPointText, UpdateSourceTrigger=PropertyChanged}" Width="76" AutomationProperties.Name="{x:Static t:Txt.PeripheralModeFirstPoint}" />
+                                </StackPanel>
+                                <ItemsControl ItemsSource="{Binding DksRows}" Focusable="False">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,0,0,6">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="2*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                                <ComboBox ItemsSource="{Binding Source={x:Static vm:PeripheralRowViewModel.Usages}}" SelectedItem="{Binding Key}" Margin="0,0,6,0" />
+                                                <ComboBox Grid.Column="1" ItemsSource="{Binding CellChoices}" SelectedIndex="{Binding Cell0}" Margin="0,0,4,0" />
+                                                <ComboBox Grid.Column="2" ItemsSource="{Binding CellChoices}" SelectedIndex="{Binding Cell1}" Margin="0,0,4,0" />
+                                                <ComboBox Grid.Column="3" ItemsSource="{Binding CellChoices}" SelectedIndex="{Binding Cell2}" Margin="0,0,4,0" />
+                                                <ComboBox Grid.Column="4" ItemsSource="{Binding CellChoices}" SelectedIndex="{Binding Cell3}" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                            <Button Content="{x:Static t:Txt.Apply}" Command="{Binding ApplyModeCommand}" HorizontalAlignment="Left" Margin="0,10,0,0" />
+                        </StackPanel>
+                    </StackPanel>
+                    <!-- Remap: the chosen key's base and Fn-layer key; Restore default puts back the catalog's factory key. -->
+                    <StackPanel Margin="0,16,0,0" Visibility="{Binding CanRemap, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Style="{StaticResource PeriLabel}" Text="{x:Static t:Txt.PeripheralRemap}" />
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="12" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource GpuHint}" Text="{Binding RemapKeyLabel}" Margin="0,0,0,4" />
+                                <ComboBox ItemsSource="{Binding Source={x:Static vm:PeripheralRowViewModel.Usages}}" SelectedItem="{Binding RemapKey}" AutomationProperties.Name="{x:Static t:Txt.PeripheralRemapKey}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Style="{StaticResource GpuHint}" Text="{Binding RemapFnLabel}" Margin="0,0,0,4" />
+                                <ComboBox ItemsSource="{Binding Source={x:Static vm:PeripheralRowViewModel.Usages}}" SelectedItem="{Binding RemapFn}" AutomationProperties.Name="{x:Static t:Txt.PeripheralRemapFn}" />
+                            </StackPanel>
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                            <Button Content="{x:Static t:Txt.Apply}" Command="{Binding ApplyRemapCommand}" />
+                            <Button Content="{x:Static t:Txt.PeripheralRemapDefault}" Command="{Binding RemapDefaultCommand}" Margin="8,0,0,0" />
+                        </StackPanel>
+                    </StackPanel>
+                    <!-- Per-key colors: painted on this page (the keyboard can't report them) and sent whole; the toast says it isn't confirmed. -->
+                    <StackPanel Margin="0,16,0,0" Visibility="{Binding HasPicture, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Style="{StaticResource PeriLabel}" Text="{x:Static t:Txt.PeripheralPicture}" />
+                        <TextBlock Style="{StaticResource GpuHint}" Text="{x:Static t:Txt.PeripheralPictureNote}" Margin="0,0,0,6" TextWrapping="Wrap" />
+                        <WrapPanel>
+                            <TextBox Text="{Binding PaintText, UpdateSourceTrigger=PropertyChanged}" Width="96" Margin="0,0,8,6" AutomationProperties.Name="{x:Static t:Txt.PeripheralColor}" />
+                            <Button Content="{x:Static t:Txt.PeripheralPicturePaint}" Command="{Binding PaintCommand}" Margin="0,0,8,6" />
+                            <Button Content="{x:Static t:Txt.PeripheralPictureFill}" Command="{Binding FillCommand}" Margin="0,0,8,6" />
+                            <Button Content="{x:Static t:Txt.PeripheralPictureSend}" Command="{Binding SendPictureCommand}" Margin="0,0,0,6" />
+                        </WrapPanel>
+                    </StackPanel>
+                    <!-- Macros: one of the 50 slots, read, edited as text, saved and read back; bound to the chosen key through the keymap. -->
+                    <StackPanel Margin="0,16,0,0" Visibility="{Binding HasMacros, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Style="{StaticResource PeriLabel}" Text="{x:Static t:Txt.PeripheralMacros}" />
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="64" /></Grid.ColumnDefinitions>
+                            <TextBlock Style="{StaticResource GpuHint}" Text="{x:Static t:Txt.PeripheralMacroSlot}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                            <ComboBox Grid.Column="1" ItemsSource="{Binding MacroSlots}" SelectedItem="{Binding MacroSlot}" AutomationProperties.Name="{x:Static t:Txt.PeripheralMacroSlot}" />
+                            <Button Grid.Column="2" Content="{x:Static t:Txt.PeripheralMacroLoad}" Command="{Binding MacroLoadCommand}" Margin="8,0,0,0" />
+                            <TextBlock Grid.Column="3" Style="{StaticResource GpuHint}" Text="{x:Static t:Txt.PeripheralMacroRepeat}" VerticalAlignment="Center" Margin="12,0,6,0" />
+                            <TextBox Grid.Column="4" Text="{Binding MacroRepeat, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{x:Static t:Txt.PeripheralMacroRepeat}" />
+                        </Grid>
+                        <TextBlock Style="{StaticResource GpuHint}" Text="{x:Static t:Txt.PeripheralMacroSteps}" Margin="0,8,0,4" TextWrapping="Wrap" />
+                        <TextBox Text="{Binding MacroSteps, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="NoWrap" MinHeight="72" MaxHeight="160"
+                                 VerticalScrollBarVisibility="Auto" FontFamily="Consolas" AutomationProperties.Name="{x:Static t:Txt.PeripheralMacros}" />
+                        <WrapPanel Margin="0,10,0,0">
+                            <Button Content="{x:Static t:Txt.PeripheralMacroSave}" Command="{Binding MacroSaveCommand}" Margin="0,0,8,6" />
+                            <Button Content="{x:Static t:Txt.PeripheralMacroClear}" Command="{Binding MacroClearCommand}" Margin="0,0,8,6" />
+                            <ComboBox ItemsSource="{Binding MacroModes}" SelectedIndex="{Binding MacroMode}" Width="120" Margin="0,0,8,6" />
+                            <Button Content="{x:Static t:Txt.PeripheralMacroBind}" Command="{Binding MacroBindCommand}" IsEnabled="{Binding CanRemap}" Margin="0,0,0,6" />
+                        </WrapPanel>
+                    </StackPanel>
+                    <StackPanel Margin="0,16,0,0" Visibility="{Binding CanTravel, Converter={StaticResource BoolToVis}}">
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Content="{Binding TravelButtonText}" Command="{Binding TravelCommand}" />
+                            <TextBlock Text="{x:Static t:Txt.PeripheralTravel}" VerticalAlignment="Center" />
+                        </DockPanel>
+                        <StackPanel Visibility="{Binding TravelOn, Converter={StaticResource BoolToVis}}" Margin="0,8,0,0">
+                            <TextBlock Style="{StaticResource GpuHint}" Text="{Binding TravelText}" Margin="0,0,0,6" />
+                            <ProgressBar Minimum="0" Maximum="4" Value="{Binding TravelMm, Mode=OneWay}" Height="6" AutomationProperties.Name="{x:Static t:Txt.PeripheralTravel}" />
+                        </StackPanel>
                     </StackPanel>
                 </StackPanel>
             </Border>

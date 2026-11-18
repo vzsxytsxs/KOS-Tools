@@ -25,6 +25,17 @@ public enum LightingEffect { Off, Static, Breathing, Spectrum, Other }
 public sealed record PeripheralLighting(LightingEffect Effect, int? Color);
 
 /// <summary>
+/// Magnetic-switch travel applied to every key, in mm: actuation, rapid trigger on/off with its press and release steps, the bottom
+/// dead zone. Read: the value most keys have; <paramref name="Uniform"/> false when keys differ (Apply sets them all).
+/// <paramref name="StepMm"/> is the board's travel unit.
+/// </summary>
+public sealed record PeripheralMagnetic(double ActuationMm, bool RapidTrigger, double RtPressMm, double RtReleaseMm, double BottomDeadZoneMm,
+    bool Uniform = true, double StepMm = 0.01)
+{
+    public const double ActuationMinMm = 0.1, ActuationMaxMm = 3.3, RtMaxMm = 2.5, DeadZoneMaxMm = 1.0;
+}
+
+/// <summary>
 /// What a driver read from the device. Every part is nullable: null means the device doesn't have it or it couldn't be read, and the
 /// page hides it. A field exists only because a driver fills it.
 /// </summary>
@@ -49,10 +60,15 @@ public sealed record PeripheralState
     /// <summary>A keyboard protocol and its version (VIA 12).</summary>
     public string? Protocol { get; init; }
     public int? Layers { get; init; }
+    /// <summary>The active onboard profile, 1-based, of <see cref="Profiles"/>.</summary>
+    public int? Profile { get; init; }
+    public int? Profiles { get; init; }
+    /// <summary>Magnetic-switch travel of the active profile, applied to every key.</summary>
+    public PeripheralMagnetic? Magnetic { get; init; }
 }
 
 /// <summary>A setting a driver can write; the page offers only these.</summary>
-public enum PeripheralSetting { Dpi, ActiveStage, PollingRate, Sleep, LowBattery, Brightness, HostMode, Lighting }
+public enum PeripheralSetting { Dpi, ActiveStage, PollingRate, Sleep, LowBattery, Brightness, HostMode, Lighting, Profile, Magnetic }
 
 /// <summary>The device answered, but not as expected (status, timeout, a reply to something else). Shown as an error toast.</summary>
 public class PeripheralException(string message) : Exception(message);
@@ -99,6 +115,8 @@ public abstract class PeripheralDriver
     public virtual PeripheralKind Kind => Device.Kind;
     public virtual PeripheralConnection? Connection => Device.Bluetooth ? PeripheralConnection.Bluetooth : null;
     public virtual IReadOnlySet<PeripheralSetting> Writable => new HashSet<PeripheralSetting>();
+    /// <summary>Whether KOS Governor's gamemode may write this device on every game start and stop (false where each write goes to flash).</summary>
+    public virtual bool GamemodeWrites => true;
 
     /// <summary>Everything the driver knows how to read. Getters only.</summary>
     public abstract PeripheralState Read();
@@ -122,9 +140,15 @@ public abstract class PeripheralDriver
     public virtual int? ReadLiveBrightness() => null;
     /// <summary>The live brightness only, nothing stored; returns what it reads back.</summary>
     public virtual int SetBrightnessLive(int percent) => throw Unsupported();
+    /// <summary>The effects <see cref="SetLighting"/> takes on this device.</summary>
+    public virtual IReadOnlyList<LightingEffect> Effects => new[] { LightingEffect.Off, LightingEffect.Static, LightingEffect.Breathing, LightingEffect.Spectrum };
     /// <summary>The effect and color (0xRRGGBB; ignored by Off and Spectrum). Off, Static, Breathing and Spectrum only.</summary>
     public virtual PeripheralState SetLighting(LightingEffect effect, int color) => throw Unsupported();
     public virtual PeripheralState SetHostMode() => throw Unsupported();
+    /// <summary>Switches the active onboard profile (1-based); everything per profile is read again.</summary>
+    public virtual PeripheralState SetProfile(int profile) => throw Unsupported();
+    /// <summary>The same travel on every key of the active profile (<see cref="PeripheralMagnetic.Uniform"/> and the step are ignored).</summary>
+    public virtual PeripheralState SetMagnetic(PeripheralMagnetic travel) => throw Unsupported();
 
     protected static NotSupportedException Unsupported() => new("This device doesn't offer that setting.");
 

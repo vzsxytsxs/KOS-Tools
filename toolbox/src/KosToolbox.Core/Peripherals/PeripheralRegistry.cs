@@ -5,6 +5,7 @@ using KosToolbox.Core.Peripherals.Keyboards;
 using KosToolbox.Core.Peripherals.Logitech;
 using KosToolbox.Core.Peripherals.Odm;
 using KosToolbox.Core.Peripherals.Razer;
+using KosToolbox.Core.Peripherals.Royuan;
 
 namespace KosToolbox.Core.Peripherals;
 
@@ -21,6 +22,7 @@ public static class PeripheralRegistry
         d => LogitechCatalog.Find(d.VendorId, d.ProductId) is { } m && LogitechCatalog.Collections(d) is var (s, l) && (s ?? l) is not null ? new HidppDriver(d, m) : null,
         OdmBatteryDriver.Claim,
         WootingDriver.Claim,
+        RoyuanDriver.Claim,
         ViaDriver.Claim,
     };
 

@@ -78,7 +78,7 @@ internal sealed class GamemodePeripheralHost
     static List<PeripheralDriver> Drivers() => HidDevices.List().Select(PeripheralRegistry.Claim).OfType<PeripheralDriver>().ToList();
 
     static PeripheralDriver? Find(List<PeripheralDriver> drivers, GamemodePeripheralEntry e) =>
-        drivers.FirstOrDefault(d => d.Device.VendorId == e.VendorId && d.Device.ProductId == e.ProductId && !d.BatteryOnly);
+        drivers.FirstOrDefault(d => d.Device.VendorId == e.VendorId && d.Device.ProductId == e.ProductId && !d.BatteryOnly && d.GamemodeWrites);
 
     static PeripheralState? Read(PeripheralDriver d)
     {

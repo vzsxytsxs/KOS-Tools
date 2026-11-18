@@ -80,6 +80,48 @@ public static partial class Txt
     public static string PeripheralReadFailed(string message) => $"The device couldn't be read: {message}";
     public static string PeripheralWriteFailed(string message) => $"Not changed: {message}";
     public static string PeripheralApplied(string what) => $"{what} changed and read back from the device.";
+    public const string PeripheralProfile = "Onboard profile";
+    public const string PeripheralSwitches = "Switches", PeripheralActuation = "Actuation (mm)", PeripheralRapidTrigger = "Rapid trigger",
+        PeripheralRtPress = "Press step (mm)", PeripheralRtRelease = "Release step (mm)", PeripheralDeadZone = "Bottom dead zone (mm)",
+        PeripheralSwitchesNote = "Applies the same travel to every key of the active profile (the release point follows the actuation); each key keeps its mode (snap tap, dynamic keystroke…).",
+        PeripheralSwitchesMixed = "The keys have different values now: Apply sets these on every key.",
+        PeripheralKeysMixed = "The chosen keys have different values now: Apply sets these on each of them.",
+        PeripheralKeysAll = "No key chosen: Apply sets every key. Click keys to set only those.",
+        PeripheralKeysSelectAll = "All keys", PeripheralKeysClear = "Clear",
+        PeripheralSwitchesInvalid = "enter the travel in millimetres, like 1.5.";
+    public const string PeripheralTravel = "Key travel", PeripheralTravelStart = "Show key travel", PeripheralTravelStop = "Stop",
+        PeripheralTravelHint = "Press a key: how far it goes shows here live. Nothing is stored.";
+    public static string PeripheralTravelKey(int slot, double mm) => $"Key slot {slot}: {mm:0.00} mm";
+    public static string PeripheralTravelFailed(string problem) => $"The key travel couldn't start: {problem}";
+    public const string PeripheralKeyMode = "Key mode", PeripheralModePlain = "Normal", PeripheralModeSnap = "Snap tap",
+        PeripheralModeToggle = "Toggle", PeripheralModeModTap = "Mod-tap", PeripheralModeDks = "Dynamic keystroke",
+        PeripheralModeRepeat = "Repeat while latched", PeripheralModeHoldKey = "Hold", PeripheralModeTapKey = "Tap", PeripheralModeHoldMs = "Hold after (ms)",
+        PeripheralModeFirstPoint = "First point (mm)", PeripheralModeNone = "—",
+        PeripheralModeSnapNote = "Snap tap pairs the two chosen keys: pressing one releases the other.",
+        PeripheralModeSnapNeedsTwo = "Choose exactly two keys for snap tap.",
+        PeripheralModeOneKey = "Choose one key to change its mode (two for snap tap).",
+        PeripheralModeToggleNote = "A press latches the key down, the next press releases it.",
+        PeripheralModeModTapNote = "Tapped, the key sends Tap; held longer than the time, it sends Hold.",
+        PeripheralModeDksNote = "Up to four keys, each with an action at: press past the first point, press past actuation, release above actuation, release above the first point.",
+        PeripheralModeInvalid = "check the key mode's values.";
+    public static readonly string[] PeripheralDksCells = { "—", "Tap", "Press", "Hold" };
+    public const string PeripheralRemap = "Remap", PeripheralRemapKey = "Key", PeripheralRemapFn = "With Fn", PeripheralRemapDefault = "Restore default",
+        PeripheralRemapOther = "(other)", PeripheralMacros = "Macros", PeripheralMacroSlot = "Macro", PeripheralMacroRepeat = "Repeat",
+        PeripheralMacroSteps = "Steps, one per line: key down|up delay-ms (Mouse1..Mouse5 for buttons). Example: A down 20",
+        PeripheralMacroLoad = "Read", PeripheralMacroSave = "Save", PeripheralMacroClear = "Clear", PeripheralMacroBind = "Run on the chosen key",
+        PeripheralMacroBindNote = "Choose one key to run the macro on it.";
+    public const string PeripheralPicture = "Per-key colors", PeripheralPicturePaint = "Paint chosen keys", PeripheralPictureFill = "Fill all",
+        PeripheralPictureSend = "Send to keyboard",
+        PeripheralPictureNote = "The keyboard can't report its per-key colors, so this picture starts from one color and is kept on this page only. Send replaces the keyboard's picture and shows it; one send every 10 s.",
+        PeripheralPictureSent = "Per-key colors sent and the picture mode is on. The keyboard can't report its colors back, so they aren't confirmed: check the keys.";
+    public static readonly string[] PeripheralMacroModes = { "Repeat count", "Toggle", "While held" };
+    public static string PeripheralMacroInvalid(int line) => $"step {line} isn't \"key down|up ms\".";
+    public static string PeripheralKeysChosen(int n) => n == 1 ? "1 key chosen: Apply sets only it." : $"{n} keys chosen: Apply sets only them.";
+    public static string PeripheralSwitchesRange(double step) => $"0.1 to 3.3 mm, steps of {step:0.###} mm";
+    public static string PeripheralSwitchesStored(int? profile) => $"The switch travel is stored in the keyboard's profile {profile?.ToString() ?? "(active)"}, not just for this session.";
+    public static string PeripheralProfileItem(int n) => $"Profile {n}";
+    public static string PeripheralProfileApplied(int n) => $"Profile {n} is active and read back; the settings shown are now that profile's.";
+
     public static string PeripheralPollingApplied(int hz) => $"Polling rate set to {hz} Hz and read back. Check it in Latency › Mouse.";
     public static string PeripheralUntestedApplied(string what) => $"{what} changed on an untested model: check the device behaves as expected.";
     public static string PeripheralStage(int n, DpiStage s) => s.X == s.Y ? $"{n}: {s.X}" : $"{n}: {s.X}×{s.Y}";

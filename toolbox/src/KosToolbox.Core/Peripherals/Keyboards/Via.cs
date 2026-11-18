@@ -28,7 +28,8 @@ public static class ViaCodec
 
 /// <summary>
 /// Any QMK/VIA board, by its raw HID collection (VIA has no VID/PID list: that's its point). Read-only, labelled "Untested model". The
-/// shared ODM VIDs are refused (their boards reuse vendor pages for other protocols; 3151:502D in particular is never written).
+/// shared ODM VIDs are refused (their boards reuse vendor pages for other protocols; 3151:502D belongs to RoyuanDriver, which
+/// writes only after Identify names a catalog board).
 /// </summary>
 public sealed class ViaDriver : PeripheralDriver
 {
