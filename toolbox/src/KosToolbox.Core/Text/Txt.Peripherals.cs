@@ -82,7 +82,9 @@ public static partial class Txt
         PeripheralGamemodeStoredNote = "This keyboard keeps every setting in its memory: gamemode writes it when it turns on and again when it turns off.",
         PeripheralSync = "Lighting sync", PeripheralSyncNote = "The checked devices get this effect and color; a keyboard's brightness goes to 100 % if it was 0.",
         PeripheralSyncApply = "Apply to all", PeripheralSyncGamemode = "Use in gamemode",
-        PeripheralSyncGamemodeSaved = "Saved in each checked device's gamemode profile.", PeripheralSyncNone = "Check at least one device.";
+        PeripheralSyncGamemodeSaved = "Saved in each checked device's gamemode profile.", PeripheralSyncNone = "Check at least one device.",
+        PeripheralShowInTray = "Show in the tray", PeripheralShowInTrayNote = "KOS Governor shows this battery as its own icon in the taskbar tray (a ring that empties as it drops).",
+        PeripheralTrayShown = "KOS Governor shows this battery in the tray.", PeripheralTrayHidden = "KOS Governor no longer shows this battery in the tray.";
 
     public const string PeripheralGamemodeRing = "Ring", PeripheralGamemodeRingOffShort = "Off", PeripheralGamemodeBattery = "Battery",
         PeripheralGamemodeNoBattery = "No battery",

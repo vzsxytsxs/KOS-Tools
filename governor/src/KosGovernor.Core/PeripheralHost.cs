@@ -226,6 +226,9 @@ internal sealed class PeripheralBatteryMonitor
     {
         var present = HidDevices.List();
         foreach (var gone in _drivers.Keys.Except(present.Select(d => d.Key)).ToList()) { _drivers.Remove(gone); _shown.Remove(gone); }
+        IReadOnlyCollection<uint> hidden;
+        try { hidden = GamemodePeripheral.Load()?.TrayHidden ?? new List<uint>(); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException) { hidden = Array.Empty<uint>(); }
         var parts = new List<string>();
         var asleep = false;
         RazerDriver? dock = null;
@@ -242,11 +245,14 @@ internal sealed class PeripheralBatteryMonitor
             try { b = driver.ReadBattery(); }
             catch (Exception ex) when (ex is PeripheralException or System.ComponentModel.Win32Exception or IOException or TimeoutException or InvalidOperationException) { continue; }
             if (b is null) continue;
+            var id = (uint)device.VendorId << 16 | device.ProductId;
+            var hide = hidden.Contains(id); // turned off on the toolbox: no tray icon (the tooltip line and the low-battery balloon stay)
+            if (hide) _shown.Remove(device.Key);
             var name = Short(driver.Model ?? device.Product ?? "Device");
             if (b.Asleep) { asleep = true; continue; }
             if (b.Percent is not { } p) continue;
             if (driver is RazerDriver) mouse = b;
-            _shown[device.Key] = new TrayDevice(device.Key, (uint)device.VendorId << 16 | device.ProductId, driver.Model ?? device.Product ?? "Device", Glyph(driver.Kind), p, b.Charging == true);
+            if (!hide) _shown[device.Key] = new TrayDevice(device.Key, id, driver.Model ?? device.Product ?? "Device", Glyph(driver.Kind), p, b.Charging == true);
             parts.Add($"{name} {p} %{(b.Charging == true ? "+" : "")}");
             if (p <= Threshold && b.Charging != true && (!_warned.TryGetValue(device.Key, out var at) || DateTime.UtcNow - at > Cooldown))
             {

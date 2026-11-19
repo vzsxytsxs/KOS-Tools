@@ -623,6 +623,8 @@
                         <TextBlock DockPanel.Dock="Right" Text="{Binding BatteryText}" FontWeight="SemiBold" VerticalAlignment="Center" />
                         <TextBlock Text="{x:Static t:Txt.PeripheralBatteryLabel}" VerticalAlignment="Center" />
                     </DockPanel>
+                    <CheckBox Style="{StaticResource GpuSwitch}" Content="{x:Static t:Txt.PeripheralShowInTray}" IsChecked="{Binding ShowInTray}" HorizontalAlignment="Left" Margin="0,0,0,10"
+                              ToolTip="{x:Static t:Txt.PeripheralShowInTrayNote}" Visibility="{Binding HasBattery, Converter={StaticResource BoolToVis}}" />
                     <DockPanel Margin="0,0,0,10" Visibility="{Binding HasSleep, Converter={StaticResource BoolToVis}}">
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                             <TextBox Text="{Binding SleepText, UpdateSourceTrigger=PropertyChanged}" Width="60" IsEnabled="{Binding CanSleep}" AutomationProperties.Name="{x:Static t:Txt.PeripheralSleep}" />

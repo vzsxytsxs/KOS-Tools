@@ -16,6 +16,8 @@ public sealed class GamemodePeripheral
     public bool Suspended { get; set; }
     /// <summary>Not gamemode: the engine colors a Razer charging dock by the mouse battery (live only), all the time.</summary>
     public bool DockBattery { get; set; }
+    /// <summary>Devices (VID &lt;&lt; 16 | PID) whose battery gets no tray icon from KOS Governor; every other device with a battery gets one.</summary>
+    public List<uint> TrayHidden { get; set; } = new();
 
     public static string FilePath => Path.Combine(GovernorFanCurve.Directory, "gamemode-peripheral.json");
     public static string StatePath => Path.Combine(GovernorFanCurve.Directory, "gamemode-peripheral-state.json");

@@ -123,6 +123,34 @@ public sealed class PeripheralRowViewModel : ObservableObject
         if (!on && _state?.Lighting is { Effect: not LightingEffect.Other } l) await Write(Txt.PeripheralLighting, d => d.SetLighting(l.Effect, l.Color ?? 0));
     }
 
+    // ---------- the battery's tray icon (KOS Governor), on unless turned off here ----------
+    bool? _inTray;
+    uint TrayId => (uint)Device.VendorId << 16 | Device.ProductId;
+    public bool ShowInTray
+    {
+        get => _inTray ??= Config()?.TrayHidden.Contains(TrayId) != true;
+        set
+        {
+            if (value == ShowInTray) return;
+            try
+            {
+                if (!KosToolbox.Core.Execution.Elevation.IsAdmin) throw new InvalidOperationException(Txt.GpuGamemodeNeedsAdmin);
+                var config = GamemodePeripheral.Load() ?? new GamemodePeripheral();
+                config.TrayHidden.Remove(TrayId);
+                if (!value) config.TrayHidden.Add(TrayId);
+                config.Save(); // wakes the engine: the icon comes or goes in seconds
+                _inTray = value;
+                Toasts.Show(value ? Txt.PeripheralTrayShown : Txt.PeripheralTrayHidden);
+                Log.Info($"Peripherals: {Name}: battery in the tray {(value ? "on" : "off")}.");
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or System.IO.IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+            {
+                Toasts.Show(Txt.PeripheralWriteFailed(ex.Message), ToastKind.Error);
+            }
+            Raise(); // a failed save puts the switch back
+        }
+    }
+
     // ---------- gamemode profile: what KOS Governor writes while gamemode is on, put back when it ends ----------
     GamemodePeripheralEntry? _gamemode;
     bool _gmDpiOn, _gmLoaded;
