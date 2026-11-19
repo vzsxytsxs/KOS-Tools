@@ -1,0 +1,146 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:vm="clr-namespace:KosToolbox.ViewModels"
+                    xmlns:v="clr-namespace:KosToolbox.Views"
+                    xmlns:t="clr-namespace:KosToolbox.Core.Text;assembly=KosToolbox.Core">
+
+    <!-- ===================== Audio ===================== -->
+    <!-- Uses Theme.xaml, Templates.xaml and GpuTemplates.xaml (GpuSwitch, GpuSlider, GpuHint): an app showing the device settings panel
+         (KOS Equalizer) merges those before this one, as KOS Firewall does. -->
+    <Style x:Key="AudioCard" TargetType="Border" BasedOn="{StaticResource Card}">
+        <Setter Property="Margin" Value="0,0,0,8" />
+    </Style>
+    <Style x:Key="AudioBadge" TargetType="Border" BasedOn="{StaticResource Pill}">
+        <Setter Property="Margin" Value="0,2,6,0" />
+    </Style>
+
+    <!-- A device of the list: speaker or microphone, name, then default markers, muted and the format. -->
+    <DataTemplate x:Key="AudioDeviceRow">
+        <Button Style="{StaticResource HomeRow}" Height="52" AutomationProperties.Name="{Binding Name}">
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                <TextBlock Style="{StaticResource Icon}" Text="{Binding Glyph}" FontSize="18" Width="22" Margin="0,0,14,0" ToolTip="{Binding FlowText}" />
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock x:Name="name" Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}" />
+                    <TextBlock Text="{Binding Sub}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Sub}" />
+                </StackPanel>
+            </Grid>
+        </Button>
+        <DataTemplate.Triggers>
+            <DataTrigger Binding="{Binding IsSelected}" Value="True"><Setter TargetName="name" Property="FontWeight" Value="SemiBold" /></DataTrigger>
+        </DataTemplate.Triggers>
+    </DataTemplate>
+
+    <!-- One device's settings (the Audio page's detail, and KOS Equalizer's). Each control writes its change and the device is read back;
+         a switch shows what was read (OneWay), its command writes the other value. The slider writes once it rests. -->
+    <DataTemplate DataType="{x:Type vm:AudioDeviceSettingsViewModel}">
+        <StackPanel>
+            <TextBlock Style="{StaticResource Secondary}" FontSize="12" Text="{Binding FlowText}" />
+            <WrapPanel Margin="0,4,0,10">
+                <TextBlock Text="{Binding Name}" FontSize="24" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0" TextWrapping="Wrap" />
+                <Border Style="{StaticResource AudioBadge}" Visibility="{Binding IsDefault, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="{x:Static t:Txt.AudioDefaultBadge}" FontSize="11.5" Foreground="{StaticResource TextSecondaryBrush}" />
+                </Border>
+                <Border Style="{StaticResource AudioBadge}" Visibility="{Binding IsCommunications, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="{x:Static t:Txt.AudioCommunicationsBadge}" FontSize="11.5" Foreground="{StaticResource TextSecondaryBrush}" />
+                </Border>
+            </WrapPanel>
+            <TextBlock Style="{StaticResource Secondary}" Text="{Binding Error}" Foreground="{StaticResource ErrorBrush}" Margin="0,0,0,10"
+                       Visibility="{Binding Error, Converter={StaticResource NotEmptyToVis}}" />
+
+            <!-- Default device: for everything (console and multimedia roles) or for communications. -->
+            <Border Style="{StaticResource AudioCard}">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource CardTitle}" Text="{x:Static t:Txt.AudioDefaultTitle}" />
+                    <TextBlock Style="{StaticResource Secondary}" Text="{Binding DefaultText}" Margin="0,2,0,10" />
+                    <WrapPanel>
+                        <Button Content="{x:Static t:Txt.AudioMakeDefault}" Command="{Binding MakeDefaultCommand}" Margin="0,0,8,0" />
+                        <Button Content="{x:Static t:Txt.AudioMakeCommunications}" Command="{Binding MakeCommunicationsCommand}" />
+                    </WrapPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Volume (the slider's limits come before its value, so nothing is ever coerced and written back) and mute. -->
+            <Border Style="{StaticResource AudioCard}">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource CardTitle}" Text="{x:Static t:Txt.AudioVolumeTitle}" Margin="0,0,0,8" />
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="56" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <Slider Style="{StaticResource GpuSlider}" Minimum="0" Maximum="100" Value="{Binding Volume, Mode=TwoWay}"
+                                AutomationProperties.Name="{x:Static t:Txt.AudioVolumeTitle}" />
+                        <TextBlock Grid.Column="1" Text="{Binding VolumeText}" HorizontalAlignment="Right" VerticalAlignment="Center" Typography.NumeralAlignment="Tabular" />
+                        <CheckBox Grid.Column="2" Style="{StaticResource GpuSwitch}" Content="{x:Static t:Txt.AudioMute}" IsChecked="{Binding Muted, Mode=OneWay}"
+                                  Command="{Binding ToggleMuteCommand}" Margin="24,0,0,0" AutomationProperties.Name="{x:Static t:Txt.AudioMute}" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Format: the formats the device takes, one per depth and rate; Apply writes the chosen one. -->
+            <Border Style="{StaticResource AudioCard}" Visibility="{Binding HasFormat, Converter={StaticResource BoolToVis}}">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource CardTitle}" Text="{x:Static t:Txt.AudioFormatTitle}" />
+                    <TextBlock Style="{StaticResource GpuHint}" Text="{x:Static t:Txt.AudioFormatNote}" Margin="0,2,0,10" />
+                    <StackPanel Orientation="Horizontal">
+                        <ComboBox ItemsSource="{Binding Formats}" SelectedItem="{Binding ChosenFormat, Mode=TwoWay}" Width="220"
+                                  AutomationProperties.Name="{x:Static t:Txt.AudioFormatTitle}" />
+                        <Button Content="{x:Static t:Txt.Apply}" Command="{Binding ApplyFormatCommand}" Margin="8,0,0,0" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <TextBlock Style="{StaticResource GpuHint}" Text="{x:Static t:Txt.AudioFormatOnly}" Margin="0,8,0,0"
+                               Visibility="{Binding FormatOnly, Converter={StaticResource BoolToVis}}" />
+                </StackPanel>
+            </Border>
+
+            <!-- Exclusive mode: the Sound control panel's two Advanced checkboxes; priority only counts while exclusive mode is allowed. -->
+            <Border Style="{StaticResource AudioCard}">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource CardTitle}" Text="{x:Static t:Txt.AudioExclusiveTitle}" Margin="0,0,0,10" />
+                    <StackPanel Visibility="{Binding HasExclusive, Converter={StaticResource BoolToVis}}">
+                        <CheckBox Style="{StaticResource GpuSwitch}" Content="{x:Static t:Txt.AudioExclusiveAllow}" IsChecked="{Binding ExclusiveAllowed, Mode=OneWay}"
+                                  Command="{Binding ToggleExclusiveCommand}" HorizontalAlignment="Left" AutomationProperties.Name="{x:Static t:Txt.AudioExclusiveAllow}" />
+                        <CheckBox Style="{StaticResource GpuSwitch}" Content="{x:Static t:Txt.AudioExclusivePriority}" IsChecked="{Binding ExclusivePriority, Mode=OneWay}"
+                                  Command="{Binding TogglePriorityCommand}" HorizontalAlignment="Left" Margin="0,10,0,0" AutomationProperties.Name="{x:Static t:Txt.AudioExclusivePriority}" />
+                    </StackPanel>
+                    <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.AudioExclusiveNone}"
+                               Visibility="{Binding HasExclusive, Converter={StaticResource InverseBoolToVis}}" />
+                    <TextBlock Style="{StaticResource GpuHint}" Text="{x:Static t:Txt.AudioExclusiveNote}" Margin="0,12,0,0" />
+                </StackPanel>
+            </Border>
+
+            <!-- Audio enhancements: only devices that have effects can turn them off. -->
+            <Border Style="{StaticResource AudioCard}">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource CardTitle}" Text="{x:Static t:Txt.AudioEnhancementsTitle}" Margin="0,0,0,10" />
+                    <CheckBox Style="{StaticResource GpuSwitch}" Content="{x:Static t:Txt.AudioEnhancementsOff}" IsChecked="{Binding EnhancementsOff, Mode=OneWay}"
+                              Command="{Binding ToggleEnhancementsCommand}" HorizontalAlignment="Left" AutomationProperties.Name="{x:Static t:Txt.AudioEnhancementsOff}"
+                              Visibility="{Binding HasEnhancements, Converter={StaticResource BoolToVis}}" />
+                    <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.AudioNoEnhancements}"
+                               Visibility="{Binding HasEnhancements, Converter={StaticResource InverseBoolToVis}}" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </DataTemplate>
+
+    <!-- Audio: playback and recording devices (280 px, scrolling on their own) and the selected device's settings beside them. -->
+    <DataTemplate DataType="{x:Type vm:AudioPageViewModel}">
+        <Grid>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="280" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+            <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+                    <StackPanel Margin="0,4,0,12">
+                        <TextBlock Style="{StaticResource HomeHeader}" Text="{x:Static t:Txt.AudioPlaybackHeader}" Visibility="{Binding HasPlayback, Converter={StaticResource BoolToVis}}" />
+                        <ItemsControl ItemsSource="{Binding Playback}" ItemTemplate="{StaticResource AudioDeviceRow}" Focusable="False" />
+                        <TextBlock Style="{StaticResource HomeHeader}" Text="{x:Static t:Txt.AudioRecordingHeader}" Visibility="{Binding HasRecording, Converter={StaticResource BoolToVis}}" />
+                        <ItemsControl ItemsSource="{Binding Recording}" ItemTemplate="{StaticResource AudioDeviceRow}" Focusable="False" />
+                        <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.AudioNone}" Margin="16,12" Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVis}}" />
+                        <TextBlock Style="{StaticResource Secondary}" Text="{Binding LoadError}" Foreground="{StaticResource ErrorBrush}" Margin="16,12"
+                                   Visibility="{Binding LoadError, Converter={StaticResource NotEmptyToVis}}" />
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+            <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False" Margin="24,0,0,0">
+                <ContentControl Content="{Binding Selected}" Focusable="False" MaxWidth="760" HorizontalAlignment="Left" Margin="0,0,8,0"
+                                v:Motion.Transition="{Binding Selected}" />
+            </ScrollViewer>
+        </Grid>
+    </DataTemplate>
+</ResourceDictionary>

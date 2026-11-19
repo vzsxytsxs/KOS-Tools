@@ -55,7 +55,8 @@ public sealed class MainViewModel : ObservableObject
                 new PowerPageViewModel(ItemsOf(Core.Catalog.Pages.Power)),
                 gpu, // includes the former Display page as a tab, the NVIDIA tool tweaks and the Driver tab
                 new NetworkPageViewModel(),
-                new PeripheralsPageViewModel()), // HID mice, keyboards and other devices: the list and each one's collections
+                new PeripheralsPageViewModel(), // HID mice, keyboards and other devices: the list and each one's collections
+                new AudioPageViewModel()), // playback and recording devices: default, volume, format, exclusive mode, enhancements
             new NavListViewModel(select, Txt.NavSystem, new StartupPageViewModel(), new ServicesPageViewModel(), new DevicesPageViewModel(),
                 new BiosPageViewModel(), // BIOS settings through SCEWIN, with a backup on every write
                 // KOS Firewall is an app of its own: this entry opens it.
