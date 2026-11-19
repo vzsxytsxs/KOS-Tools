@@ -8,7 +8,8 @@ public sealed record FirewallPlan(IReadOnlyList<WfpFilter> Filters, IReadOnlyLis
 
 /// <summary>
 /// Turns <see cref="FirewallConfig"/> into WFP filters (no system calls: tested as is). Allow-list: everything is blocked at the
-/// lowest weight of KOS's sublayer; the built-in allows (loopback, DHCP, DNS, ICMPv6, the KOS programs) sit at the top, so no
+/// lowest weight of KOS's sublayer; the built-in allows (loopback, DHCP, DNS, DNS over HTTPS/TLS for the DNS client service,
+/// ICMPv6, the KOS programs) sit at the top, so no
 /// rule can lock the PC out of its network; a rule's block outranks a rule's allow. Every filter is added twice: persistent
 /// (held by the filter engine with no KOS process running) and boot-time (enforced while Windows starts, before the engine is up).
 /// </summary>
@@ -29,7 +30,8 @@ public static class FirewallPolicy
     static readonly (Layers Layer, Guid Key)[] LayerKeys =
         [(Layers.ConnectV4, Wfp.LayerConnectV4), (Layers.ConnectV6, Wfp.LayerConnectV6), (Layers.AcceptV4, Wfp.LayerAcceptV4), (Layers.AcceptV6, Wfp.LayerAcceptV6)];
 
-    public static FirewallPlan Build(FirewallConfig config, IEnumerable<string> kosPrograms, Func<string, bool> exists)
+    /// <param name="dnsClientSid">The DNS client service's SID (Dnscache): with DNS over HTTPS or TLS on, names go out on 443/853.</param>
+    public static FirewallPlan Build(FirewallConfig config, IEnumerable<string> kosPrograms, Func<string, bool> exists, string? dnsClientSid = null)
     {
         var filters = new List<WfpFilter>();
         var skipped = new List<string>();
@@ -46,6 +48,9 @@ public static class FirewallPolicy
         Add("DHCP", Layers.V4, WfpAction.Permit, WeightBuiltIn, [WfpCondition.Protocol(Udp), WfpCondition.LocalPort(68), WfpCondition.RemotePort(67)]);
         Add("DHCPv6", Layers.V6, WfpAction.Permit, WeightBuiltIn, [WfpCondition.Protocol(Udp), WfpCondition.LocalPort(546), WfpCondition.RemotePort(547)]);
         Add("DNS", Layers.Connect, WfpAction.Permit, WeightBuiltIn, [WfpCondition.Protocol(Udp), WfpCondition.Protocol(Tcp), WfpCondition.RemotePort(53)]);
+        if (IsSid(dnsClientSid, "S-1-5-80-"))
+            Add("DNS over HTTPS/TLS", Layers.Connect, WfpAction.Permit, WeightBuiltIn,
+                [WfpCondition.UserSid(dnsClientSid!), WfpCondition.Protocol(Tcp), WfpCondition.RemotePort(443), WfpCondition.RemotePort(853)]);
         Add("ICMPv6 (neighbor discovery)", Layers.V6, WfpAction.Permit, WeightBuiltIn, [WfpCondition.Protocol(Wfp.ProtocolIcmpV6)]);
         foreach (var program in kosPrograms.Where(exists).Distinct(StringComparer.OrdinalIgnoreCase))
             Add(Path.GetFileName(program), Layers.Connect, WfpAction.Permit, WeightBuiltIn, [WfpCondition.App(program)]);

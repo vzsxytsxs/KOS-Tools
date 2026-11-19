@@ -33,6 +33,18 @@ public class FirewallPolicyTests
     }
 
     [Fact]
+    public void DnsClientGetsEncryptedDnsWhenItsSidIsKnown()
+    {
+        const string sid = "S-1-5-80-859482183-879914841-863379149-1145462774-2388618682";
+        var plan = FirewallPolicy.Build(new FirewallConfig(), Kos, _ => true, sid);
+        var doh = Named(plan, "DNS over HTTPS/TLS");
+        Assert.Equal(new[] { Wfp.LayerConnectV4, Wfp.LayerConnectV6 }, doh.Select(f => f.Layer).Distinct());
+        Assert.Equal(sid, Assert.Single(doh[0].Conditions, c => c.Field == Wfp.ConditionUserId).Value);
+        Assert.Equal(2, doh[0].Conditions.Count(c => c.Field == Wfp.ConditionRemotePort)); // 443 or 853
+        Assert.Empty(Named(FirewallPolicy.Build(new FirewallConfig(), Kos, _ => true, "not a sid"), "DNS over HTTPS/TLS"));
+    }
+
+    [Fact]
     public void MissingKosProgramIsLeftOut()
     {
         var plan = FirewallPolicy.Build(new FirewallConfig(), Kos, p => !p.EndsWith("KosEngine.exe"));

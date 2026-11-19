@@ -121,7 +121,7 @@ public static class KosFirewall
     /// <summary>Rebuilds KOS's filters from the config in one transaction: all or nothing.</summary>
     static FirewallApplyResult Apply(FirewallConfig config)
     {
-        var plan = FirewallPolicy.Build(config, KosPrograms(), File.Exists);
+        var plan = FirewallPolicy.Build(config, KosPrograms(), File.Exists, FirewallIdentity.ServiceSid("Dnscache"));
         foreach (var skipped in plan.Skipped) Log.Warn("KOS Firewall rule left out: " + skipped);
         using var s = WfpSession.Open(dynamic: false);
         var old = s.Filters();
