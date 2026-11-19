@@ -58,7 +58,8 @@ public sealed class MainViewModel : ObservableObject
                 new PeripheralsPageViewModel()), // HID mice, keyboards and other devices: the list and each one's collections
             new NavListViewModel(select, Txt.NavSystem, new StartupPageViewModel(), new ServicesPageViewModel(), new DevicesPageViewModel(),
                 new BiosPageViewModel(), // BIOS settings through SCEWIN, with a backup on every write
-                new FirewallPageViewModel()), // KOS Firewall (WFP allow-list), Windows Firewall and the hosts file
+                // KOS Firewall is an app of its own: this entry opens it.
+                new AppLinkViewModel("app-firewall", Txt.AppFirewallLink, "\uEA18", Txt.AppFirewallSubtitle, "firewall", "KosFirewall.exe")),
             new NavListViewModel(select, Txt.NavSoftware, setup,
                 new WindowsUpdatePageViewModel(), // search, install and hide updates while Windows Update stays off
                 new DebloatPageViewModel(),
@@ -110,6 +111,13 @@ public sealed class MainViewModel : ObservableObject
         get => _selected;
         set
         {
+            if (value is AppLinkViewModel link)
+            {
+                link.Open();
+                // The list already shows the link selected: put the page that's open back, once the click is done.
+                System.Windows.Application.Current?.Dispatcher.BeginInvoke(() => { foreach (var group in NavGroups) group.Show(_selected); });
+                return;
+            }
             if (value is null || !Set(ref _selected, value)) return;
             foreach (var group in NavGroups) group.Show(value);
             if (_search.Length > 0) { _search = ""; Raise(nameof(SearchText)); }

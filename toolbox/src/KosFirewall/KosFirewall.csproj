@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- KOS Firewall: one page in the toolbox's window style (AppWindow), with the toolbox's theme and helpers. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>KosFirewallApp</RootNamespace>
+    <AssemblyName>KosFirewall</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\KosToolbox\Assets\kos.ico</ApplicationIcon>
+    <Title>KOS Firewall</Title>
+    <Product>KOS Firewall</Product>
+    <StartupObject>KosFirewallApp.Program</StartupObject>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\KosToolbox\KosToolbox.csproj" />
+    <!-- The toolbox's templates use "/Assets/..." relative to the running app: the same files go in this one. -->
+    <Resource Include="..\KosToolbox\Assets\*.png;..\KosToolbox\Assets\*.ico" Link="Assets\%(Filename)%(Extension)" />
+  </ItemGroup>
+  <!-- Referencing the toolbox (an exe) brings its app host and runtimeconfig into the publish folder: they aren't part of this app. -->
+  <Target Name="DropToolboxHost" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(RelativePath)' == 'KosToolbox.exe' Or '%(RelativePath)' == 'KosToolbox.runtimeconfig.json'" />
+    </ItemGroup>
+  </Target>
+</Project>

@@ -184,6 +184,8 @@ public static class EngineHost
     public static string? EnginePath => Find("engine", "KosEngine.exe");
     public static string? UiPath => Find("governor", "KosGovernor.exe");
     public static string? ToolboxPath => Find("toolbox", "KosToolbox.exe");
+    public static string? FirewallPath => Find("firewall", "KosFirewall.exe");
+    public static string? EqualizerPath => Find("equalizer", "KosEqualizer.exe");
 
     /// <summary>
     /// Starts the engine (already elevated) if it isn't running. Without the engine executable next to it (the interface run
@@ -209,7 +211,7 @@ internal sealed class Tray : IDisposable
     const uint WmLButtonUp = 0x202, WmLButtonDblClk = 0x203, WmRButtonUp = 0x205;
     const uint NimAdd = 0, NimModify = 1, NimDelete = 2, NifMessage = 1, NifIcon = 2, NifTip = 4, NifInfo = 0x10, NiifInfo = 1, NiifWarning = 2;
     const uint MfString = 0, MfChecked = 8, MfPopup = 0x10, MfSeparator = 0x800;
-    const int CmdOpen = 1, CmdGamemode = 2, CmdExit = 3, CmdToolbox = 4, CmdStatus = 5, CmdProfile = 100;
+    const int CmdOpen = 1, CmdGamemode = 2, CmdExit = 3, CmdToolbox = 4, CmdStatus = 5, CmdFirewall = 6, CmdEqualizer = 7, CmdProfile = 100;
 
     readonly Engine _engine;
     readonly EventWaitHandle _stop;
@@ -402,6 +404,8 @@ internal sealed class Tray : IDisposable
         AppendMenu(menu, MfSeparator, 0, null);
         if (EngineHost.ToolboxPath is not null) AppendMenu(menu, MfString, CmdToolbox, "Open KOS Toolbox");
         if (EngineHost.UiPath is not null) AppendMenu(menu, MfString, CmdOpen, "Open KOS Governor");
+        if (EngineHost.FirewallPath is not null) AppendMenu(menu, MfString, CmdFirewall, "Open KOS Firewall");
+        if (EngineHost.EqualizerPath is not null) AppendMenu(menu, MfString, CmdEqualizer, "Open KOS Equalizer");
         AppendMenu(menu, MfSeparator, 0, null);
         // The text after the \t is shown right-aligned (the hotkey).
         AppendMenu(menu, MfString | (_engine.Gamemode ? MfChecked : 0), CmdGamemode, $"Gamemode\t{HotkeyText(config.Hotkey)}");
@@ -419,6 +423,8 @@ internal sealed class Tray : IDisposable
         {
             case CmdOpen: Open(EngineHost.UiPath); break;
             case CmdToolbox: Open(EngineHost.ToolboxPath); break;
+            case CmdFirewall: Open(EngineHost.FirewallPath); break;
+            case CmdEqualizer: Open(EngineHost.EqualizerPath); break;
             case CmdStatus: _status.Show(); break;
             case CmdGamemode: _engine.RequestToggle(); break;
             case CmdExit: _stop.Set(); break;
@@ -468,6 +474,9 @@ internal sealed class Tray : IDisposable
     static void Open(string? exe)
     {
         if (exe is null) return;
+        // The engine is elevated, so what it starts is too: only a file SYSTEM or Administrators own (a user could put a file
+        // where a missing app would be found, e.g. a repository-style folder at the drive's root).
+        if (KosToolbox.Core.Tools.ToolDiscovery.OwnerProblem(exe) is { } problem) { Log.Warn($"Not opening {exe}: {problem}"); return; }
         try { Process.Start(new ProcessStartInfo(exe) { UseShellExecute = false })?.Dispose(); }
         catch (Exception ex) { Log.Error($"Opening {Path.GetFileName(exe)} failed", ex); }
     }

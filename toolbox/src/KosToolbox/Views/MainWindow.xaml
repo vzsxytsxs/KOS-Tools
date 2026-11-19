@@ -81,28 +81,8 @@
         </Border>
 
         <!-- Notifications (toasts): at the bottom, over the content. -->
-        <ItemsControl Grid.Column="1" Panel.ZIndex="10" ItemsSource="{x:Static vm:Toasts.Items}" Focusable="False"
-                      HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,26">
-            <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                    <Border Background="#161616" BorderBrush="#2E2E2E" BorderThickness="1" CornerRadius="6" Padding="14,9,8,9" Margin="0,6,0,0"
-                            HorizontalAlignment="Center" MaxWidth="640" v:Motion.Appear="True">
-                        <Border.Effect><DropShadowEffect BlurRadius="18" ShadowDepth="2" Opacity="0.5" Color="Black" /></Border.Effect>
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock x:Name="Icon" Style="{StaticResource Icon}" Text="{Binding Icon}" FontSize="15" Foreground="#4DA3FF" Margin="0,0,10,0" />
-                            <TextBlock Text="{Binding Message}" TextWrapping="Wrap" MaxWidth="540" VerticalAlignment="Center" />
-                            <Button Style="{StaticResource IconButton}" Content="&#xE711;" FontSize="10" Width="26" Height="26" Margin="12,0,0,0"
-                                    Command="{Binding CloseCommand}" ToolTip="Close" AutomationProperties.Name="Close" />
-                        </StackPanel>
-                    </Border>
-                    <DataTemplate.Triggers>
-                        <DataTrigger Binding="{Binding Kind}" Value="{x:Static vm:ToastKind.Error}"><Setter TargetName="Icon" Property="Foreground" Value="{StaticResource ErrorBrush}" /></DataTrigger>
-                        <DataTrigger Binding="{Binding Kind}" Value="{x:Static vm:ToastKind.Warning}"><Setter TargetName="Icon" Property="Foreground" Value="{StaticResource WarningBrush}" /></DataTrigger>
-                        <DataTrigger Binding="{Binding Kind}" Value="{x:Static vm:ToastKind.Success}"><Setter TargetName="Icon" Property="Foreground" Value="#5CC98A" /></DataTrigger>
-                    </DataTemplate.Triggers>
-                </DataTemplate>
-            </ItemsControl.ItemTemplate>
-        </ItemsControl>
+        <ItemsControl Grid.Column="1" Panel.ZIndex="10" ItemsSource="{x:Static vm:Toasts.Items}" Focusable="False" ItemTemplate="{StaticResource Toast}"
+                      HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,26" />
 
         <DockPanel Grid.Column="1">
             <Grid DockPanel.Dock="Top" Margin="28,20,28,14">

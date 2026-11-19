@@ -19,4 +19,9 @@
   <ItemGroup>
     <ProjectReference Include="..\KosToolbox.Core\KosToolbox.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- The apps that are one page in this toolbox's window style (AppWindow) use its helpers too. -->
+    <InternalsVisibleTo Include="KosFirewall" />
+    <InternalsVisibleTo Include="KosEqualizer" />
+  </ItemGroup>
 </Project>

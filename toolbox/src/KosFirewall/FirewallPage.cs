@@ -11,7 +11,9 @@ using KosToolbox.Core.Interop;
 using KosToolbox.Core.Persistence;
 using KosToolbox.Core.Text;
 
-namespace KosToolbox.ViewModels;
+using KosToolbox.ViewModels;
+
+namespace KosFirewallApp;
 
 /// <summary>A rule of the config (Apps and Rules tabs): its action, on/off and removal, each saved through <see cref="KosFirewall.Change"/>.</summary>
 public sealed class FirewallRuleRow : ObservableObject

@@ -14,6 +14,11 @@ public static partial class Txt
 
     public const string NavOverview = "Overview", NavTune = "Tune", NavSystem = "System", NavSoftware = "Software", NavDiagnose = "Diagnose";
     public const string NavCollapse = "Collapse", NavCollapseTooltip = "Collapse the menu", NavExpandTooltip = "Expand the menu";
+
+    // The other KOS apps, opened from the sidebar
+    public const string AppFirewall = "KOS Firewall", AppFirewallLink = "Firewall",
+        AppFirewallSubtitle = "Opens KOS Firewall: the allow-list firewall, Windows Firewall and the hosts file.";
+    public static string AppNotInstalled(string name, string path) => $"{name} isn't installed ({path}).";
     public const string PageHome = "Home", PageHomeSubtitle = "Hardware, system status and pending changes.";
 
     // ---------- Home: list and inspector ----------
