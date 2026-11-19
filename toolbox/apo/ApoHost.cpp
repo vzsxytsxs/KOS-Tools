@@ -31,6 +31,8 @@ static void Check(bool ok, const char* what)
 // Just enough of a device and a collection for Initialize to read the endpoint id.
 struct FakeDevice : IMMDevice
 {
+    const wchar_t* deviceId;
+    explicit FakeDevice(const wchar_t* id) : deviceId(id) {}
     STDMETHODIMP QueryInterface(REFIID, void** out) override { *out = nullptr; return E_NOINTERFACE; }
     STDMETHODIMP_(ULONG) AddRef() override { return 2; }
     STDMETHODIMP_(ULONG) Release() override { return 1; }
@@ -38,22 +40,23 @@ struct FakeDevice : IMMDevice
     STDMETHODIMP OpenPropertyStore(DWORD, IPropertyStore**) override { return E_NOTIMPL; }
     STDMETHODIMP GetId(LPWSTR* id) override
     {
-        size_t bytes = (wcslen(EndpointId) + 1) * sizeof(wchar_t);
+        size_t bytes = (wcslen(deviceId) + 1) * sizeof(wchar_t);
         *id = static_cast<LPWSTR>(CoTaskMemAlloc(bytes));
-        memcpy(*id, EndpointId, bytes);
+        memcpy(*id, deviceId, bytes);
         return S_OK;
     }
     STDMETHODIMP GetState(DWORD* state) override { *state = DEVICE_STATE_ACTIVE; return S_OK; }
 };
 
+// As the audio engine passes it: the driver's topology device first, the endpoint always last.
 struct FakeCollection : IMMDeviceCollection
 {
-    FakeDevice device;
+    FakeDevice topology{ L"{2}.topology-of-the-driver" }, endpoint{ EndpointId };
     STDMETHODIMP QueryInterface(REFIID, void** out) override { *out = nullptr; return E_NOINTERFACE; }
     STDMETHODIMP_(ULONG) AddRef() override { return 2; }
     STDMETHODIMP_(ULONG) Release() override { return 1; }
-    STDMETHODIMP GetCount(UINT* count) override { *count = 1; return S_OK; }
-    STDMETHODIMP Item(UINT index, IMMDevice** out) override { if (index != 0) return E_INVALIDARG; *out = &device; return S_OK; }
+    STDMETHODIMP GetCount(UINT* count) override { *count = 2; return S_OK; }
+    STDMETHODIMP Item(UINT index, IMMDevice** out) override { if (index > 1) return E_INVALIDARG; *out = index == 0 ? &topology : &endpoint; return S_OK; }
 };
 
 // A media type holding one uncompressed format (the engine passes its own; the SDK's helper library needs ATL).
@@ -163,7 +166,7 @@ int main()
     init.APOInit.cbSize = sizeof init;
     init.APOInit.clsid = CLSID_KosEqApo;
     init.pDeviceCollection = &devices;
-    init.nSoftwareIoDeviceInCollection = 0;
+    init.nSoftwareIoDeviceInCollection = 0; // the topology device: not the one that names the settings
     Check(SUCCEEDED(apo->Initialize(sizeof init, reinterpret_cast<BYTE*>(&init))), "Initialize with the endpoint's device collection");
 
     UNCOMPRESSEDAUDIOFORMAT format = { KSDATAFORMAT_SUBTYPE_IEEE_FLOAT, Channels, 4, 32, Rate, KSAUDIO_SPEAKER_STEREO };

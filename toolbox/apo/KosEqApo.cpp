@@ -381,7 +381,8 @@ public:
         return left;
     }
 
-    // Which endpoint this instance serves: system effects get the device collection and the index of their device.
+    // Which endpoint this instance serves: the last device of the collection system effects get is always the endpoint (the
+    // others are the topology devices the driver's connectors belong to).
     STDMETHODIMP Initialize(UINT32 size, BYTE* data) override
     {
         if (!data || size < sizeof(APOInitBaseStruct)) return E_INVALIDARG;
@@ -389,9 +390,9 @@ public:
         if (base->clsid != CLSID_KosEqApo) return E_INVALIDARG;
         m_guid[0] = 0;
         if (size >= sizeof(APOInitSystemEffects2) && base->cbSize >= sizeof(APOInitSystemEffects2))
-            EndpointGuid(reinterpret_cast<APOInitSystemEffects2*>(data)->pDeviceCollection, reinterpret_cast<APOInitSystemEffects2*>(data)->nSoftwareIoDeviceInCollection);
+            EndpointGuid(reinterpret_cast<APOInitSystemEffects2*>(data)->pDeviceCollection);
         else if (size >= sizeof(APOInitSystemEffects) && base->cbSize >= sizeof(APOInitSystemEffects))
-            EndpointGuid(reinterpret_cast<APOInitSystemEffects*>(data)->pDeviceCollection, 0);
+            EndpointGuid(reinterpret_cast<APOInitSystemEffects*>(data)->pDeviceCollection);
         m_initialized = true;
         return S_OK;
     }
@@ -527,10 +528,11 @@ private:
     HANDLE m_watcher = nullptr;
 
     // The endpoint's GUID (what follows the id's last '.', hex digits and '-' only, lower case) names its settings file.
-    void EndpointGuid(IMMDeviceCollection* devices, UINT index)
+    void EndpointGuid(IMMDeviceCollection* devices)
     {
         IMMDevice* device = nullptr;
-        if (!devices || FAILED(devices->Item(index, &device)) || !device) return;
+        UINT count = 0;
+        if (!devices || FAILED(devices->GetCount(&count)) || count == 0 || FAILED(devices->Item(count - 1, &device)) || !device) return;
         LPWSTR id = nullptr;
         if (SUCCEEDED(device->GetId(&id)) && id)
         {
