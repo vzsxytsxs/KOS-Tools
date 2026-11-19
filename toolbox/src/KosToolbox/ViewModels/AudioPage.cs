@@ -214,11 +214,13 @@ public sealed class AudioDeviceSettingsViewModel : ObservableObject
 
     void Show(AudioDevice read)
     {
+        var picked = _chosen is not null && _chosen != _device.Format; // chosen in the list, not applied (or not taken)
         _device = read;
         if (!_volumeTimer.IsEnabled) _volume = AudioSettings.Percent(read.Volume); // a value waiting to be written stays on the slider
         var formats = AudioSettings.FormatChoices(_supported, read.Format);
         if (!formats.SequenceEqual(_formats)) _formats = formats;
-        _chosen = _chosen is { } c && _formats.Contains(c) ? c : read.Format;
+        // Otherwise the list follows the device, also when another program changed its format.
+        _chosen = picked && _formats.Contains(_chosen!) ? _chosen : read.Format;
         Raise(string.Empty);
         CommandManager.InvalidateRequerySuggested();
     }
