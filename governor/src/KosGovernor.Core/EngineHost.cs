@@ -47,7 +47,10 @@ public static class EngineHost
         mice.RecoverAtStart();
         engine.GamemodeSwitched += on => { using (TaskMeter.Measure(EngineTask.Peripherals)) mice.Switch(on); };
         var recovery = new GpuRecovery();
-        using var tray = new Tray(engine, stop, sample => EngineStatus.Build(Facts(engine, fans), sample));
+        Tray? shown = null;
+        using var firewall = new FirewallWatch(a => shown?.Ask(a), (title, text) => shown?.Balloon(title, text, warning: true));
+        using var tray = new Tray(engine, stop, sample => EngineStatus.Build(Facts(engine, fans, firewall), sample), firewall.Answer);
+        shown = tray;
         engine.ConfigChanged += tray.Refresh;
         engine.SessionEnded += report => tray.Balloon("Gamemode session", $"{report.Summary}. Report on the toolbox's Stability page.",
             report.Sections.Any(s => s.Lines.Any(l => l.Warning)));
@@ -57,7 +60,7 @@ public static class EngineHost
 
         var worker = new Thread(() =>
         {
-            var handles = new WaitHandle[] { stop, reload, toggle, engine.Wake, showStatus };
+            var handles = new WaitHandle[] { stop, reload, toggle, engine.Wake, showStatus, firewall.Wake };
             var trimmed = false;
             while (true)
             {
@@ -67,11 +70,15 @@ public static class EngineHost
                 catch (Exception ex) { Log.Error("Fan curve check failed", ex); }
                 try { using (TaskMeter.Measure(EngineTask.GpuProfile)) recovery.Tick(fans); }
                 catch (Exception ex) { Log.Error("Checking for a display driver reset failed", ex); }
+                SyncFirewall();
                 tray.Refresh();
                 // Once, after the first cycle: the pages used only at startup (config, game list, the ~12 MB that
                 // NVML zeroes on init) leave the working set; the ones used again come back on their own.
                 if (!trimmed) trimmed = EmptyWorkingSet((IntPtr)(-1));
-                var i = WaitHandle.WaitAny(handles, Math.Clamp(engine.Config.General.EngineIntervalMs, Validation.MinEngineMs, Validation.MaxEngineMs));
+                // A blocked connection wakes only the firewall's part; the rest keeps its interval.
+                var due = Environment.TickCount64 + Math.Clamp(engine.Config.General.EngineIntervalMs, Validation.MinEngineMs, Validation.MaxEngineMs);
+                int i;
+                while ((i = WaitHandle.WaitAny(handles, (int)Math.Max(0, due - Environment.TickCount64))) == 5) SyncFirewall();
                 if (i == 0) break;
                 if (i == 1) batteries.Poke(); // the toolbox saved: the dock battery option may have changed
                 if (i == 2) engine.RequestToggle();
@@ -82,7 +89,14 @@ public static class EngineHost
             if (engine.Gamemode) mice.Switch(false);
             batteries.Stop();
             fans.Shutdown();
+            firewall.Dispose();
             tray.Close();
+
+            void SyncFirewall()
+            {
+                try { using (TaskMeter.Measure(EngineTask.Firewall)) firewall.Sync(); }
+                catch (Exception ex) { Log.Error("KOS Firewall check failed", ex); }
+            }
         }) { IsBackground = true, Name = "KOS engine" };
         worker.Start();
         tray.Run();
@@ -94,8 +108,30 @@ public static class EngineHost
 
     [System.Runtime.InteropServices.DllImport("psapi.dll")] static extern bool EmptyWorkingSet(IntPtr process); // -1 = the process itself
 
+    /// <summary>
+    /// "KosEngine.exe --firewall-off", as administrator: removes every KOS Firewall filter and turns back on the Windows Firewall
+    /// profiles it turned off, without the toolbox (the way back when the network is gone). Says what it did in a message box.
+    /// </summary>
+    public static int FirewallOff()
+    {
+        const string Caption = "KOS Engine";
+        try
+        {
+            var removed = KosToolbox.Core.Firewall.KosFirewall.TurnOff(restoreWindows: true);
+            Log.Info($"KOS Firewall turned off from the command line: {removed} filter(s) removed.");
+            NativeUi.MessageBox(IntPtr.Zero, $"KOS Firewall is off: {removed} filter{(removed == 1 ? "" : "s")} removed. Windows Firewall is back as it was before KOS Firewall was turned on.", Caption, 0x40); // MB_ICONINFORMATION
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Turning KOS Firewall off from the command line failed", ex);
+            NativeUi.MessageBox(IntPtr.Zero, $"KOS Firewall couldn't be turned off: {ex.Message}", Caption, 0x10); // MB_ICONERROR
+            return 1;
+        }
+    }
+
     /// <summary>What the status window's lines are built from; the files are read only while it is open.</summary>
-    static EngineFacts Facts(Engine engine, FanCurveHost fans)
+    static EngineFacts Facts(Engine engine, FanCurveHost fans, FirewallWatch firewall)
     {
         static T? Try<T>(Func<T?> read) where T : class
         {
@@ -113,6 +149,7 @@ public static class EngineHost
             PeripheralProfiles = peripherals is { Suspended: false } ? peripherals.Devices.Count : 0,
             PeripheralProfilesApplied = Try(KosToolbox.Core.Peripherals.GamemodePeripheral.LoadState) is not null,
             TimerHeld = TimerResolution.Held, Overlay = engine.OverlayOn,
+            FirewallOn = firewall.On, FirewallFilters = firewall.Filters, FirewallBlocked = firewall.Blocked, FirewallPopups = firewall.Popups,
         };
     }
 
@@ -152,7 +189,7 @@ public static class EngineHost
 internal sealed class Tray : IDisposable
 {
     const uint WmNull = 0, WmDestroy = 0x2, WmClose = 0x10, WmContextMenu = 0x7B, WmHotkey = 0x312, WmApp = 0x8000;
-    const uint WmTray = WmApp + 1, WmRefresh = WmApp + 2, WmStatus = WmApp + 3;
+    const uint WmTray = WmApp + 1, WmRefresh = WmApp + 2, WmStatus = WmApp + 3, WmFirewall = WmApp + 4;
     const uint WmLButtonUp = 0x202, WmLButtonDblClk = 0x203, WmRButtonUp = 0x205;
     const uint NimAdd = 0, NimModify = 1, NimDelete = 2, NifMessage = 1, NifIcon = 2, NifTip = 4, NifInfo = 0x10, NiifInfo = 1, NiifWarning = 2;
     const uint MfString = 0, MfChecked = 8, MfPopup = 0x10, MfSeparator = 0x800;
@@ -163,11 +200,14 @@ internal sealed class Tray : IDisposable
     readonly WndProc _proc;
     readonly uint _taskbarCreated;
     readonly StatusWindow _status;
+    readonly FirewallPopup _popup;
+    readonly System.Collections.Concurrent.ConcurrentQueue<FirewallAsk> _asks = new();
     IntPtr _hwnd, _icon;
     bool _hotkey;
 
-    public Tray(Engine engine, EventWaitHandle stop, Func<TaskMeter.Sample, StatusView> status)
+    public Tray(Engine engine, EventWaitHandle stop, Func<TaskMeter.Sample, StatusView> status, Action<FirewallAsk, bool?> firewallAnswer)
     {
+        _popup = new FirewallPopup(firewallAnswer);
         _engine = engine;
         _stop = stop;
         _proc = Proc; // reference kept: Windows calls the delegate while the window exists
@@ -202,6 +242,13 @@ internal sealed class Tray : IDisposable
     public void Refresh() => PostMessage(_hwnd, WmRefresh, IntPtr.Zero, IntPtr.Zero);
     /// <summary>Opens the status window (any thread).</summary>
     public void ShowStatus() => PostMessage(_hwnd, WmStatus, IntPtr.Zero, IntPtr.Zero);
+
+    /// <summary>A KOS Firewall question for the popup (any thread).</summary>
+    public void Ask(FirewallAsk ask)
+    {
+        _asks.Enqueue(ask);
+        PostMessage(_hwnd, WmFirewall, IntPtr.Zero, IntPtr.Zero);
+    }
 
     // ---------- one icon per device battery (TrayBatteryIcon), its id from the VID and PID ----------
     readonly Dictionary<string, (uint Id, IntPtr Icon, PeripheralBatteryMonitor.TrayDevice Shown)> _devices = new();
@@ -265,6 +312,9 @@ internal sealed class Tray : IDisposable
             case WmStatus:
                 _status.Show();
                 return IntPtr.Zero;
+            case WmFirewall:
+                while (_asks.TryDequeue(out var ask)) _popup.Add(ask);
+                return IntPtr.Zero;
             case WmRefresh:
                 RegisterHotkey();
                 Notify(NimModify);
@@ -275,6 +325,7 @@ internal sealed class Tray : IDisposable
                 return IntPtr.Zero;
             case WmDestroy:
                 _status.Close();
+                _popup.Close();
                 Notify(NimDelete);
                 foreach (var d in _devices.Values) { DeviceIcon(NimDelete, d.Id, IntPtr.Zero, ""); DestroyIcon(d.Icon); }
                 _devices.Clear();

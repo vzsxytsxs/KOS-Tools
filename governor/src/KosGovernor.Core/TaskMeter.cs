@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 namespace KosGovernor.Core;
 
 /// <summary>The engine's tasks, as the status window lists them.</summary>
-public enum EngineTask { Rules, FanCurve, GpuProfile, Peripherals, Rtss, Tray }
+public enum EngineTask { Rules, FanCurve, GpuProfile, Peripherals, Rtss, Firewall, Tray }
 
 /// <summary>
 /// CPU and memory per engine task, for the status window. Each task's work runs inside <see cref="Measure"/>: the scope reads the

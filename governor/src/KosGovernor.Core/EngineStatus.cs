@@ -28,6 +28,11 @@ public sealed record EngineFacts
     /// <summary>The timer resolution held, in 100 ns units; null = none.</summary>
     public uint? TimerHeld { get; init; }
     public bool Overlay { get; init; }
+    /// <summary>KOS Firewall is on; its filters in the filter engine; connections they blocked since the engine started; popups on.</summary>
+    public bool FirewallOn { get; init; }
+    public int FirewallFilters { get; init; }
+    public int FirewallBlocked { get; init; }
+    public bool FirewallPopups { get; init; }
 }
 
 public static class EngineStatus
@@ -50,6 +55,7 @@ public static class EngineStatus
             Line("Peripherals", Peripherals(f), f.Batteries > 0 || f.PeripheralProfiles > 0, EngineTask.Peripherals),
             new("Timer resolution", f.TimerHeld is { } t ? (t / 10000.0).ToString("0.###", CultureInfo.InvariantCulture) + " ms held" : "Off", f.TimerHeld is not null),
             Line("RTSS overlay", f.Overlay ? "Showing" : "Off", f.Overlay, EngineTask.Rtss),
+            Line("KOS Firewall", Firewall(f), f.FirewallOn && f.FirewallFilters > 0, EngineTask.Firewall),
             Line("Tray and this window", "Open", true, EngineTask.Tray),
         };
         // What no task accounts for: the runtime, the configuration in memory, threads waiting.
@@ -58,6 +64,11 @@ public static class EngineStatus
             Math.Max(0, s.CpuPercent - measured.Sum(l => l.CpuPercent!.Value)), Math.Max(0, s.PrivateBytes - measured.Sum(l => l.Bytes!.Value))));
         return new(s.CpuPercent, s.PrivateBytes, lines);
     }
+
+    /// <summary>The filtering itself runs in Windows; the engine's share is the popups and the count.</summary>
+    static string Firewall(EngineFacts f) => !f.FirewallOn ? "Off"
+        : f.FirewallFilters == 0 ? "On, but no filters in place: open the toolbox's Firewall page"
+        : $"{f.FirewallFilters} filters · {f.FirewallBlocked} blocked{(f.FirewallPopups ? "" : " · no popups")}";
 
     static string Peripherals(EngineFacts f)
     {
