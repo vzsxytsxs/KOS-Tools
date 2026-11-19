@@ -165,6 +165,24 @@ public class HostsFileTests : IDisposable
     }
 
     [Fact]
+    public void LinesWindowsAlreadyIgnoresDontBlockASaveButNewMistakesDo()
+    {
+        // Lines from a real hosts file that Windows skips: a wildcard, a URL, a "::" note.
+        const string current = "127.0.0.1 localhost\r\n0.0.0.0 *.dl.example.com\r\n0.0.0.0 https://cdp.example.com/\r\n:: new / notes\r\n";
+        File.WriteAllText(Hosts, current);
+        Assert.Equal(3, HostsFile.Validate(current).Count);
+        var edited = current + "0.0.0.0 ads.example.com\r\n";
+        Assert.Empty(HostsFile.NewProblems(edited, current));
+        HostsFile.Save(edited, Hosts, Backups); // the old lines go back as they were
+        Assert.Equal(edited, HostsFile.Read(Hosts));
+
+        var mistake = edited + "999.1.1.1 example.org\r\n0.0.0.0 *.other.com\r\n";
+        Assert.Equal(new[] { 6, 7 }, HostsFile.NewProblems(mistake, edited).Select(p => p.Line));
+        Assert.Throws<InvalidOperationException>(() => HostsFile.Save(mistake, Hosts, Backups));
+        Assert.Equal(edited, HostsFile.Read(Hosts));
+    }
+
+    [Fact]
     public void DefaultPathIsInDriversEtc() =>
         Assert.EndsWith(Path.Combine("drivers", "etc", "hosts"), HostsFile.DefaultPath);
 }

@@ -227,7 +227,8 @@ public sealed class FirewallPageViewModel : PageViewModel
         set
         {
             if (!Set(ref _hostsText, value ?? "")) return;
-            HostsProblems = HostsFile.Validate(_hostsText).Select(p => Txt.FwHostsLine(p.Line, p.Message)).ToList();
+            // Lines Windows already ignores in the saved file don't block a save; new mistakes do.
+            HostsProblems = HostsFile.NewProblems(_hostsText, _hostsSaved).Select(p => Txt.FwHostsLine(p.Line, p.Message)).ToList();
             Raise(nameof(HostsDirty));
             CommandManager.InvalidateRequerySuggested();
         }

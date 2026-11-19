@@ -69,6 +69,18 @@ public static class HostsFile
         return problems;
     }
 
+    /// <summary>
+    /// The problems of <paramref name="text"/> that <paramref name="current"/> (the file on disk) doesn't already have, by line
+    /// text: a line Windows ignores today (a wildcard, a URL, a stray character) doesn't stop a save, a new mistake does.
+    /// </summary>
+    public static IReadOnlyList<HostsProblem> NewProblems(string text, string current)
+    {
+        var known = Validate(current).Select(p => p.Line).ToHashSet();
+        var knownText = Parse(current).Where(l => known.Contains(l.Number)).Select(l => l.Raw).ToHashSet(StringComparer.Ordinal);
+        var lines = Parse(text);
+        return Validate(text).Where(p => !knownText.Contains(lines[p.Line - 1].Raw)).ToList();
+    }
+
     static string? CharProblem(string s)
     {
         foreach (char c in s)
@@ -121,14 +133,15 @@ public static class HostsFile
     }
 
     /// <summary>
-    /// Validates, backs up the current file, writes CRLF/UTF-8 without BOM through a temporary file that replaces the hosts file,
+    /// Validates (refusing only problems the file on disk doesn't already have, see <see cref="NewProblems"/>), backs up the
+    /// current file, writes CRLF/UTF-8 without BOM through a temporary file that replaces the hosts file,
     /// and reads it back. Returns the backup's path (null if there was nothing to back up). Writing the real file needs
     /// administrator: the UnauthorizedAccessException is left to the caller.
     /// </summary>
     public static string? Save(string text, string? path = null, string? backupDirectory = null)
     {
         path ??= DefaultPath;
-        var problems = Validate(text);
+        var problems = NewProblems(text, Read(path));
         if (problems.Count > 0)
             throw new InvalidOperationException(string.Join(" ", problems.Take(3).Select(p => $"Line {p.Line}: {p.Message}")));
 
