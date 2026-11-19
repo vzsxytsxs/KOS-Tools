@@ -11,7 +11,8 @@ public static class ServiceControl
 {
     public const uint TypeWin32 = 0x30, TypeDriver = 0x0B;
     const uint ScManagerConnect = 0x0001, ScManagerEnumerate = 0x0004;
-    const uint ServiceQueryConfig = 0x0001, ServiceChangeConfig = 0x0002;
+    const uint ServiceQueryConfig = 0x0001, ServiceChangeConfig = 0x0002, ServiceQueryStatus = 0x0004;
+    public const uint StateStopped = 1, StateRunning = 4;
     const uint ServiceNoChange = 0xFFFFFFFF;
     const int ErrorMoreData = 234;
 
@@ -50,6 +51,24 @@ public static class ServiceControl
 
     [DllImport("advapi32.dll", SetLastError = true, EntryPoint = "ChangeServiceConfig2W")]
     static extern bool ChangeServiceConfig2(IntPtr service, uint infoLevel, ref DelayedAutoStartInfo info);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    static extern bool QueryServiceStatusEx(IntPtr service, int infoLevel, out ServiceStatusProcess status, int size, out int needed);
+
+    /// <summary>The service's current state (<see cref="StateRunning"/>, ...); null if there is no such service or it can't be queried.</summary>
+    public static uint? State(string name)
+    {
+        var scm = OpenSCManager(null, null, ScManagerConnect);
+        if (scm == IntPtr.Zero) return null;
+        try
+        {
+            var svc = OpenService(scm, name, ServiceQueryStatus);
+            if (svc == IntPtr.Zero) return null;
+            try { return QueryServiceStatusEx(svc, 0, out var st, Marshal.SizeOf<ServiceStatusProcess>(), out _) ? st.CurrentState : null; }
+            finally { CloseServiceHandle(svc); }
+        }
+        finally { CloseServiceHandle(scm); }
+    }
 
     /// <summary>Lists services (<see cref="TypeWin32"/>) or drivers (<see cref="TypeDriver"/>) in any state.</summary>
     public static List<ScmService> Enumerate(uint type)
