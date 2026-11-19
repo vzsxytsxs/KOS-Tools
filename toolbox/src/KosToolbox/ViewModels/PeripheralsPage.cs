@@ -908,7 +908,7 @@ public sealed class PeripheralsPageViewModel : PageViewModel
     /// <summary>Which driver claims a device; the ui-shot probe swaps in sample drivers (records only, nothing opened).</summary>
     public static Func<HidDevice, PeripheralDriver?> Claim { get; set; } = PeripheralRegistry.Claim;
 
-    public PeripheralsPageViewModel() : base("peripherals", Txt.PagePeripherals, "", Txt.PagePeripheralsSubtitle)
+    public PeripheralsPageViewModel() : base("peripherals", Txt.PagePeripherals, "", Txt.PagePeripheralsSubtitle) // a mouse (escaped: private-use glyph)
     {
         SelectCommand = new RelayCommand(p => { if (p is PeripheralRowViewModel row) Selected = row; });
         // A read still running when the timer fires: try again later rather than miss the change.
