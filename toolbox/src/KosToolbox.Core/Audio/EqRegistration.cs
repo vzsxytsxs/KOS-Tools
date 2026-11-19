@@ -271,6 +271,8 @@ public static class EqRegistration
         if (record is not null && fx is not null && fx.TryGetValue(FxKey(7), out var efx) && IsOurs(efx.Text))
         {
             var (line, time) = EffectStatus(endpointId);
+            // A line from before this turn-on is an earlier run's: not a read-back of this one.
+            if (time is { } t && t.ToUniversalTime() < record.Activated) (line, time) = (null, null);
             return new EqStatus(EqDeviceState.On, null, record.ReplacedOther, line, time);
         }
         if (record is not null)

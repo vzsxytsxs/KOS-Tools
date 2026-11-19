@@ -585,7 +585,14 @@ private:
             else if (iid == __uuidof(IAudioProcessingObjectRT)) *out = static_cast<IAudioProcessingObjectRT*>(self);
             else if (iid == __uuidof(IAudioProcessingObjectConfiguration)) *out = static_cast<IAudioProcessingObjectConfiguration*>(self);
             else if (iid == __uuidof(IAudioSystemEffects)) *out = static_cast<IAudioSystemEffects*>(self);
-            else { TraceGuid("QueryInterface: not implemented:", iid); *out = nullptr; return E_NOINTERFACE; }
+            else
+            {
+#ifdef KOS_TRACE_FILE
+                TraceGuid("QueryInterface: not implemented:", iid); // diagnostic builds only: the audio engine asks this while streaming too
+#endif
+                *out = nullptr;
+                return E_NOINTERFACE;
+            }
             static_cast<IUnknown*>(*out)->AddRef(); // the outer object's count for an interface, this one's for the inner IUnknown
             return S_OK;
         }
