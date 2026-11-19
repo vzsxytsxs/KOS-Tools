@@ -1,0 +1,4 @@
+LIBRARY KosEqApo
+EXPORTS
+    DllGetClassObject PRIVATE
+    DllCanUnloadNow PRIVATE
