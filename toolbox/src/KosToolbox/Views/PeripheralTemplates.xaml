@@ -58,6 +58,28 @@
     <Style x:Key="PeriField" TargetType="StackPanel">
         <Setter Property="Margin" Value="0,0,0,12" />
     </Style>
+    <!-- Color presets: each fills a color box through the command in Tag (CommandParameter: "#RRGGBB"). -->
+    <Style x:Key="PeriSwatches" TargetType="ItemsControl">
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="ItemsPanel"><Setter.Value><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></Setter.Value></Setter>
+        <Setter Property="ItemTemplate">
+            <Setter.Value>
+                <DataTemplate>
+                    <Button Command="{Binding Tag, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}"
+                            AutomationProperties.Name="{Binding}" ToolTip="{Binding}" Cursor="Hand" Margin="0,0,8,6" FocusVisualStyle="{StaticResource FocusVisual}">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Ellipse x:Name="dot" Width="22" Height="22" Fill="{Binding}" Stroke="{StaticResource BorderStrongBrush}" StrokeThickness="1" />
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="dot" Property="Stroke" Value="{StaticResource TextBrush}" /><Setter TargetName="dot" Property="StrokeThickness" Value="2" /></Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                </DataTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
 
     <!-- ===================== Device pictures ===================== -->
     <!-- One picture per kind (mice: a rendered mouse; the dock, headset, keyboard and controller are drawn here); the light (LedBrush: the color and brightness the controls show,
@@ -308,24 +330,7 @@
                     </StackPanel>
                     <StackPanel Style="{StaticResource PeriField}" Visibility="{Binding HasLighting, Converter={StaticResource BoolToVis}}">
                         <TextBlock Style="{StaticResource PeriLabel}" Text="{x:Static t:Txt.PeripheralColor}" />
-                        <ItemsControl ItemsSource="{Binding Swatches}" Focusable="False" Margin="0,0,0,8" IsEnabled="{Binding CanLighting}">
-                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Button Command="{Binding DataContext.SwatchCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}"
-                                            AutomationProperties.Name="{Binding}" ToolTip="{Binding}" Cursor="Hand" Margin="0,0,8,0" FocusVisualStyle="{StaticResource FocusVisual}">
-                                        <Button.Template>
-                                            <ControlTemplate TargetType="Button">
-                                                <Ellipse x:Name="dot" Width="22" Height="22" Fill="{Binding}" Stroke="{StaticResource BorderStrongBrush}" StrokeThickness="1" />
-                                                <ControlTemplate.Triggers>
-                                                    <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="dot" Property="Stroke" Value="{StaticResource TextBrush}" /><Setter TargetName="dot" Property="StrokeThickness" Value="2" /></Trigger>
-                                                </ControlTemplate.Triggers>
-                                            </ControlTemplate>
-                                        </Button.Template>
-                                    </Button>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                        <ItemsControl Style="{StaticResource PeriSwatches}" ItemsSource="{Binding Swatches}" Tag="{Binding SwatchCommand}" Margin="0,0,0,2" IsEnabled="{Binding CanLighting}" />
                         <StackPanel Orientation="Horizontal">
                             <TextBox Text="{Binding ColorText, UpdateSourceTrigger=PropertyChanged}" Width="96" IsEnabled="{Binding CanLighting}" AutomationProperties.Name="{x:Static t:Txt.PeripheralColor}" />
                             <Button Content="{x:Static t:Txt.Apply}" Command="{Binding ApplyColorCommand}" Margin="8,0,0,0" Visibility="{Binding CanLighting, Converter={StaticResource BoolToVis}}" />
@@ -551,11 +556,14 @@
                 </StackPanel>
             </Border>
 
-            <!-- Gamemode profile: KOS Governor writes these live (nothing stored) when gamemode turns on and puts back what was there. -->
+            <!-- Gamemode profile: KOS Governor writes these when gamemode turns on (live on mice and the dock, stored on a keyboard that
+                 keeps every setting) and puts back what was there. -->
             <Border Style="{StaticResource Card}" Margin="0,0,8,8" Visibility="{Binding CanGamemode, Converter={StaticResource BoolToVis}}">
                 <StackPanel>
                     <TextBlock Style="{StaticResource CardTitle}" Text="{x:Static t:Txt.PeripheralGamemode}" />
                     <TextBlock Style="{StaticResource GpuHint}" Text="{x:Static t:Txt.PeripheralGamemodeNote}" Margin="0,2,0,12" />
+                    <TextBlock Style="{StaticResource GpuHint}" Text="{x:Static t:Txt.PeripheralGamemodeStoredNote}" Foreground="{StaticResource WarningBrush}" Margin="0,-6,0,12"
+                               Visibility="{Binding GmStoredOnly, Converter={StaticResource BoolToVis}}" />
                     <StackPanel Style="{StaticResource PeriField}" Visibility="{Binding CanGmDpi, Converter={StaticResource BoolToVis}}">
                         <CheckBox Style="{StaticResource GpuSwitch}" Content="{x:Static t:Txt.PeripheralGamemodeSetDpi}" IsChecked="{Binding GmDpiOn}" HorizontalAlignment="Left" Margin="0,0,0,6" />
                         <Grid IsEnabled="{Binding GmDpiOn}">
@@ -569,8 +577,24 @@
                         <TextBlock Style="{StaticResource PeriLabel}" Text="{x:Static t:Txt.PeripheralPolling}" />
                         <ItemsControl Style="{StaticResource PeriSegmented}" ItemsSource="{Binding GmRates}" Tag="{Binding GmPollingCommand}" AutomationProperties.Name="{x:Static t:Txt.PeripheralPolling}" />
                     </StackPanel>
-                    <CheckBox Style="{StaticResource GpuSwitch}" Content="{Binding GmLightText}" IsChecked="{Binding GmLightOff}" HorizontalAlignment="Left" Margin="0,0,0,12"
-                              Visibility="{Binding CanGmLightSwitch, Converter={StaticResource BoolToVis}}" />
+                    <!-- The light (not the dock's ring): kept, off, or an effect and color. -->
+                    <StackPanel Style="{StaticResource PeriField}" Visibility="{Binding CanGmLightChoice, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Style="{StaticResource PeriLabel}" Text="{x:Static t:Txt.PeripheralGamemodeLight}" />
+                        <ItemsControl Style="{StaticResource PeriSegmented}" ItemsSource="{Binding GmLights}" Tag="{Binding GmLightCommand}" AutomationProperties.Name="{x:Static t:Txt.PeripheralGamemodeLight}" />
+                        <StackPanel Margin="0,8,0,0" Visibility="{Binding GmHasColor, Converter={StaticResource BoolToVis}}">
+                            <ItemsControl Style="{StaticResource PeriSwatches}" ItemsSource="{Binding Swatches}" Tag="{Binding GmSwatchCommand}" />
+                            <TextBox Text="{Binding GmColorText, UpdateSourceTrigger=PropertyChanged}" Width="96" HorizontalAlignment="Left" AutomationProperties.Name="{x:Static t:Txt.PeripheralColor}" />
+                        </StackPanel>
+                    </StackPanel>
+                    <!-- Magnetic keyboards: rapid trigger on (one step for press and release) or off on every key; each key's actuation kept. -->
+                    <StackPanel Style="{StaticResource PeriField}" Visibility="{Binding CanGmRt, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Style="{StaticResource PeriLabel}" Text="{x:Static t:Txt.PeripheralGamemodeRt}" />
+                        <ItemsControl Style="{StaticResource PeriSegmented}" ItemsSource="{Binding GmRts}" Tag="{Binding GmRtCommand}" AutomationProperties.Name="{x:Static t:Txt.PeripheralGamemodeRt}" />
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0" Visibility="{Binding GmRtOn, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="{x:Static t:Txt.PeripheralGamemodeRtStep}" VerticalAlignment="Center" Margin="0,0,10,0" />
+                            <TextBox Text="{Binding GmRtText, UpdateSourceTrigger=PropertyChanged}" Width="76" AutomationProperties.Name="{x:Static t:Txt.PeripheralGamemodeRtStep}" />
+                        </StackPanel>
+                    </StackPanel>
                     <!-- The dock's ring: kept, off, or the mouse battery shown on it or not during gamemode. -->
                     <StackPanel Style="{StaticResource PeriField}" Visibility="{Binding CanGmRing, Converter={StaticResource BoolToVis}}">
                         <TextBlock Style="{StaticResource PeriLabel}" Text="{x:Static t:Txt.PeripheralGamemodeRing}" />
@@ -679,6 +703,31 @@
                                    Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVis}}" />
                         <TextBlock Style="{StaticResource Secondary}" Text="{Binding LoadError}" Foreground="{StaticResource ErrorBrush}" Margin="16,12"
                                    Visibility="{Binding LoadError, Converter={StaticResource NotEmptyToVis}}" />
+                        <!-- Lighting sync: one effect and color on the checked devices, now (each read back) or in their gamemode profiles. -->
+                        <Border Margin="16,16,16,0" Padding="0,14,0,0" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
+                                Visibility="{Binding HasSync, Converter={StaticResource BoolToVis}}">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource CardTitle}" Text="{x:Static t:Txt.PeripheralSync}" />
+                                <TextBlock Style="{StaticResource GpuHint}" Text="{x:Static t:Txt.PeripheralSyncNote}" Margin="0,2,0,10" />
+                                <ItemsControl ItemsSource="{Binding SyncRows}" Focusable="False">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate><CheckBox Content="{Binding Name}" IsChecked="{Binding IsSynced}" Margin="0,0,0,6" /></DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <ItemsControl Style="{StaticResource PeriSegmented}" ItemsSource="{Binding SyncEffects}" Tag="{Binding SyncEffectCommand}" Margin="0,6,0,10"
+                                              AutomationProperties.Name="{x:Static t:Txt.PeripheralEffect}">
+                                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="2" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                </ItemsControl>
+                                <StackPanel Visibility="{Binding SyncHasColor, Converter={StaticResource BoolToVis}}" Margin="0,0,0,10">
+                                    <ItemsControl Style="{StaticResource PeriSwatches}" ItemsSource="{Binding Swatches}" Tag="{Binding SyncSwatchCommand}" />
+                                    <TextBox Text="{Binding SyncColorText, UpdateSourceTrigger=PropertyChanged}" Width="96" HorizontalAlignment="Left" AutomationProperties.Name="{x:Static t:Txt.PeripheralColor}" />
+                                </StackPanel>
+                                <WrapPanel>
+                                    <Button Content="{x:Static t:Txt.PeripheralSyncApply}" Command="{Binding SyncApplyCommand}" Margin="0,0,8,6" />
+                                    <Button Content="{x:Static t:Txt.PeripheralSyncGamemode}" Command="{Binding SyncGamemodeCommand}" Margin="0,0,0,6" />
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </ScrollViewer>
             </Border>

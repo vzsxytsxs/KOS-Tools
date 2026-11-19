@@ -69,6 +69,15 @@ public sealed class GamemodePeripheralEntry
     /// <summary>A Razer charging dock only: the mouse battery on the ring during gamemode (true) or not (false), instead of
     /// <see cref="GamemodePeripheral.DockBattery"/>; null = as outside gamemode. Never in the state (nothing to put back).</summary>
     public bool? DockBattery { get; set; }
+    /// <summary>The light in gamemode: an effect (<see cref="Color"/> for static and breathing); in the state, a device's live effect before.</summary>
+    public LightingEffect? Effect { get; set; }
+    public int? Color { get; set; }
+    /// <summary>Keyboards with magnetic switches: rapid trigger on (both steps <see cref="RapidTriggerMm"/>) or off on every key, each key's actuation kept.</summary>
+    public bool? RapidTrigger { get; set; }
+    public double? RapidTriggerMm { get; set; }
+    /// <summary>State only, ROYUAN keyboards (every write stored): the lighting and the switch columns from before gamemode, written back as they were.</summary>
+    public Royuan.RoyuanLight? KeyboardLight { get; set; }
+    public Royuan.RoyuanColumns? KeyboardSwitches { get; set; }
 }
 
 /// <summary>What the devices had before gamemode (same shape: the values to write back).</summary>

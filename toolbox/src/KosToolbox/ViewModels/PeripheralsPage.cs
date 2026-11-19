@@ -75,6 +75,9 @@ public sealed class PeripheralRowViewModel : ObservableObject
         ApplyColorCommand = new AsyncCommand(() => Hex(_colorText) is { } c
             ? Write(Txt.PeripheralColor, d => d.SetLighting(_state?.Lighting?.Effect == LightingEffect.Breathing ? LightingEffect.Breathing : LightingEffect.Static, c))
             : Invalid(Txt.PeripheralColorInvalid));
+        GmLightCommand = new RelayCommand(p => { if (p is string k) { _gmLight = k; Raise(nameof(GmLights)); Raise(nameof(GmHasColor)); } });
+        GmSwatchCommand = new RelayCommand(p => { if (p is string hex) GmColorText = hex; });
+        GmRtCommand = new RelayCommand(p => { if (p is string k) { _gmRt = k; Raise(nameof(GmRts)); Raise(nameof(GmRtOn)); } });
         GmRingCommand = new RelayCommand(p => { if (p is string k) { _gmRing = k; Raise(nameof(GmRings)); } });
         GmPollingCommand = new RelayCommand(p => { if (p is string k) { _gmHz = int.TryParse(k, out var hz) ? hz : null; Raise(nameof(GmRates)); } });
         SwatchCommand = new RelayCommand(p => { if (p is string hex) ColorText = hex; });
@@ -120,25 +123,38 @@ public sealed class PeripheralRowViewModel : ObservableObject
         if (!on && _state?.Lighting is { Effect: not LightingEffect.Other } l) await Write(Txt.PeripheralLighting, d => d.SetLighting(l.Effect, l.Color ?? 0));
     }
 
-    // ---------- gamemode profile: what KOS Governor writes live while gamemode is on, put back when it ends ----------
+    // ---------- gamemode profile: what KOS Governor writes while gamemode is on, put back when it ends ----------
     GamemodePeripheralEntry? _gamemode;
-    bool _gmDpiOn, _gmLightOff, _gmLoaded;
-    string? _gmDpiText;
+    bool _gmDpiOn, _gmLoaded;
+    string? _gmDpiText, _gmColorText, _gmRtText;
     int? _gmHz;
+    string _gmLight = "", _gmRt = ""; // light: "" keep, "off", or an effect name; rapid trigger: "" keep, "on", "off"
     public ICommand GamemodeCommand { get; }
     public ICommand GamemodeClearCommand { get; }
     public ICommand GmPollingCommand { get; }
+    public ICommand GmLightCommand { get; }
+    public ICommand GmSwatchCommand { get; }
+    public ICommand GmRtCommand { get; }
     public bool CanGmDpi => Driver is { HasLiveDpi: true } && CanDpi && Dpi is not null;
     public bool CanGmPolling => CanPolling && HasPolling;
-    public bool CanGmLight => Driver is { HasLiveBrightness: true } && HasLight;
-    public bool CanGamemode => Driver is { BatteryOnly: false, GamemodeWrites: true } && (CanGmDpi || CanGmPolling || CanGmLight);
-    public string GmLightText => IsDock ? Txt.PeripheralGamemodeRingOff : Txt.PeripheralGamemodeLightOff;
+    /// <summary>A light gamemode can turn off: live on a mouse or the dock; stored on a keyboard that stores everything.</summary>
+    public bool CanGmLight => Driver is { HasLiveBrightness: true } or { StoredOnly: true } && HasLight;
+    /// <summary>Effects in gamemode: a Razer device's live effect, or a stored-only keyboard's.</summary>
+    public bool CanGmEffect => CanLighting && Driver is KosToolbox.Core.Peripherals.Razer.RazerDriver { IsDock: false } or { StoredOnly: true };
+    public bool CanGmRt => Writable.Contains(PeripheralSetting.Magnetic) && Driver is KosToolbox.Core.Peripherals.Royuan.RoyuanDriver;
+    public bool CanGamemode => Driver is { BatteryOnly: false } && (CanGmDpi || CanGmPolling || CanGmLight || CanGmRt);
+    /// <summary>The device stores every write: gamemode writes its flash on each start and stop.</summary>
+    public bool GmStoredOnly => Driver is { StoredOnly: true };
     public bool GmDpiOn { get => _gmDpiOn; set => Set(ref _gmDpiOn, value); }
     public string? GmDpiText { get => _gmDpiText; set { if (Set(ref _gmDpiText, value)) Raise(nameof(GmDpiSlider)); } }
     public double GmDpiSlider { get => LogDpi(Int(_gmDpiText) ?? Dpi?.X); set => GmDpiText = Snap(Math.Exp(value)).ToString(); }
-    public bool GmLightOff { get => _gmLightOff; set => Set(ref _gmLightOff, value); }
-    /// <summary>A light that isn't a dock's ring: the on/off switch. The dock's ring has <see cref="GmRings"/> instead.</summary>
-    public bool CanGmLightSwitch => CanGmLight && !IsDock;
+    /// <summary>A light that isn't a dock's ring: Keep, Off and the effects. The dock's ring has <see cref="GmRings"/> instead.</summary>
+    public bool CanGmLightChoice => CanGmLight && !IsDock;
+    public IReadOnlyList<OptionItem> GmLights => new[] { ("", Txt.PeripheralGamemodeKeep), ("off", Txt.PeripheralGamemodeRingOffShort) }
+        .Concat(CanGmEffect ? Driver!.Effects.Where(e => e != LightingEffect.Off).Select(e => (e.ToString(), Txt.LightingEffectName(e))) : Array.Empty<(string, string)>())
+        .Select(o => new OptionItem(o.Item1, o.Item2) { IsSelected = o.Item1 == _gmLight }).ToList();
+    public bool GmHasColor => _gmLight is nameof(LightingEffect.Static) or nameof(LightingEffect.Breathing);
+    public string? GmColorText { get => _gmColorText; set => Set(ref _gmColorText, value); }
     public bool CanGmRing => CanGmLight && IsDock;
     string _gmRing = ""; // "" keep, "off" ring off, "battery" / "nobattery" the mouse battery on the ring or not
     public ICommand GmRingCommand { get; }
@@ -146,12 +162,16 @@ public sealed class PeripheralRowViewModel : ObservableObject
     {
         ("", Txt.PeripheralGamemodeKeep), ("off", Txt.PeripheralGamemodeRingOffShort), ("battery", Txt.PeripheralGamemodeBattery), ("nobattery", Txt.PeripheralGamemodeNoBattery),
     }.Select(o => new OptionItem(o.Item1, o.Item2) { IsSelected = o.Item1 == _gmRing }).ToList();
+    public IReadOnlyList<OptionItem> GmRts => new[] { ("", Txt.PeripheralGamemodeKeep), ("on", Txt.PeripheralTurnOn), ("off", Txt.PeripheralTurnOff) }
+        .Select(o => new OptionItem(o.Item1, o.Item2) { IsSelected = o.Item1 == _gmRt }).ToList();
+    public bool GmRtOn => _gmRt == "on";
+    public string? GmRtText { get => _gmRtText; set => Set(ref _gmRtText, value); }
     /// <summary>"Keep" and each supported rate; the choice is saved only by Save.</summary>
     public IReadOnlyList<OptionItem> GmRates => _state?.Polling is { } p
         ? new[] { new OptionItem("", Txt.PeripheralGamemodeKeep) { IsSelected = _gmHz is null } }
             .Concat(p.Supported.Select(hz => new OptionItem(hz.ToString(), $"{hz} Hz") { IsSelected = hz == _gmHz })).ToList()
         : Array.Empty<OptionItem>();
-    public string GamemodeText => _gamemode is { } g ? Txt.PeripheralGamemodeValues(g.Dpi, g.PollingHz, g.Brightness == 0, IsDock, g.DockBattery) : Txt.PeripheralGamemodeNone;
+    public string GamemodeText => _gamemode is { } g ? Txt.PeripheralGamemodeValues(g, IsDock) : Txt.PeripheralGamemodeNone;
     public bool HasGamemode => _gamemode is not null;
 
     GamemodePeripheralEntry? Gamemode()
@@ -168,8 +188,20 @@ public sealed class PeripheralRowViewModel : ObservableObject
         _gmDpiOn = _gamemode?.Dpi is not null;
         _gmDpiText = (_gamemode?.Dpi ?? _state.Dpi?.X)?.ToString();
         _gmHz = _gamemode?.PollingHz;
-        _gmLightOff = _gamemode?.Brightness == 0;
+        _gmLight = _gamemode?.Brightness == 0 ? "off" : _gamemode?.Effect?.ToString() ?? "";
+        _gmColorText = $"#{_gamemode?.Color ?? _state.Lighting?.Color ?? 0xFFFFFF:X6}";
         _gmRing = _gamemode?.Brightness == 0 ? "off" : _gamemode?.DockBattery switch { true => "battery", false => "nobattery", _ => "" };
+        _gmRt = _gamemode?.RapidTrigger switch { true => "on", false => "off", _ => "" };
+        _gmRtText = (_gamemode?.RapidTriggerMm ?? 0.1).ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>Another place changed the saved profile (the lighting sync): the editor shows it again.</summary>
+    public void ReloadGamemode()
+    {
+        _gamemode = Gamemode();
+        _gmLoaded = false;
+        LoadGamemodeEditor();
+        Raise(string.Empty);
     }
 
     /// <summary>Saves (keep) or removes this device's gamemode profile, each value checked against what the device reported.</summary>
@@ -178,30 +210,44 @@ public sealed class PeripheralRowViewModel : ObservableObject
         try
         {
             if (!KosToolbox.Core.Execution.Elevation.IsAdmin) throw new InvalidOperationException(Txt.GpuGamemodeNeedsAdmin);
-            int? dpi = null, hz = null;
+            var entry = new GamemodePeripheralEntry { VendorId = Device.VendorId, ProductId = Device.ProductId, Name = Name };
             if (keep)
             {
                 if (_gmDpiOn && CanGmDpi)
-                    dpi = Int(_gmDpiText) is { } v && v >= Dpi!.Min && v <= Dpi.Max ? v : throw new InvalidOperationException(Txt.PeripheralGamemodeDpiInvalid(Dpi!.Min, Dpi.Max));
-                if (_gmHz is { } h && CanGmPolling && _state!.Polling!.Supported.Contains(h)) hz = h;
-                if (dpi is null && hz is null && !(_gmLightOff && CanGmLightSwitch) && !(_gmRing != "" && CanGmRing))
+                    entry.Dpi = Int(_gmDpiText) is { } v && v >= Dpi!.Min && v <= Dpi.Max ? v : throw new InvalidOperationException(Txt.PeripheralGamemodeDpiInvalid(Dpi!.Min, Dpi.Max));
+                if (_gmHz is { } h && CanGmPolling && _state!.Polling!.Supported.Contains(h)) entry.PollingHz = h;
+                if (CanGmLightChoice && _gmLight == "off") entry.Brightness = 0;
+                else if (CanGmLightChoice && CanGmEffect && Enum.TryParse<LightingEffect>(_gmLight, out var fx))
+                {
+                    entry.Effect = fx;
+                    if (GmHasColor) entry.Color = Hex(_gmColorText) ?? throw new InvalidOperationException(Txt.PeripheralColorInvalid);
+                }
+                if (CanGmRing && _gmRing != "")
+                {
+                    if (_gmRing == "off") entry.Brightness = 0;
+                    else entry.DockBattery = _gmRing == "battery";
+                }
+                if (CanGmRt && _gmRt != "")
+                {
+                    entry.RapidTrigger = _gmRt == "on";
+                    if (GmRtOn)
+                        entry.RapidTriggerMm = double.TryParse(_gmRtText?.Trim().Replace(',', '.'), System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out var mm) && mm is >= 0.01 and <= PeripheralMagnetic.RtMaxMm
+                            ? mm : throw new InvalidOperationException(Txt.PeripheralGamemodeRtInvalid(PeripheralMagnetic.RtMaxMm));
+                }
+                if (entry is { Dpi: null, PollingHz: null, Brightness: null, Effect: null, DockBattery: null, RapidTrigger: null })
                     throw new InvalidOperationException(Txt.PeripheralGamemodeNothing);
             }
             var config = GamemodePeripheral.Load() ?? new GamemodePeripheral();
             config.Devices.RemoveAll(e => e.VendorId == Device.VendorId && e.ProductId == Device.ProductId);
-            if (keep)
-                config.Devices.Add(new GamemodePeripheralEntry
-                {
-                    VendorId = Device.VendorId, ProductId = Device.ProductId, Name = Name, Dpi = dpi, PollingHz = hz,
-                    Brightness = (_gmLightOff && CanGmLightSwitch) || (_gmRing == "off" && CanGmRing) ? 0 : null,
-                    DockBattery = CanGmRing ? _gmRing switch { "battery" => true, "nobattery" => false, _ => null } : null,
-                });
+            if (keep) config.Devices.Add(entry);
             config.Suspended = false; // choosing again lifts a pause
             config.Save();
             _gamemode = Gamemode();
             Raise(nameof(GamemodeText));
             Raise(nameof(HasGamemode));
             Toasts.Show(keep ? Txt.PeripheralGamemodeSaved : Txt.PeripheralGamemodeRemoved);
+            if (keep && GmStoredOnly) Toasts.Show(Txt.PeripheralGamemodeStoredNote, ToastKind.Warning);
             Log.Info($"Peripherals: gamemode profile for {Name}: {(_gamemode is null ? "none" : GamemodeText)}.");
         }
         catch (Exception ex) when (ex is InvalidOperationException or System.IO.IOException or UnauthorizedAccessException)
@@ -209,6 +255,19 @@ public sealed class PeripheralRowViewModel : ObservableObject
             Toasts.Show(Txt.PeripheralWriteFailed(ex.Message), ToastKind.Error);
         }
     }
+
+    // ---------- lighting sync (the page's card): one effect and color on several devices ----------
+    bool _synced = true;
+    /// <summary>Part of the lighting sync: a device whose light the toolbox writes (not a dock showing the mouse battery).</summary>
+    public bool CanSync => CanLighting && !(IsDock && _dockBattery);
+    public bool IsSynced { get => _synced; set => Set(ref _synced, value); }
+
+    /// <summary>The sync's choice on this device: off (brightness 0 on a keyboard, the off effect elsewhere) or an effect lit.</summary>
+    public Task ApplySync(LightingEffect effect, int color) => Write(Txt.PeripheralLighting, d => d switch
+    {
+        KosToolbox.Core.Peripherals.Royuan.RoyuanDriver r => effect == LightingEffect.Off ? r.SetBrightness(0) : r.SetLightingLit(effect, color),
+        _ => d.SetLighting(effect, color),
+    });
 
     // ---------- the picture: a drawing per model family, its light in the color and brightness the controls show ----------
     /// <summary>Which picture: Dock, Mouse, Headset, Keyboard, Controller or Other.</summary>
@@ -725,7 +784,7 @@ public sealed class PeripheralRowViewModel : ObservableObject
     static int? Int(string? s) => int.TryParse(s?.Trim(), out var v) ? v : null;
 
     /// <summary>#RRGGBB (the # is optional) as 0xRRGGBB.</summary>
-    static int? Hex(string? s) => s?.Trim().TrimStart('#') is { Length: 6 } h
+    internal static int? Hex(string? s) => s?.Trim().TrimStart('#') is { Length: 6 } h
         && int.TryParse(h, System.Globalization.NumberStyles.AllowHexSpecifier, System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : null;
 
     async Task Write(string what, Func<PeripheralDriver, PeripheralState> set, string? success = null, string? warning = null)
@@ -832,6 +891,10 @@ public sealed class PeripheralsPageViewModel : PageViewModel
             else MainViewModel.Fire(RefreshAsync());
         };
         _battery.Tick += (_, _) => MainViewModel.Fire(Batteries());
+        SyncEffectCommand = new RelayCommand(p => { if (p is string k && Enum.TryParse<LightingEffect>(k, out var e)) { _syncEffect = e; Raise(nameof(SyncEffects)); Raise(nameof(SyncHasColor)); } });
+        SyncSwatchCommand = new RelayCommand(p => { if (p is string hex) SyncColorText = hex; });
+        SyncApplyCommand = new AsyncCommand(ApplySync);
+        SyncGamemodeCommand = new RelayCommand(SyncGamemode);
     }
 
     /// <summary>The list and the selected device scroll on their own, side by side.</summary>
@@ -890,12 +953,76 @@ public sealed class PeripheralsPageViewModel : PageViewModel
         Selected = _devices.FirstOrDefault(r => r.Device.Key == keep) ?? _devices.FirstOrDefault();
         // One device at a time: drivers on different devices are independent, but this keeps the bus quiet.
         foreach (var row in _devices.Where(r => r.IsSupported).ToList()) await row.ReadAsync();
+        Raise(nameof(SyncRows));
+        Raise(nameof(HasSync));
     }
 
     static PeripheralDriver? SafeClaim(HidDevice d)
     {
         try { return Claim(d); }
         catch (ArgumentException) { return null; }
+    }
+
+    // ---------- lighting sync: one effect and color on the checked devices, applied now or saved for gamemode ----------
+    LightingEffect _syncEffect = LightingEffect.Static;
+    string? _syncColor = "#FF0000";
+    public IReadOnlyList<PeripheralRowViewModel> SyncRows => _devices.Where(d => d.CanSync).ToList();
+    public bool HasSync => SyncRows.Count >= 2;
+    public IReadOnlyList<OptionItem> SyncEffects => new[] { LightingEffect.Off, LightingEffect.Static, LightingEffect.Breathing, LightingEffect.Spectrum }
+        .Select(e => new OptionItem(e.ToString(), Txt.LightingEffectName(e)) { IsSelected = e == _syncEffect }).ToList();
+    public bool SyncHasColor => _syncEffect is LightingEffect.Static or LightingEffect.Breathing;
+    public string? SyncColorText { get => _syncColor; set => Set(ref _syncColor, value); }
+    public static IReadOnlyList<string> Swatches => PeripheralRowViewModel.Swatches;
+    public ICommand SyncEffectCommand { get; }
+    public ICommand SyncSwatchCommand { get; }
+    public ICommand SyncApplyCommand { get; }
+    public ICommand SyncGamemodeCommand { get; }
+
+    /// <summary>The checked devices and the color, or null after an error toast.</summary>
+    (List<PeripheralRowViewModel> Rows, int Color)? SyncChoice()
+    {
+        var rows = SyncRows.Where(r => r.IsSynced).ToList();
+        if (rows.Count == 0) { Toasts.Show(Txt.PeripheralWriteFailed(Txt.PeripheralSyncNone), ToastKind.Error); return null; }
+        if (!SyncHasColor) return (rows, 0);
+        if (PeripheralRowViewModel.Hex(_syncColor) is { } c) return (rows, c);
+        Toasts.Show(Txt.PeripheralWriteFailed(Txt.PeripheralColorInvalid), ToastKind.Error);
+        return null;
+    }
+
+    /// <summary>Each checked device in turn, each write read back (a toast per device).</summary>
+    async Task ApplySync()
+    {
+        if (SyncChoice() is not { } choice) return;
+        foreach (var row in choice.Rows) await row.ApplySync(_syncEffect, choice.Color);
+    }
+
+    /// <summary>The same light in each checked device's gamemode profile (off, or the effect and color); the rest of each profile kept.</summary>
+    void SyncGamemode()
+    {
+        if (SyncChoice() is not { } choice) return;
+        var rows = choice.Rows.Where(r => r.CanGmLightChoice && (_syncEffect == LightingEffect.Off || r.CanGmEffect)).ToList();
+        try
+        {
+            if (!KosToolbox.Core.Execution.Elevation.IsAdmin) throw new InvalidOperationException(Txt.GpuGamemodeNeedsAdmin);
+            if (rows.Count == 0) throw new InvalidOperationException(Txt.PeripheralSyncNone);
+            var config = GamemodePeripheral.Load() ?? new GamemodePeripheral();
+            foreach (var row in rows)
+            {
+                var e = config.Devices.FirstOrDefault(x => x.VendorId == row.Device.VendorId && x.ProductId == row.Device.ProductId);
+                if (e is null) config.Devices.Add(e = new GamemodePeripheralEntry { VendorId = row.Device.VendorId, ProductId = row.Device.ProductId, Name = row.Name });
+                var off = _syncEffect == LightingEffect.Off;
+                (e.Brightness, e.Effect, e.Color) = (off ? 0 : null, off ? null : _syncEffect, SyncHasColor ? choice.Color : null);
+            }
+            config.Suspended = false;
+            config.Save();
+            foreach (var row in rows) row.ReloadGamemode();
+            Toasts.Show(Txt.PeripheralSyncGamemodeSaved);
+            Log.Info($"Peripherals: lighting sync saved for gamemode on {string.Join(", ", rows.Select(r => r.Name))}: {_syncEffect}.");
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.IO.IOException or UnauthorizedAccessException)
+        {
+            Toasts.Show(Txt.PeripheralWriteFailed(ex.Message), ToastKind.Error);
+        }
     }
 
     async Task Batteries()
@@ -979,7 +1106,7 @@ public sealed class DksRowViewModel(int layer) : ObservableObject
     public int Cell1 { get => _cells[1]; set => SetCell(1, value); }
     public int Cell2 { get => _cells[2]; set => SetCell(2, value); }
     public int Cell3 { get => _cells[3]; set => SetCell(3, value); }
-    /// <summary>The action byte: event A in bits 0..1, then B, C, D.</summary>
+    /// <summary>The action byte: event A in bits 0..1, then B, C, D; byte n is sub-layer n (pressed on an R82HE, 2026-11-18).</summary>
     public byte Actions => (byte)(_cells[0] | _cells[1] << 2 | _cells[2] << 4 | _cells[3] << 6);
 
     void SetCell(int i, int v) { if (_cells[i] == v) return; _cells[i] = Math.Clamp(v, 0, 3); Raise($"Cell{i}"); }

@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Text.Json.Serialization;
 
 namespace KosToolbox.Core.Peripherals.Royuan;
 
@@ -12,10 +13,10 @@ namespace KosToolbox.Core.Peripherals.Royuan;
 public sealed record RoyuanColumns(ushort[] Actuation, ushort[] Release, ushort[] RtPress, ushort[] RtRelease, ushort[] DeadZone, byte[] Mode,
     ushort[] DksPoint, byte[] HoldTime, byte[] Partner, byte[] DksActions)
 {
-    public IEnumerable<int> Keys => Enumerable.Range(0, RoyuanCodec.Slots).Where(i => Actuation[i] != 0);
+    [JsonIgnore] public IEnumerable<int> Keys => Enumerable.Range(0, RoyuanCodec.Slots).Where(i => Actuation[i] != 0);
 
     /// <summary>The u16 columns with their sub-op.</summary>
-    public (byte SubOp, ushort[] Values)[] Travel => new[]
+    [JsonIgnore] public (byte SubOp, ushort[] Values)[] Travel => new[]
     {
         (RoyuanCodec.ActuationColumn, Actuation), (RoyuanCodec.ReleaseColumn, Release), (RoyuanCodec.RtPressColumn, RtPress),
         (RoyuanCodec.RtReleaseColumn, RtRelease), (RoyuanCodec.DksPointColumn, DksPoint), (RoyuanCodec.DeadZoneColumn, DeadZone),
@@ -25,7 +26,7 @@ public sealed record RoyuanColumns(ushort[] Actuation, ushort[] Release, ushort[
     /// The byte columns with their sub-op, in the order they're written: hold time (and the DKS actions) before the mode, so a key never
     /// takes a kind before its data; the snap partner after it (on an R82HE, partners sent while the keys weren't snap yet read back 255).
     /// </summary>
-    public (byte SubOp, byte[] Values)[] Bytes => new[]
+    [JsonIgnore] public (byte SubOp, byte[] Values)[] Bytes => new[]
     {
         (RoyuanCodec.HoldTimeColumn, HoldTime), (RoyuanCodec.ModeColumn, Mode), (RoyuanCodec.PartnerColumn, Partner),
     };
@@ -187,6 +188,21 @@ public static class RoyuanCodec
             w.DeadZone[k] = deadZone;
             w.Mode[k] = (byte)(c.Mode[k] & ~RapidTriggerBit | (rapidTrigger ? RapidTriggerBit : 0));
             if (rapidTrigger) { w.RtPress[k] = rtPress; w.RtRelease[k] = rtRelease; }
+        }
+        return w;
+    }
+
+    /// <summary>
+    /// The columns with rapid trigger on or off on every key (gamemode): the rapid-trigger bit (each key's kind in bits 0..6 kept) and,
+    /// on, the press and release steps; actuation, release point and dead zone stay per key as they are.
+    /// </summary>
+    public static RoyuanColumns WithRapidTrigger(RoyuanColumns c, bool on, ushort step)
+    {
+        var w = c.Copy();
+        foreach (var k in c.Keys)
+        {
+            w.Mode[k] = (byte)(c.Mode[k] & ~RapidTriggerBit | (on ? RapidTriggerBit : 0));
+            if (on) w.RtPress[k] = w.RtRelease[k] = step;
         }
         return w;
     }

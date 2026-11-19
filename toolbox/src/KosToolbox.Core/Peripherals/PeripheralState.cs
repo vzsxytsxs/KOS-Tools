@@ -115,8 +115,8 @@ public abstract class PeripheralDriver
     public virtual PeripheralKind Kind => Device.Kind;
     public virtual PeripheralConnection? Connection => Device.Bluetooth ? PeripheralConnection.Bluetooth : null;
     public virtual IReadOnlySet<PeripheralSetting> Writable => new HashSet<PeripheralSetting>();
-    /// <summary>Whether KOS Governor's gamemode may write this device on every game start and stop (false where each write goes to flash).</summary>
-    public virtual bool GamemodeWrites => true;
+    /// <summary>Every write goes to the device's flash (no live-only setting): gamemode writes it on each start and stop, and the page says so.</summary>
+    public virtual bool StoredOnly => false;
 
     /// <summary>Everything the driver knows how to read. Getters only.</summary>
     public abstract PeripheralState Read();

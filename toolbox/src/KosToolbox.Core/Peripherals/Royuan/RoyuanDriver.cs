@@ -76,8 +76,7 @@ public sealed class RoyuanDriver : PeripheralDriver
 
     public override PeripheralKind Kind => PeripheralKind.Keyboard;
     public override PeripheralConnection? Connection => PeripheralConnection.Wired;
-    /// <summary>Every setting here is stored in flash: gamemode would wear it on each game start and stop.</summary>
-    public override bool GamemodeWrites => false;
+    public override bool StoredOnly => true;
     /// <summary>No Off: mode 0 isn't confirmed to turn the light off on this board; brightness 0 does.</summary>
     public override IReadOnlyList<LightingEffect> Effects => new[] { LightingEffect.Static, LightingEffect.Breathing, LightingEffect.Spectrum };
     /// <summary>The identified board; null before the first Read, or when Identify named a board outside the catalog.</summary>
@@ -115,7 +114,7 @@ public sealed class RoyuanDriver : PeripheralDriver
         }
     }
 
-    public override PeripheralState Read() => With(_config, false, t =>
+    public override PeripheralState Read() => Locked(t =>
     {
         if (_foreignId is { } foreign) return Unidentified(foreign);
         if (_model is null)
@@ -177,14 +176,34 @@ public sealed class RoyuanDriver : PeripheralDriver
     }
 
     /// <summary>Static, breathing (with the color) or spectrum; speed and brightness stay as read.</summary>
-    public override PeripheralState SetLighting(LightingEffect effect, int color)
+    public override PeripheralState SetLighting(LightingEffect effect, int color) => SetLight(Lighting(effect, color, lit: false));
+
+    /// <summary>As <see cref="SetLighting"/>, raising a brightness of 0 to 100 % in the same write (sync and gamemode: the light should show).</summary>
+    public PeripheralState SetLightingLit(LightingEffect effect, int color) => SetLight(Lighting(effect, color, lit: true));
+
+    RoyuanLight Lighting(LightingEffect effect, int color, bool lit)
     {
         Require(effect is LightingEffect.Static or LightingEffect.Breathing or LightingEffect.Spectrum, "Choose static, breathing or spectrum.");
         Require(color is >= 0 and <= 0xFFFFFF, "The color is #RRGGBB.");
         var light = _light ?? throw new PeripheralException("The lighting hasn't been read yet; nothing is written.");
-        return SetLight(effect == LightingEffect.Spectrum
+        if (lit && light.Brightness == 0) light = light with { Brightness = 4 };
+        return effect == LightingEffect.Spectrum
             ? light with { Mode = 3, Flags = RoyuanCodec.Rainbow }
-            : light with { Mode = (byte)(effect == LightingEffect.Static ? 1 : 2), Flags = RoyuanCodec.FixedColor, Color = color });
+            : light with { Mode = (byte)(effect == LightingEffect.Static ? 1 : 2), Flags = RoyuanCodec.FixedColor, Color = color };
+    }
+
+    /// <summary>Rapid trigger on (every key, both steps <paramref name="stepMm"/>) or off; each key's actuation stays. From a fresh read.</summary>
+    public PeripheralState SetRapidTrigger(bool on, double stepMm)
+    {
+        CatalogModel();
+        var unit = RoyuanCodec.TravelUnitMm(_version ?? throw new PeripheralException("The firmware version wasn't read; nothing is written."));
+        if (on) Require(stepMm >= unit && stepMm <= PeripheralMagnetic.RtMaxMm, $"Rapid-trigger steps go from {unit} to {PeripheralMagnetic.RtMaxMm} mm.");
+        return Write(t =>
+        {
+            var now = ReadColumns(t) ?? throw new PeripheralException("The keyboard didn't answer the switch read; nothing is written.");
+            if (!now.Keys.Any()) throw new PeripheralException("The keyboard reports no keys; nothing is written.");
+            return SendColumns(t, now, RoyuanCodec.WithRapidTrigger(now, on, (ushort)Math.Round(stepMm / unit)));
+        });
     }
 
     /// <summary>The stored lighting bytes as given (modes 0..19, speed and brightness 0..4); restores what <see cref="StoredLight"/> read.</summary>
@@ -460,7 +479,7 @@ public sealed class RoyuanDriver : PeripheralDriver
     {
         CatalogModel();
         Require(index is >= 0 and < RoyuanMacro.Slots, $"Macros go from 1 to {RoyuanMacro.Slots}.");
-        return With(_config, false, t => ReadMacroBlob(t, index) is { } blob ? RoyuanMacro.Decode(blob) : null);
+        return Locked(t => ReadMacroBlob(t, index) is { } blob ? RoyuanMacro.Decode(blob) : null);
     }
 
     static byte[]? ReadMacroBlob(IHidTransport t, int index)
@@ -508,7 +527,7 @@ public sealed class RoyuanDriver : PeripheralDriver
         var light = _light ?? throw new PeripheralException("The lighting hasn't been read yet; nothing is written.");
         var since = Environment.TickCount64 - _lastPicture;
         if (since < PictureSpacingMs) throw new PeripheralException($"Wait {(PictureSpacingMs - since + 999) / 1000} s before the next picture: quick uploads can stall the keyboard.");
-        With(_config, false, t =>
+        Locked(t =>
         {
             foreach (var page in pages)
             {
@@ -570,12 +589,42 @@ public sealed class RoyuanDriver : PeripheralDriver
         }
     }
 
-    void SetStream(bool on) => With(_config, false, t =>
+    void SetStream(bool on) => Locked(t =>
     {
         t.SetFeature(0, RoyuanCodec.EncodeTravelStream(on));
         Delay(ReplyWait);
         return true;
     });
+
+    /// <summary>
+    /// One KOS program at a time on the keyboard: the toolbox and the governor engine talking to it together corrupt each other's
+    /// replies, and a whole-column write made from a corrupted read would land on every key. The named mutex lives only for one
+    /// operation; when the other (elevated) program holds it, opening it is denied, which counts as busy too.
+    /// </summary>
+    T Locked<T>(Func<IHidTransport, T> work)
+    {
+        var name = $@"Local\KosToolbox.Royuan.{Device.VendorId:X4}{Device.ProductId:X4}";
+        var until = Environment.TickCount64 + 15000;
+        while (true)
+        {
+            Mutex? mutex = null;
+            try { mutex = new Mutex(false, name); }
+            catch (UnauthorizedAccessException) { }
+            if (mutex is not null)
+                using (mutex)
+                {
+                    bool owned;
+                    try { owned = mutex.WaitOne((int)Math.Max(0, until - Environment.TickCount64)); }
+                    catch (AbandonedMutexException) { owned = true; } // the other program died holding it: ours now
+                    if (!owned) break;
+                    try { return With(_config, false, work); }
+                    finally { mutex.ReleaseMutex(); }
+                }
+            if (Environment.TickCount64 > until) break;
+            Thread.Sleep(200);
+        }
+        throw new PeripheralException("Another KOS program is using the keyboard; try again in a moment.");
+    }
 
     RoyuanModel CatalogModel() => _model ?? throw new PeripheralException("The keyboard hasn't been identified yet; nothing is written.");
 
@@ -585,7 +634,7 @@ public sealed class RoyuanDriver : PeripheralDriver
     PeripheralState Write(Func<IHidTransport, string?> work)
     {
         CatalogModel();
-        var problem = With(_config, false, work);
+        var problem = Locked(work);
         var state = Read();
         return problem is null ? state : throw new ReadBackException(problem, state);
     }

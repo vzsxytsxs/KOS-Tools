@@ -45,10 +45,10 @@ public static partial class Txt
     };
 
     public const string PeripheralGamemode = "Gamemode profile", PeripheralUseInGamemode = "Save", PeripheralGamemodeClear = "Remove",
-        PeripheralGamemodeNote = "When gamemode turns on, KOS Governor sets what is chosen here and puts back what the device had when it turns off. Live values only: nothing is stored in the device.",
+        PeripheralGamemodeNote = "When gamemode turns on, KOS Governor sets what is chosen here and puts back what the device had when it turns off. On a mouse or the dock these are live values only: nothing is stored in the device.",
         PeripheralGamemodeSaved = "Gamemode profile saved: KOS Governor applies it when gamemode turns on.", PeripheralGamemodeRemoved = "Gamemode profile removed.",
-        PeripheralGamemodeSetDpi = "Set the DPI", PeripheralGamemodeKeep = "Keep", PeripheralGamemodeLightOff = "Turn the light off",
-        PeripheralGamemodeRingOff = "Turn the ring off", PeripheralGamemodeNone = "No profile saved.", PeripheralGamemodeSavedLabel = "Saved",
+        PeripheralGamemodeSetDpi = "Set the DPI", PeripheralGamemodeKeep = "Keep",
+        PeripheralGamemodeNone = "No profile saved.", PeripheralGamemodeSavedLabel = "Saved",
         PeripheralGamemodeNothing = "choose at least one thing for gamemode to change.",
         PeripheralLightOff = "Light off", PeripheralLightOn = "Light on", PeripheralLivePreview = "Shows the values above before Apply.";
 
@@ -67,10 +67,22 @@ public static partial class Txt
         LightingEffect.Off => "Off", LightingEffect.Static => "Static", LightingEffect.Breathing => "Breathing", LightingEffect.Spectrum => "Spectrum", _ => "Other",
     };
 
-    public static string PeripheralGamemodeValues(int? dpi, int? hz, bool lightOff, bool dock, bool? battery = null) =>
-        string.Join(" · ", new[] { dpi is { } d ? $"{d} DPI" : null, hz is { } h ? $"{h} Hz" : null, lightOff ? (dock ? "ring off" : "light off") : null,
-            battery switch { true => "battery on the ring", false => "no battery on the ring", _ => null } }
-            .OfType<string>()) is { Length: > 0 } s ? s : "—";
+    public static string PeripheralGamemodeValues(Peripherals.GamemodePeripheralEntry g, bool dock) =>
+        string.Join(" · ", new[]
+        {
+            g.Dpi is { } d ? $"{d} DPI" : null, g.PollingHz is { } h ? $"{h} Hz" : null, g.Brightness == 0 ? (dock ? "ring off" : "light off") : null,
+            g.Effect is { } fx ? LightingEffectName(fx).ToLowerInvariant() + (g.Color is { } c ? $" #{c:X6}" : "") : null,
+            g.DockBattery switch { true => "battery on the ring", false => "no battery on the ring", _ => null },
+            g.RapidTrigger switch { true => $"rapid trigger {g.RapidTriggerMm ?? 0.1:0.##} mm", false => "rapid trigger off", _ => null },
+        }.OfType<string>()) is { Length: > 0 } s ? s : "—";
+
+    public static string PeripheralGamemodeRtInvalid(double max) => $"the rapid-trigger step goes from 0.01 to {max} mm.";
+
+    public const string PeripheralGamemodeLight = "Light", PeripheralGamemodeRt = "Rapid trigger", PeripheralGamemodeRtStep = "Rapid-trigger step (mm)",
+        PeripheralGamemodeStoredNote = "This keyboard keeps every setting in its memory: gamemode writes it when it turns on and again when it turns off.",
+        PeripheralSync = "Lighting sync", PeripheralSyncNote = "The checked devices get this effect and color; a keyboard's brightness goes to 100 % if it was 0.",
+        PeripheralSyncApply = "Apply to all", PeripheralSyncGamemode = "Use in gamemode",
+        PeripheralSyncGamemodeSaved = "Saved in each checked device's gamemode profile.", PeripheralSyncNone = "Check at least one device.";
 
     public const string PeripheralGamemodeRing = "Ring", PeripheralGamemodeRingOffShort = "Off", PeripheralGamemodeBattery = "Battery",
         PeripheralGamemodeNoBattery = "No battery",

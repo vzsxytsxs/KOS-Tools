@@ -283,6 +283,46 @@ public class RoyuanTests
     }
 
     [Fact]
+    public void GamemodeRapidTriggerKeepsEachKeysActuationAndKind()
+    {
+        var board = new Board().Customized();
+        var driver = Driver(board);
+        driver.Read();
+        var actuation = board.Columns[0][8];
+        var count = board.Sent.Count;
+
+        driver.SetRapidTrigger(true, 0.1);
+        Assert.Equal(actuation, board.Columns[0][8]);  // the user's per-key actuation stays
+        Assert.Equal(0x87, board.Columns[7][9]);       // snap kept, rapid trigger set
+        Assert.Equal(20, board.Columns[2][8]);         // both steps 0.1 mm (0.005 mm unit)
+        Assert.Equal(20, board.Columns[3][8]);
+        Assert.Equal(0, board.Columns[7][100]);        // no key there: untouched
+        Assert.DoesNotContain(board.Sent.Skip(count), p => p[1] == 0x65 && p[2] == 0); // the actuation column isn't sent
+
+        var sent = board.Sent.Count;
+        driver.SetRapidTrigger(true, 0.1);             // already so: nothing written
+        Assert.DoesNotContain(board.Sent.Skip(sent), p => p[1] == 0x65);
+        driver.SetRapidTrigger(false, 0);
+        Assert.Equal(7, board.Columns[7][9]);
+        Assert.Throws<ArgumentOutOfRangeException>(() => driver.SetRapidTrigger(true, 3));
+    }
+
+    [Fact]
+    public void GamemodeStateKeepsTheKeyboardsColumnsAndLight()
+    {
+        var driver = Driver(new Board().Customized());
+        driver.Read();
+        var state = new GamemodePeripheralState { Before = { new GamemodePeripheralEntry { KeyboardSwitches = driver.Columns, KeyboardLight = driver.StoredLight } } };
+        var json = System.Text.Json.JsonSerializer.Serialize(state, KosToolbox.Core.Persistence.KosJson.Default.GamemodePeripheralState);
+        var back = System.Text.Json.JsonSerializer.Deserialize(json, KosToolbox.Core.Persistence.KosJson.Default.GamemodePeripheralState)!.Before[0];
+        Assert.Equal(driver.StoredLight, back.KeyboardLight);
+        Assert.Equal(driver.Columns!.Actuation, back.KeyboardSwitches!.Actuation);
+        Assert.Equal(driver.Columns.Mode, back.KeyboardSwitches.Mode);
+        Assert.Equal(driver.Columns.DksActions, back.KeyboardSwitches.DksActions);
+        Assert.DoesNotContain("\"Keys\"", json);
+    }
+
+    [Fact]
     public void EachCommitWaitsForTheBoardToComeBack()
     {
         var board = new Board { BusyAfterCommit = 6 }.Customized();

@@ -1,14 +1,17 @@
 using KosToolbox.Core.Peripherals;
 using KosToolbox.Core.Peripherals.Hid;
 using KosToolbox.Core.Peripherals.Razer;
+using KosToolbox.Core.Peripherals.Royuan;
 
 namespace KosGovernor.Core;
 
 /// <summary>
 /// Mouse settings for gamemode (gamemode-peripheral.json, chosen on the toolbox's Peripherals page), modelled on
-/// <see cref="GamemodeGpuHost"/>. Gamemode on: reads what each listed device has, saves it, then writes the live DPI, polling rate and
-/// light brightness (0 turns a mouse logo or a dock ring off).
-/// Gamemode off: writes the saved values back. Volatile settings only, never onboard flash; every write is read back by the driver.
+/// <see cref="GamemodeGpuHost"/>. Gamemode on: reads what each listed device has, saves it, then writes the live DPI, polling rate, light
+/// brightness (0 turns a mouse logo or a dock ring off) and light effect. Gamemode off: writes the saved values back. Mice and the dock:
+/// volatile settings only, never onboard flash. A keyboard that stores every write (<see cref="PeripheralDriver.StoredOnly"/>, the R82HE)
+/// gets its polling rate, lighting and rapid trigger written to flash, its whole lighting and switch columns saved first and written back
+/// as they were. Only what differs is written; every write is read back by the driver.
 /// </summary>
 internal sealed class GamemodePeripheralHost
 {
@@ -31,18 +34,20 @@ internal sealed class GamemodePeripheralHost
         var state = GamemodePeripheral.LoadState() is { Before.Count: > 0 } left ? left : new GamemodePeripheralState();
         if (state.Before.Count == 0)
             foreach (var e in config.Devices)
-                if (Find(drivers, e) is { } d && Read(d) is { } s)
-                    state.Before.Add(new GamemodePeripheralEntry { VendorId = e.VendorId, ProductId = e.ProductId, Name = e.Name,
-                        Dpi = e.Dpi is null ? null : s.Dpi?.X, PollingHz = e.PollingHz is null ? null : s.Polling?.Hz,
-                        Brightness = e.Brightness is null ? null : LiveBrightness(d) });
+                if (Find(drivers, e) is { } d && Read(d) is { } s) state.Before.Add(Before(d, s, e));
         state.Applying = true;
         GamemodePeripheral.SaveState(state); // a crash while writing leaves Applying behind: suspended at the next start
         // Only what was read before is written: a value that couldn't be read couldn't be put back
         foreach (var e in config.Devices)
             if (state.Before.FirstOrDefault(b => b.VendorId == e.VendorId && b.ProductId == e.ProductId) is { } b)
-                Write(drivers, new GamemodePeripheralEntry { VendorId = e.VendorId, ProductId = e.ProductId, Name = e.Name,
-                    Dpi = b.Dpi is null ? null : e.Dpi, PollingHz = b.PollingHz is null ? null : e.PollingHz, Brightness = b.Brightness is null ? null : e.Brightness },
-                    $"gamemode values for {e.Name}");
+                Write(drivers, new GamemodePeripheralEntry
+                {
+                    VendorId = e.VendorId, ProductId = e.ProductId, Name = e.Name,
+                    Dpi = b.Dpi is null ? null : e.Dpi, PollingHz = b.PollingHz is null ? null : e.PollingHz,
+                    Brightness = b.Brightness is null && b.KeyboardLight is null ? null : e.Brightness,
+                    Effect = b.Effect is null && b.KeyboardLight is null ? null : e.Effect, Color = e.Color,
+                    RapidTrigger = b.KeyboardSwitches is null ? null : e.RapidTrigger, RapidTriggerMm = e.RapidTriggerMm,
+                }, $"gamemode values for {e.Name}");
             else Log.Warn($"Gamemode mouse: {e.Name} wasn't read before gamemode (not connected or asleep): left as it is.");
         state.Applying = false;
         GamemodePeripheral.SaveState(state);
@@ -78,7 +83,7 @@ internal sealed class GamemodePeripheralHost
     static List<PeripheralDriver> Drivers() => HidDevices.List().Select(PeripheralRegistry.Claim).OfType<PeripheralDriver>().ToList();
 
     static PeripheralDriver? Find(List<PeripheralDriver> drivers, GamemodePeripheralEntry e) =>
-        drivers.FirstOrDefault(d => d.Device.VendorId == e.VendorId && d.Device.ProductId == e.ProductId && !d.BatteryOnly && d.GamemodeWrites);
+        drivers.FirstOrDefault(d => d.Device.VendorId == e.VendorId && d.Device.ProductId == e.ProductId && !d.BatteryOnly);
 
     static PeripheralState? Read(PeripheralDriver d)
     {
@@ -86,10 +91,49 @@ internal sealed class GamemodePeripheralHost
         catch (Exception ex) when (ex is PeripheralException or System.ComponentModel.Win32Exception or IOException or TimeoutException) { return null; }
     }
 
+    /// <summary>What the device has of each value gamemode will change: what gamemode off writes back.</summary>
+    static GamemodePeripheralEntry Before(PeripheralDriver d, PeripheralState s, GamemodePeripheralEntry e)
+    {
+        var b = new GamemodePeripheralEntry { VendorId = e.VendorId, ProductId = e.ProductId, Name = e.Name,
+            Dpi = e.Dpi is null ? null : s.Dpi?.X, PollingHz = e.PollingHz is null ? null : s.Polling?.Hz };
+        if (d is RoyuanDriver r)
+        {
+            if (e.Brightness is not null || e.Effect is not null) b.KeyboardLight = r.StoredLight;
+            if (e.RapidTrigger is not null) b.KeyboardSwitches = r.Columns;
+            return b;
+        }
+        b.Brightness = e.Brightness is null ? null : LiveBrightness(d);
+        if (e.Effect is not null && LiveLighting(d) is { Effect: not LightingEffect.Other } l) (b.Effect, b.Color) = (l.Effect, l.Color);
+        return b;
+    }
+
+    static PeripheralLighting? LiveLighting(PeripheralDriver d)
+    {
+        try { return d is RazerDriver r ? r.ReadLiveLighting() : null; }
+        catch (Exception ex) when (ex is PeripheralException or System.ComponentModel.Win32Exception or IOException or TimeoutException) { return null; }
+    }
+
     static int? LiveBrightness(PeripheralDriver d)
     {
         try { return d.HasLiveBrightness ? d.ReadLiveBrightness() : null; }
         catch (Exception ex) when (ex is PeripheralException or System.ComponentModel.Win32Exception or IOException or TimeoutException) { return null; }
+    }
+
+    /// <summary>
+    /// The keyboard (every write goes to flash, so only what differs): the saved switch columns or lighting as they were (gamemode off),
+    /// else rapid trigger, the effect (lit: a brightness of 0 goes to 100 % with it) or the brightness alone.
+    /// </summary>
+    static void WriteKeyboard(RoyuanDriver r, PeripheralState now, GamemodePeripheralEntry e)
+    {
+        if (e.KeyboardSwitches is { } columns) r.WriteColumns(columns);
+        else if (e.RapidTrigger is { } rt) r.SetRapidTrigger(rt, e.RapidTriggerMm ?? 0.1);
+        if (e.KeyboardLight is { } light) { if (r.StoredLight != light) r.SetLight(light); }
+        else if (e.Effect is { } fx)
+        {
+            if (now.Brightness is not > 0 || now.Lighting is not { } l || l.Effect != fx || fx != LightingEffect.Spectrum && l.Color != e.Color)
+                r.SetLightingLit(fx, e.Color ?? 0xFFFFFF);
+        }
+        else if (e.Brightness is { } br && now.Brightness != br) r.SetBrightness(br);
     }
 
     /// <summary>Reads the device (getters, which also confirm its transaction id), then writes only what differs. True when done or nothing to do.</summary>
@@ -104,7 +148,14 @@ internal sealed class GamemodePeripheralHost
         {
             if (e.Dpi is { } dpi && now.Dpi?.X != dpi && d.HasLiveDpi && d.Writable.Contains(PeripheralSetting.Dpi)) d.SetDpiLive(dpi, dpi);
             if (e.PollingHz is { } hz && now.Polling?.Hz != hz && d.Writable.Contains(PeripheralSetting.PollingRate)) d.SetPollingRate(hz);
-            if (e.Brightness is { } br && d.HasLiveBrightness && LiveBrightness(d) != br) d.SetBrightnessLive(br);
+            if (d is RoyuanDriver r) WriteKeyboard(r, now, e);
+            else
+            {
+                if (e.Effect is { } fx && d is RazerDriver rz && LiveLighting(d) is var live
+                    && !(live?.Effect == fx && (fx is LightingEffect.Off or LightingEffect.Spectrum || live.Color == e.Color)))
+                    rz.SetLightingLive(fx, e.Color ?? 0xFFFFFF);
+                if (e.Brightness is { } br && d.HasLiveBrightness && LiveBrightness(d) != br) d.SetBrightnessLive(br);
+            }
             Log.Info($"Gamemode mouse: {what} written and read back.");
             return true;
         }
