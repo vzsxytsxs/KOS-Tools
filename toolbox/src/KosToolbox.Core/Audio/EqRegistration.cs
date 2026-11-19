@@ -368,6 +368,9 @@ public static class EqRegistration
             journal = new EqJournal();
         }
         SaveJournal(journal);
+        // Its settings file goes too: KOS Equalizer and KOS Engine take "the file exists" for "on" and write only then.
+        if ((GpuTuner.FolderProblem(AppPaths.TheKosRoot, EqSettingsFile.AudioDirectory) ?? GpuTuner.FolderProblem(AppPaths.TheKosRoot, EqSettingsFile.Directory)) is null)
+            File.Delete(EqSettingsFile.PathFor(endpointId));
         Log.Info($"KOS Equalizer off for {record.Name} ({endpointId}); left as found: {(changedSince.Count == 0 ? "none" : string.Join(", ", changedSince))}");
         RestartAudio($"KOS Equalizer is off for {record.Name}");
         return changedSince;
