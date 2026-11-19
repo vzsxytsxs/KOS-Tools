@@ -151,6 +151,45 @@ public class FirewallPolicyTests
     public void SidsAreChecked(string sid, string prefix, bool ok) => Assert.Equal(ok, FirewallPolicy.IsSid(sid, prefix));
 }
 
+public class FirewallIdentityTests
+{
+    [Fact]
+    public void ServiceAndPackageSidsAreDerived()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        Assert.StartsWith("S-1-5-80-", FirewallIdentity.ServiceSid("Dnscache"));
+        Assert.Null(FirewallIdentity.ServiceSid("no-such-service-kos"));
+        Assert.Null(FirewallIdentity.ServiceSid(@"x\y"));
+        // A package SID is derived from the family name alone (the app doesn't have to be installed).
+        Assert.StartsWith("S-1-15-2-", FirewallIdentity.PackageSid("Microsoft.WindowsCalculator_8wekyb3d8bbwe"));
+    }
+
+    [Fact]
+    public void DevicePathsBecomeDrivePaths()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        Assert.Null(FirewallIdentity.DosPath("System"));
+        Assert.Null(FirewallIdentity.DosPath(@"\device\nosuchvolume\a.exe"));
+        // The system drive's own device name, as a net event would carry it.
+        var system = Path.GetPathRoot(Environment.SystemDirectory)!.TrimEnd('\\');
+        var device = AppIdDevice(Path.Combine(Environment.SystemDirectory, "curl.exe"));
+        Assert.Equal(Path.Combine(Environment.SystemDirectory, "curl.exe"), FirewallIdentity.DosPath(device), ignoreCase: true);
+        Assert.StartsWith(system, FirewallIdentity.DosPath(device)!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>What the filter engine calls the file (its app id is the lowercase device path, NUL-terminated).</summary>
+    static string AppIdDevice(string path)
+    {
+        Assert.Equal(0u, Wfp.FwpmGetAppIdFromFileName0(path, out var blob));
+        try
+        {
+            var size = Marshal.ReadInt32(blob);
+            return Marshal.PtrToStringUni(Marshal.ReadIntPtr(blob, 8), size / 2).TrimEnd('\0');
+        }
+        finally { Wfp.FwpmFreeMemory0(ref blob); }
+    }
+}
+
 public class WfpLayoutTests
 {
     // Printed from the Windows SDK 10.0.26100 headers (x64) by a C program; the interop must match them byte for byte.
