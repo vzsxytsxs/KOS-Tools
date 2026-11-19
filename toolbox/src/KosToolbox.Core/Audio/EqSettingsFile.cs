@@ -16,6 +16,9 @@ public static class EqSettingsFile
     /// <summary>The highest boost the DLL accepts (the curve's peak, preamp included); the same number is in KosEqApo.cpp.</summary>
     public const double MaxBoost = 24;
 
+    /// <summary>A flat file: the effect passes the sound through unchanged.</summary>
+    public const string FlatText = "# KOS Equalizer: flat\r\n";
+
     public static string AudioDirectory => Path.Combine(AppPaths.TheKosRoot, "Audio");
     public static string Directory => Path.Combine(AudioDirectory, "Eq");
 
@@ -70,7 +73,7 @@ public static class EqSettingsFile
         GpuTuner.PrepareDirectory(AudioDirectory);
         GpuTuner.PrepareDirectory(Directory);
         var path = PathFor(endpointId);
-        var text = profile is null ? "# KOS Equalizer: flat\r\n" : Format(profile);
+        var text = profile is null ? FlatText : Format(profile);
         var tmp = path + ".tmp";
         File.Delete(tmp); // an old .tmp could be a hard link to another file
         File.WriteAllText(tmp, text, Encoding.ASCII);

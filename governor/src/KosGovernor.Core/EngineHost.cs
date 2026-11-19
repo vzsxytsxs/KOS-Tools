@@ -46,6 +46,8 @@ public static class EngineHost
         var mice = new GamemodePeripheralHost(); // peripherals: gamemode mouse settings
         mice.RecoverAtStart();
         engine.GamemodeSwitched += on => { using (TaskMeter.Measure(EngineTask.Peripherals)) mice.Switch(on); };
+        SwitchEqualizer(false); // a gamemode the engine didn't end left the gamemode profiles playing
+        engine.GamemodeSwitched += on => { using (TaskMeter.Measure(EngineTask.Equalizer)) SwitchEqualizer(on); };
         var recovery = new GpuRecovery();
         Tray? shown = null;
         using var firewall = new FirewallWatch(a => shown?.Ask(a), (title, text) => shown?.Balloon(title, text, warning: true));
@@ -87,6 +89,7 @@ public static class EngineHost
             engine.Shutdown();
             if (engine.Gamemode) gpu.Switch(false);
             if (engine.Gamemode) mice.Switch(false);
+            if (engine.Gamemode) SwitchEqualizer(false);
             batteries.Stop();
             fans.Shutdown();
             firewall.Dispose();
@@ -107,6 +110,17 @@ public static class EngineHost
     }
 
     [System.Runtime.InteropServices.DllImport("psapi.dll")] static extern bool EmptyWorkingSet(IntPtr process); // -1 = the process itself
+
+    /// <summary>KOS Equalizer: each device it's on for plays its gamemode profile (on) or its usual one (off).</summary>
+    static void SwitchEqualizer(bool gamemode)
+    {
+        try
+        {
+            var written = KosToolbox.Core.Audio.EqConfig.Apply(gamemode);
+            if (written > 0) Log.Info($"Equalizer: {written} device{(written == 1 ? "" : "s")} switched to the {(gamemode ? "gamemode" : "usual")} profile.");
+        }
+        catch (Exception ex) { Log.Error($"Switching the equalizer profiles ({(gamemode ? "gamemode" : "usual")}) failed", ex); }
+    }
 
     /// <summary>
     /// "KosEngine.exe --firewall-off", as administrator: removes every KOS Firewall filter and turns back on the Windows Firewall
@@ -152,9 +166,10 @@ public static class EngineHost
         static T? Try<T>(Func<T?> read) where T : class
         {
             try { return read(); }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException) { return null; }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException or InvalidOperationException) { return null; }
         }
         var peripherals = Try(KosToolbox.Core.Peripherals.GamemodePeripheral.Load);
+        var eq = Try(KosToolbox.Core.Audio.EqConfig.Load)?.Devices.Where(d => File.Exists(KosToolbox.Core.Audio.EqSettingsFile.PathFor(d.EndpointId))).ToList();
         return new EngineFacts
         {
             Profile = engine.Config.Active.Name, Rules = engine.RuleCount, Gamemode = engine.Gamemode, GamemodeGame = engine.GamemodeGame,
@@ -166,6 +181,7 @@ public static class EngineHost
             PeripheralProfilesApplied = Try(KosToolbox.Core.Peripherals.GamemodePeripheral.LoadState) is not null,
             TimerHeld = TimerResolution.Held, Overlay = engine.OverlayOn,
             FirewallOn = firewall.On, FirewallFilters = firewall.Filters, FirewallBlocked = firewall.Blocked, FirewallPopups = firewall.Popups,
+            EqualizerDevices = eq?.Count ?? 0, EqualizerGamemode = eq?.Count(d => d.Gamemode is not null) ?? 0,
         };
     }
 

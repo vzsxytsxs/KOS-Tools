@@ -33,6 +33,9 @@ public sealed record EngineFacts
     public int FirewallFilters { get; init; }
     public int FirewallBlocked { get; init; }
     public bool FirewallPopups { get; init; }
+    /// <summary>Devices KOS Equalizer is on for / of them, those with a gamemode profile.</summary>
+    public int EqualizerDevices { get; init; }
+    public int EqualizerGamemode { get; init; }
 }
 
 public static class EngineStatus
@@ -56,6 +59,7 @@ public static class EngineStatus
             new("Timer resolution", f.TimerHeld is { } t ? (t / 10000.0).ToString("0.###", CultureInfo.InvariantCulture) + " ms held" : "Off", f.TimerHeld is not null),
             Line("RTSS overlay", f.Overlay ? "Showing" : "Off", f.Overlay, EngineTask.Rtss),
             Line("KOS Firewall", Firewall(f), f.FirewallOn && f.FirewallFilters > 0, EngineTask.Firewall),
+            Line("KOS Equalizer", Equalizer(f), f.EqualizerGamemode > 0, EngineTask.Equalizer),
             Line("Tray and this window", "Open", true, EngineTask.Tray),
         };
         // What no task accounts for: the runtime, the configuration in memory, threads waiting.
@@ -67,8 +71,13 @@ public static class EngineStatus
 
     /// <summary>The filtering itself runs in Windows; the engine's share is the popups and the count.</summary>
     static string Firewall(EngineFacts f) => !f.FirewallOn ? "Off"
-        : f.FirewallFilters == 0 ? "On, but no filters in place: open the toolbox's Firewall page"
+        : f.FirewallFilters == 0 ? "On, but no filters in place: open KOS Firewall"
         : $"{f.FirewallFilters} filters · {f.FirewallBlocked} blocked{(f.FirewallPopups ? "" : " · no popups")}";
+
+    /// <summary>The sound is processed in the audio engine; the engine's share is switching profiles at gamemode.</summary>
+    static string Equalizer(EngineFacts f) => f.EqualizerDevices == 0 ? "Off"
+        : $"{f.EqualizerDevices} device{(f.EqualizerDevices == 1 ? "" : "s")}"
+          + (f.EqualizerGamemode == 0 ? " · no gamemode profile" : f.Gamemode ? " · gamemode profile playing" : " · gamemode profile waiting");
 
     static string Peripherals(EngineFacts f)
     {
