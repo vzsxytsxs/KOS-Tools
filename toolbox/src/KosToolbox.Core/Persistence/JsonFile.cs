@@ -9,7 +9,7 @@ public static class JsonFile
 
     public static T Load<T>(string path) where T : new() => Read(path, text => JsonSerializer.Deserialize<T>(text, Options));
 
-    /// <summary>Same as <see cref="Load{T}(string)"/> without reflection (source-generated <see cref="KosJson"/>): for code the Native AOT governor engine runs.</summary>
+    /// <summary>Same as <see cref="Load{T}(string)"/> without reflection (source-generated <see cref="KosJson"/>): for code the Native AOT KOS Engine runs.</summary>
     public static T Load<T>(string path, JsonTypeInfo<T> info) where T : new() => Read(path, text => JsonSerializer.Deserialize(text, info));
 
     /// <summary>Writes atomically so the file isn't corrupted if the process dies.</summary>

@@ -49,7 +49,12 @@ public sealed class Engine
 
     public GovernorConfig Config { get; private set; } = new();
     public bool Gamemode { get; private set; }
-    public string Tooltip { get; private set; } = "KOS Governor";
+    public string Tooltip { get; private set; } = "KOS Engine";
+    // For the status window (read from the tray's thread: plain values, a stale one is fine)
+    public int RuleCount => _active.Count;
+    /// <summary>The game that turned gamemode on; null when it is off or was turned on by hand.</summary>
+    public string? GamemodeGame => Gamemode && _auto.TurnedOnByAuto ? _autoGame : null;
+    public bool OverlayOn => _osd is not null;
     /// <summary>Wakes the loop (hotkey and tray menu).</summary>
     public AutoResetEvent Wake { get; } = new(false);
     /// <summary>Configuration reread (the gamemode hotkey may have changed). Called on the loop thread.</summary>
@@ -144,7 +149,7 @@ public sealed class Engine
         foreach (var pid in _modules.Keys.Where(k => !alive.ContainsKey(k)).ToList()) _modules.Remove(pid);
 
         var mode = !Gamemode ? "off" : _auto.TurnedOnByAuto && _autoGame is not null ? $"on ({_autoGame})" : "on";
-        var tip = $"KOS Governor\n{Config.Active.Name} · Gamemode {mode}\nCPU {_load.CpuPercent():0}%";
+        var tip = $"KOS Engine\n{Config.Active.Name} · Gamemode {mode}\nCPU {_load.CpuPercent():0}%";
         Tooltip = tip.Length > 127 ? tip[..127] : tip;
     }
 

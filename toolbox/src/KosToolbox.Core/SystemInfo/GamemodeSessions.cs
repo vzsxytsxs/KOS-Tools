@@ -3,7 +3,7 @@ using KosToolbox.Core.Persistence;
 
 namespace KosToolbox.Core.SystemInfo;
 
-/// <summary>Report of one gamemode session, written by the KOS Governor engine when gamemode turns off; shown on Hardware › Stability.</summary>
+/// <summary>Report of one gamemode session, written by KOS Engine when gamemode turns off; shown on Hardware › Stability.</summary>
 public sealed class GamemodeSession
 {
     public DateTime Start { get; set; }

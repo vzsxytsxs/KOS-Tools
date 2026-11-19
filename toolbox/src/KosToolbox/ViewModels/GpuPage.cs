@@ -267,7 +267,7 @@ public sealed partial class GpuPageViewModel : PageViewModel
 
     /// <summary>
     /// The driver restarted or recovered from a hang: everything went back to default. Re-reads the card; the overclock saved for
-    /// logon is reapplied by the KOS Governor engine, or here when it is not running (requires administrator).
+    /// logon is reapplied by KOS Engine, or here when it is not running (requires administrator).
     /// </summary>
     async Task AfterDriverResetAsync(GpuDevice device)
     {

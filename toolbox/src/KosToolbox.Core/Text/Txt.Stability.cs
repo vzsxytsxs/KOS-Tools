@@ -15,7 +15,7 @@ public static partial class Txt
         StabilityDumpsNeedAdmin = "Listing the crash dumps needs the toolbox running as administrator.",
         ColTime = "Time", ColEvent = "Event", ColDetails = "Details",
         StabilitySessions = "Gamemode sessions",
-        StabilitySessionsNote = "KOS Governor records each gamemode session: CPU, memory and GPU load, clocks and limits, and what interfered (busy programs, the game losing focus, devices and network links dropping, driver resets).",
+        StabilitySessionsNote = "KOS Engine records each gamemode session: CPU, memory and GPU load, clocks and limits, and what interfered (busy programs, the game losing focus, devices and network links dropping, driver resets).",
         StabilityNoSessions = "No sessions yet: turn gamemode on in KOS Governor, play, and turn it off.";
 
     public static string StabilitySessionLabel(DateTime start, DateTime end, string? game)

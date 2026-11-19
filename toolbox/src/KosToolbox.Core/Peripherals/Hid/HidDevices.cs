@@ -36,7 +36,7 @@ public sealed record HidDevice(string Key, IReadOnlyList<HidCollection> Collecti
 }
 
 /// <summary>
-/// HID enumeration through SetupAPI and hid.dll (no WinRT, COM or reflection: the governor engine is AOT). Every collection is opened with
+/// HID enumeration through SetupAPI and hid.dll (no WinRT, COM or reflection: KOS Engine is AOT). Every collection is opened with
 /// access 0 only to read what Windows already knows; nothing is sent to a device. FIDO security keys are skipped without being opened.
 /// </summary>
 public static class HidDevices

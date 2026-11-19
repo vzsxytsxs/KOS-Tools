@@ -1,13 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- The tray engine (rules, gamemode, fan curve) as its own Native AOT executable: the process that runs all day has
+  <!-- KOS Engine: the tray engine (rules, gamemode, fan curve, device batteries) as its own Native AOT executable: the process that runs all day has
        no JIT and none of the interface's runtime. Publishing it needs the MSVC linker (Visual Studio Build Tools, C++ workload). -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <RootNamespace>KosGovernor.Engine</RootNamespace>
-    <AssemblyName>KosGovernorEngine</AssemblyName>
+    <AssemblyName>KosEngine</AssemblyName>
     <ApplicationManifest>..\KosGovernor\app.manifest</ApplicationManifest>
     <ApplicationIcon>..\KosGovernor\Assets\kos-governor.ico</ApplicationIcon>
-    <Title>KOS Governor engine</Title>
+    <Title>KOS Engine</Title>
     <PublishAot>true</PublishAot>
     <!-- No ICU: the engine compares names ordinally and writes English log lines. -->
     <InvariantGlobalization>true</InvariantGlobalization>

@@ -5,26 +5,35 @@ using System.Text;
 namespace KosGovernor.Core;
 
 /// <summary>
-/// The engine process (KosGovernorEngine.exe, Native AOT; or the interface's exe with "--engine" when the engine exe is
-/// missing): tray icon, global gamemode hotkey and the <see cref="Engine"/> loop on its own thread. One instance per
-/// session; ends through the Exit menu or the stop event.
+/// The engine process (KOS Engine: KosEngine.exe, Native AOT; or the governor's exe with "--engine" when the engine exe is
+/// missing): tray icon, status window, global gamemode hotkey and the <see cref="Engine"/> loop on its own thread. One
+/// instance per session; ends through the Exit menu or the stop event.
 /// </summary>
 public static class EngineHost
 {
     public static int Run()
     {
         using var mutex = new Mutex(true, Names.EngineMutex, out var created);
-        if (!created) return 0;
+        if (!created)
+        {
+            // Already running: opening the engine again shows its status window.
+            try { using var show = EventWaitHandle.OpenExisting(Names.ShowStatus); show.Set(); }
+            catch (Exception ex) when (ex is WaitHandleCannotBeOpenedException or UnauthorizedAccessException) { }
+            return 0;
+        }
         // SeProfileSingleProcess: clear the standby list (gamemode); SeIncreaseQuota: empty the working set of other processes.
+        TaskMeter.MarkBase();
         Native.EnablePrivileges("SeDebugPrivilege", "SeIncreaseBasePriorityPrivilege", "SeProfileSingleProcessPrivilege", "SeIncreaseQuotaPrivilege");
         GamemodeSystem.RecoverAtStart();
         EtwDriverTrace.StopSession(); // a thread director trace left by a crash
         RuleExtras.RecoverAtStart();
         Log.Prune();
         Log.Info($"Engine {typeof(EngineHost).Assembly.GetName().Version} started.");
+        SignIn.MigrateOld();
         using var stop = new EventWaitHandle(false, EventResetMode.AutoReset, Names.Stop);
         using var reload = new EventWaitHandle(false, EventResetMode.AutoReset, Names.Reload);
         using var toggle = new EventWaitHandle(false, EventResetMode.AutoReset, Names.ToggleGamemode);
+        using var showStatus = new EventWaitHandle(false, EventResetMode.AutoReset, Names.ShowStatus);
         // A signal left from an engine that already exited (it sets Stop again on its way out, and the event outlives it
         // while another process holds a handle) isn't meant for this one.
         stop.Reset();
@@ -33,12 +42,12 @@ public static class EngineHost
         var fans = new FanCurveHost();
         var gpu = new GamemodeGpuHost(fans);
         gpu.RecoverAtStart();
-        engine.GamemodeSwitched += gpu.Switch;
+        engine.GamemodeSwitched += on => { using (TaskMeter.Measure(EngineTask.GpuProfile)) gpu.Switch(on); };
         var mice = new GamemodePeripheralHost(); // peripherals: gamemode mouse settings
         mice.RecoverAtStart();
-        engine.GamemodeSwitched += mice.Switch;
+        engine.GamemodeSwitched += on => { using (TaskMeter.Measure(EngineTask.Peripherals)) mice.Switch(on); };
         var recovery = new GpuRecovery();
-        using var tray = new Tray(engine, stop);
+        using var tray = new Tray(engine, stop, sample => EngineStatus.Build(Facts(engine, fans), sample));
         engine.ConfigChanged += tray.Refresh;
         engine.SessionEnded += report => tray.Balloon("Gamemode session", $"{report.Summary}. Report on the toolbox's Stability page.",
             report.Sections.Any(s => s.Lines.Any(l => l.Warning)));
@@ -48,15 +57,15 @@ public static class EngineHost
 
         var worker = new Thread(() =>
         {
-            var handles = new WaitHandle[] { stop, reload, toggle, engine.Wake };
+            var handles = new WaitHandle[] { stop, reload, toggle, engine.Wake, showStatus };
             var trimmed = false;
             while (true)
             {
-                try { engine.Tick(); }
+                try { using (TaskMeter.Measure(EngineTask.Rules)) engine.Tick(); }
                 catch (Exception ex) { Log.Error("Engine tick failed", ex); }
-                try { fans.Sync(); }
+                try { using (TaskMeter.Measure(EngineTask.FanCurve)) fans.Sync(); }
                 catch (Exception ex) { Log.Error("Fan curve check failed", ex); }
-                try { recovery.Tick(fans); }
+                try { using (TaskMeter.Measure(EngineTask.GpuProfile)) recovery.Tick(fans); }
                 catch (Exception ex) { Log.Error("Checking for a display driver reset failed", ex); }
                 tray.Refresh();
                 // Once, after the first cycle: the pages used only at startup (config, game list, the ~12 MB that
@@ -66,6 +75,7 @@ public static class EngineHost
                 if (i == 0) break;
                 if (i == 1) batteries.Poke(); // the toolbox saved: the dock battery option may have changed
                 if (i == 2) engine.RequestToggle();
+                if (i == 4) tray.ShowStatus();
             }
             engine.Shutdown();
             if (engine.Gamemode) gpu.Switch(false);
@@ -73,7 +83,7 @@ public static class EngineHost
             batteries.Stop();
             fans.Shutdown();
             tray.Close();
-        }) { IsBackground = true, Name = "Governor engine" };
+        }) { IsBackground = true, Name = "KOS engine" };
         worker.Start();
         tray.Run();
         stop.Set();
@@ -84,9 +94,43 @@ public static class EngineHost
 
     [System.Runtime.InteropServices.DllImport("psapi.dll")] static extern bool EmptyWorkingSet(IntPtr process); // -1 = the process itself
 
-    /// <summary>The engine's own Native AOT executable, next to the interface's.</summary>
-    public static string EnginePath => Path.Combine(AppContext.BaseDirectory, "KosGovernorEngine.exe");
-    public static string UiPath => Path.Combine(AppContext.BaseDirectory, "KosGovernor.exe");
+    /// <summary>What the status window's lines are built from; the files are read only while it is open.</summary>
+    static EngineFacts Facts(Engine engine, FanCurveHost fans)
+    {
+        static T? Try<T>(Func<T?> read) where T : class
+        {
+            try { return read(); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException) { return null; }
+        }
+        var peripherals = Try(KosToolbox.Core.Peripherals.GamemodePeripheral.Load);
+        return new EngineFacts
+        {
+            Profile = engine.Config.Active.Name, Rules = engine.RuleCount, Gamemode = engine.Gamemode, GamemodeGame = engine.GamemodeGame,
+            AutoGamemode = engine.Config.AutoGamemode.Enabled, FanCurveRunning = fans.Running,
+            GpuProfileChosen = Try(KosToolbox.Core.Gpu.GamemodeGpu.Load)?.On is not null,
+            GpuProfileApplied = Try(KosToolbox.Core.Gpu.GamemodeGpu.LoadState) is not null,
+            Batteries = PeripheralBatteryMonitor.Devices.Count,
+            PeripheralProfiles = peripherals is { Suspended: false } ? peripherals.Devices.Count : 0,
+            PeripheralProfilesApplied = Try(KosToolbox.Core.Peripherals.GamemodePeripheral.LoadState) is not null,
+            TimerHeld = TimerResolution.Held, Overlay = engine.OverlayOn,
+        };
+    }
+
+    /// <summary>
+    /// A KOS executable: next to this one, in its own folder beside this one's (installed: KOS\engine, KOS\governor, KOS\toolbox), or
+    /// in that app's publish folder of the repository. Null when it isn't there.
+    /// </summary>
+    static string? Find(string folder, string exe) => new[]
+    {
+        Path.Combine(AppContext.BaseDirectory, exe),
+        Path.Combine(AppContext.BaseDirectory, "..", folder, exe),
+        Path.Combine(AppContext.BaseDirectory, "..", "..", "..", folder, "publish", "win-x64", exe),
+    }.Select(Path.GetFullPath).FirstOrDefault(File.Exists);
+
+    /// <summary>The engine's own Native AOT executable.</summary>
+    public static string? EnginePath => Find("engine", "KosEngine.exe");
+    public static string? UiPath => Find("governor", "KosGovernor.exe");
+    public static string? ToolboxPath => Find("toolbox", "KosToolbox.exe");
 
     /// <summary>
     /// Starts the engine (already elevated) if it isn't running. Without the engine executable next to it (the interface run
@@ -95,39 +139,43 @@ public static class EngineHost
     public static void EnsureRunning()
     {
         if (Names.EngineRunning) return;
-        var start = File.Exists(EnginePath) ? new ProcessStartInfo(EnginePath) : new ProcessStartInfo(Environment.ProcessPath!, "--engine");
+        var start = EnginePath is { } engine ? new ProcessStartInfo(engine) : new ProcessStartInfo(Environment.ProcessPath!, "--engine");
         start.UseShellExecute = false;
         Process.Start(start)?.Dispose();
     }
 }
 
-/// <summary>Invisible window with the tray icon and the global hotkey (Windows API, no WPF: keeps the engine light).</summary>
+/// <summary>
+/// Invisible window with the tray icon and the global hotkey (Windows API, no WPF: keeps the engine light). A click on the icon opens
+/// the <see cref="StatusWindow"/>; the menu opens KOS Toolbox and KOS Governor.
+/// </summary>
 internal sealed class Tray : IDisposable
 {
     const uint WmNull = 0, WmDestroy = 0x2, WmClose = 0x10, WmContextMenu = 0x7B, WmHotkey = 0x312, WmApp = 0x8000;
-    const uint WmTray = WmApp + 1, WmRefresh = WmApp + 2;
+    const uint WmTray = WmApp + 1, WmRefresh = WmApp + 2, WmStatus = WmApp + 3;
     const uint WmLButtonUp = 0x202, WmLButtonDblClk = 0x203, WmRButtonUp = 0x205;
     const uint NimAdd = 0, NimModify = 1, NimDelete = 2, NifMessage = 1, NifIcon = 2, NifTip = 4, NifInfo = 0x10, NiifInfo = 1, NiifWarning = 2;
     const uint MfString = 0, MfChecked = 8, MfPopup = 0x10, MfSeparator = 0x800;
-    const int CmdOpen = 1, CmdGamemode = 2, CmdExit = 3, CmdProfile = 100;
+    const int CmdOpen = 1, CmdGamemode = 2, CmdExit = 3, CmdToolbox = 4, CmdStatus = 5, CmdProfile = 100;
 
     readonly Engine _engine;
     readonly EventWaitHandle _stop;
     readonly WndProc _proc;
     readonly uint _taskbarCreated;
+    readonly StatusWindow _status;
     IntPtr _hwnd, _icon;
     bool _hotkey;
 
-    public Tray(Engine engine, EventWaitHandle stop)
+    public Tray(Engine engine, EventWaitHandle stop, Func<TaskMeter.Sample, StatusView> status)
     {
         _engine = engine;
         _stop = stop;
         _proc = Proc; // reference kept: Windows calls the delegate while the window exists
         _taskbarCreated = RegisterWindowMessage("TaskbarCreated");
         var hInstance = GetModuleHandle(null);
-        var cls = new WndClassEx { cbSize = Marshal.SizeOf<WndClassEx>(), lpfnWndProc = Marshal.GetFunctionPointerForDelegate(_proc), hInstance = hInstance, lpszClassName = "KosGovernorEngine" };
+        var cls = new WndClassEx { cbSize = Marshal.SizeOf<WndClassEx>(), lpfnWndProc = Marshal.GetFunctionPointerForDelegate(_proc), hInstance = hInstance, lpszClassName = "KosEngine" };
         RegisterClassEx(ref cls);
-        _hwnd = CreateWindowEx(0, cls.lpszClassName, "KOS Governor", 0, 0, 0, 0, 0, IntPtr.Zero, IntPtr.Zero, hInstance, IntPtr.Zero);
+        _hwnd = CreateWindowEx(0, cls.lpszClassName, "KOS Engine", 0, 0, 0, 0, 0, IntPtr.Zero, IntPtr.Zero, hInstance, IntPtr.Zero);
         // The engine is elevated and Explorer isn't: without this, UIPI blocks clicks on the icon and the taskbar-recreated notice.
         ChangeWindowMessageFilterEx(_hwnd, WmTray, 1, IntPtr.Zero);
         ChangeWindowMessageFilterEx(_hwnd, _taskbarCreated, 1, IntPtr.Zero);
@@ -136,6 +184,7 @@ internal sealed class Tray : IDisposable
         _icon = LoadImage(hInstance, (IntPtr)32512, 1, size, size, 0); // the .exe's icon (IDI_APPLICATION), at tray size
         if (_icon == IntPtr.Zero)
             ExtractIconEx(Environment.ProcessPath!, 0, IntPtr.Zero, out _icon, 1);
+        _status = new StatusWindow(status, _icon);
         AddIcon();
         RegisterHotkey();
     }
@@ -144,12 +193,15 @@ internal sealed class Tray : IDisposable
     {
         while (GetMessage(out var msg, IntPtr.Zero, 0, 0) > 0)
         {
+            using var measured = TaskMeter.Measure(EngineTask.Tray); // the wait above isn't work
             TranslateMessage(ref msg);
             DispatchMessage(ref msg);
         }
     }
 
     public void Refresh() => PostMessage(_hwnd, WmRefresh, IntPtr.Zero, IntPtr.Zero);
+    /// <summary>Opens the status window (any thread).</summary>
+    public void ShowStatus() => PostMessage(_hwnd, WmStatus, IntPtr.Zero, IntPtr.Zero);
 
     // ---------- one icon per device battery (TrayBatteryIcon), its id from the VID and PID ----------
     readonly Dictionary<string, (uint Id, IntPtr Icon, PeripheralBatteryMonitor.TrayDevice Shown)> _devices = new();
@@ -204,11 +256,14 @@ internal sealed class Tray : IDisposable
         {
             case WmTray:
                 var e = (uint)(l.ToInt64() & 0xFFFF);
-                if (e is WmLButtonDblClk or WmLButtonUp) OpenUi();
+                if (e is WmLButtonDblClk or WmLButtonUp) _status.Show();
                 else if (e is WmRButtonUp or WmContextMenu) ShowMenu();
                 return IntPtr.Zero;
             case WmHotkey:
                 _engine.RequestToggle();
+                return IntPtr.Zero;
+            case WmStatus:
+                _status.Show();
                 return IntPtr.Zero;
             case WmRefresh:
                 RegisterHotkey();
@@ -219,6 +274,7 @@ internal sealed class Tray : IDisposable
                 DestroyWindow(hwnd);
                 return IntPtr.Zero;
             case WmDestroy:
+                _status.Close();
                 Notify(NimDelete);
                 foreach (var d in _devices.Values) { DeviceIcon(NimDelete, d.Id, IntPtr.Zero, ""); DestroyIcon(d.Icon); }
                 _devices.Clear();
@@ -275,7 +331,10 @@ internal sealed class Tray : IDisposable
         var menu = CreatePopupMenu();
         var profiles = CreatePopupMenu();
         var config = _engine.Config;
-        AppendMenu(menu, MfString, CmdOpen, "Open KOS Governor");
+        AppendMenu(menu, MfString, CmdStatus, "Status");
+        AppendMenu(menu, MfSeparator, 0, null);
+        if (EngineHost.ToolboxPath is not null) AppendMenu(menu, MfString, CmdToolbox, "Open KOS Toolbox");
+        if (EngineHost.UiPath is not null) AppendMenu(menu, MfString, CmdOpen, "Open KOS Governor");
         AppendMenu(menu, MfSeparator, 0, null);
         // The text after the \t is shown right-aligned (the hotkey).
         AppendMenu(menu, MfString | (_engine.Gamemode ? MfChecked : 0), CmdGamemode, $"Gamemode\t{HotkeyText(config.Hotkey)}");
@@ -291,7 +350,9 @@ internal sealed class Tray : IDisposable
         DestroyMenu(menu);
         switch (cmd)
         {
-            case CmdOpen: OpenUi(); break;
+            case CmdOpen: Open(EngineHost.UiPath); break;
+            case CmdToolbox: Open(EngineHost.ToolboxPath); break;
+            case CmdStatus: _status.Show(); break;
             case CmdGamemode: _engine.RequestToggle(); break;
             case CmdExit: _stop.Set(); break;
             case >= CmdProfile: SwitchProfile(cmd - CmdProfile); break;
@@ -337,10 +398,11 @@ internal sealed class Tray : IDisposable
         catch (Exception ex) { Log.Error("Switching the profile from the tray failed", ex); }
     }
 
-    static void OpenUi()
+    static void Open(string? exe)
     {
-        try { Process.Start(new ProcessStartInfo(EngineHost.UiPath) { UseShellExecute = false })?.Dispose(); }
-        catch (Exception ex) { Log.Error("Opening the interface failed", ex); }
+        if (exe is null) return;
+        try { Process.Start(new ProcessStartInfo(exe) { UseShellExecute = false })?.Dispose(); }
+        catch (Exception ex) { Log.Error($"Opening {Path.GetFileName(exe)} failed", ex); }
     }
 
     public void Dispose()

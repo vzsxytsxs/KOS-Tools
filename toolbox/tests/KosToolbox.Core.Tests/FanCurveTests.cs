@@ -10,7 +10,7 @@ public class FanCurveTests
     [Fact]
     public void SourceGeneratedJsonKeepsTheFileFormat()
     {
-        // JsonFile's reflection options, which wrote fan-curve.json and gpu-tuning.json before the governor engine went AOT.
+        // JsonFile's reflection options, which wrote fan-curve.json and gpu-tuning.json before KOS Engine went AOT.
         var reflection = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
         var curve = new GovernorFanCurve { Enabled = true, BusId = "00000000:01:00.0", Points = Curve.ToList(), Hysteresis = 4 };
         var state = new GovernorFanCurve.State { Running = true, BusId = curve.BusId, Error = null };

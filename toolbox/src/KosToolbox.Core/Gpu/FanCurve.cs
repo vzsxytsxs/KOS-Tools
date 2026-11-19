@@ -70,7 +70,7 @@ public static class FanCurve
 }
 
 /// <summary>
-/// Runs the curve (in the KOS Governor engine, as administrator, to write the fan through NVML): reads the
+/// Runs the curve (in KOS Engine, as administrator, to write the fan through NVML): reads the
 /// temperature every second and adjusts the %. On stop, on closing the engine or on any read/write failure,
 /// returns the fans to the driver's automatic mode.
 /// </summary>

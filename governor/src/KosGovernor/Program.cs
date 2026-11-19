@@ -15,7 +15,7 @@ public static class Program
         // this one with --engine, which hands over); otherwise this process runs it (tray, hotkey and rules, no WPF).
         if (args.Length == 1 && args[0] == "--engine")
         {
-            if (!System.IO.File.Exists(EngineHost.EnginePath)) return EngineHost.Run();
+            if (EngineHost.EnginePath is null) return EngineHost.Run();
             EngineHost.EnsureRunning();
             return 0;
         }

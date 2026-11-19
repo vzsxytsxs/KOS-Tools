@@ -121,7 +121,7 @@ public abstract class PeripheralDriver
     /// <summary>Everything the driver knows how to read. Getters only.</summary>
     public abstract PeripheralState Read();
 
-    /// <summary>Just the battery (the 60 s refresh and the governor engine). Getters only.</summary>
+    /// <summary>Just the battery (the 60 s refresh and KOS Engine). Getters only.</summary>
     public virtual PeripheralBattery? ReadBattery() => Read().Battery;
 
     public virtual PeripheralState SetDpi(int x, int y) => throw Unsupported();

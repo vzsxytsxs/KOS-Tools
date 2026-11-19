@@ -71,7 +71,7 @@ public sealed partial class GpuPageViewModel
     public string? CurveError { get => _curveError; private set => Set(ref _curveError, value); }
     public bool CurveNeedsAdmin => !Elevation.IsAdmin;
 
-    // The curve runs in the KOS Governor engine: the page reads the saved request and the state the engine reports.
+    // The curve runs in KOS Engine: the page reads the saved request and the state the engine reports.
     GovernorFanCurve? _governorCurve;
     GovernorFanCurve.State? _governorState;
     bool _engineRunning;
@@ -207,7 +207,7 @@ public sealed partial class GpuPageViewModel
         if (!Elevation.IsAdmin) { CurveError = Txt.FanCurveNeedsAdmin; return; }
         if (_state is not { } s) return;
         if ((s.FanProblem ?? FanCurve.Problem(points, hysteresis, s.FanMin, s.FanMax)) is { } problem) { CurveError = problem; return; }
-        // First time: the curve runs in the KOS Governor engine, which must stay open (in the tray).
+        // First time: the curve runs in KOS Engine, which must stay open (in the tray).
         if (!_curve.GovernorNoticeShown)
         {
             Toasts.Show(Txt.FanCurveGovernorNotice, ToastKind.Info);

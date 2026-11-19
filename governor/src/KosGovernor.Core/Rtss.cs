@@ -375,6 +375,7 @@ internal sealed class RtssOsd : IDisposable
     void Tick()
     {
         if (!Monitor.TryEnter(_gate)) return; // the previous update is still running
+        using var measured = TaskMeter.Measure(EngineTask.Rtss);
         try
         {
             if (_disposed) return;

@@ -4,8 +4,12 @@ Process rules in the style of Process Lasso. It used to be the toolbox's Process
 
 ## How it runs
 
-- **Two executables.** `KosGovernor.exe` is the interface (WPF). `KosGovernorEngine.exe` is the engine: no window, with a tray icon, the global gamemode hotkey and the rules. The engine is compiled with Native AOT (no JIT, no WPF runtime), because it runs all day. The interface starts the engine if it isn't running. Closing the window does not turn the rules off; *Exit* in the tray menu does.
-  - `KosGovernor.exe --engine` still works: sign-in tasks created before the split start it, and it hands over to `KosGovernorEngine.exe`. Without the engine exe next to it (the interface run from its own build folder), the interface runs the engine itself.
+- **Two executables.** `KosGovernor.exe` is the interface (WPF). `KosEngine.exe` is **KOS Engine**: a tray icon, the global gamemode hotkey, the rules and the rest of the background work (fan curve, gamemode profiles, device batteries). It is compiled with Native AOT (no JIT, no WPF runtime), because it runs all day. The interface starts the engine if it isn't running. Closing the window does not turn the rules off; *Exit* in the tray menu does.
+  - Installed, the engine has its own folder beside the apps (`KOS\engine`, `KOS\governor`, `KOS\toolbox`); it finds the apps, and the interface finds it, there or in the repository's `<name>\publish\win-x64` folders (`EngineHost.Find`).
+  - **Tray.** A click on the icon opens the **status window**; the menu has *Status*, *Open KOS Toolbox*, *Open KOS Governor* (each only when that app is installed), *Gamemode*, *Profile* and *Exit*. Starting `KosEngine.exe` while it already runs opens the status window too.
+  - **Status window** (`StatusWindow`, plain Windows API drawn with GDI in the KOS colors; no WPF in the engine): one line per task with its state, CPU and memory: process rules, gamemode, GPU fan curve, GPU gamemode profile, peripherals, timer resolution, RTSS overlay, the tray and the window itself, and everything else. Measured only while the window is open (`TaskMeter`): each task's work runs in a scope that reads the thread's cycle counter, so the CPU share is exact (percent of all processors); closed, a scope is one flag read. Memory per task is an estimate, marked ≈: the process's private bytes a task took when it first ran plus what it took while the window was open, scaled down so the estimates together never exceed what the process holds above its start-up base.
+  - `KosGovernor.exe --engine` still works: sign-in tasks created before the split start it, and it hands over to `KosEngine.exe`. Without the engine exe (the interface run from its own build folder), the interface runs the engine itself.
+  - The engine was `KosGovernorEngine.exe` with a `KOS Governor` task: the first start of `KosEngine.exe` from Program Files turns that task into `KOS Engine` and deletes the old executable (`SignIn.MigrateOld`).
   - Both read the same files through source-generated JSON (`GovernorJson`, and `KosJson` in the toolbox Core for the fan curve and GPU tuning), so the AOT engine needs no reflection. A test checks the format matches what the reflection-based serializer wrote.
 - **Administrator.** The manifest asks for administrator, because changing elevated processes and services requires it. The engine enables SeDebug and SeIncreaseBasePriority, needed for high I/O priority and Realtime.
 - **Engine.**
@@ -13,7 +17,7 @@ Process rules in the style of Process Lasso. It used to be the toolbox's Process
   - It applies each program's rule once per start. It also reapplies to the open programs when the configuration changes or the gamemode switches.
   - Thread rules are checked every interval on the threads that haven't matched yet, because the description may appear after the thread is created.
   - In an interval with no new programs, it uses less than 1 ms.
-- **Start with Windows.** Creates a `KOS Governor` scheduled task at sign-in that starts `KosGovernorEngine.exe`, highest level, through XML: no 72 h limit, starts on battery and runs at normal priority. It only works with the program in *Program Files*, because the task runs the `.exe` as administrator without UAC.
+- **Start with Windows.** Creates a `KOS Engine` scheduled task at sign-in that starts `KosEngine.exe`, highest level, through XML: no 72 h limit, starts on battery and runs at normal priority. It only works with the program in *Program Files*, because the task runs the `.exe` as administrator without UAC.
 
 ## Features
 
@@ -72,7 +76,7 @@ Process rules in the style of Process Lasso. It used to be the toolbox's Process
 - **CPU masks**: named processor groups, used for affinity and CPU sets. Renaming updates the rules that use the mask.
 - **Gamemode**
   - The view: a header with the on/off switch (the hotkey beside it) and a status line from the state and the automatic setting; three cards (*Turning on*: automatic gamemode, the off delay, opening the programs, the hotkey; *Timer resolution*; *Games*); then three tabs: *While it is on* (the Windows changes below, two columns, each description in full in its tooltip), *When it turns on* and *When it turns off* (the rules as a table, *What changes* as chips, *Edit* and a *···* menu, with *Start a program* and *+ Add process rule* beside the tabs).
-  - Global hotkey (default Ctrl+Alt+G); the tray menu and the switch in the sidebar toggle it too.
+  - Global hotkey (default Ctrl+Alt+G); KOS Engine's tray menu and the switch in the sidebar toggle it too.
   - *Timer resolution*: *Off*, *While gamemode is on* or *Always*, at the chosen value (0.5 ms by default; slightly higher values are offered too, since on some PCs they make Sleep(1) more precise). The engine holds the request (NtSetTimerResolution) and tells games to keep theirs while minimized. Since Windows 10 2004 a request only counts for the process that made it unless *Global timer resolution requests* is on (toolbox setting, needs a restart); the tab warns when it's off.
   - *When it turns on*: rules that apply while the gamemode is on, on top of the profile's, and programs to open.
   - *When it turns off*: rules applied once when it turns off, and programs to open.
@@ -173,4 +177,4 @@ dotnet build KosGovernor.sln
 dotnet test tests/KosGovernor.Core.Tests
 ```
 
-Publishing the engine (`dotnet publish src/KosGovernor.Engine -p:PublishProfile=win-x64`) compiles it with Native AOT, which needs the MSVC linker and the Windows SDK: Visual Studio 2022 Build Tools with the *Desktop development with C++* workload. A regular build doesn't.
+Publishing the engine (`dotnet publish src/KosGovernor.Engine -p:PublishProfile=win-x64`, to the repository's `engine\publish\win-x64`) compiles it with Native AOT, which needs the MSVC linker and the Windows SDK: Visual Studio 2022 Build Tools with the *Desktop development with C++* workload. A regular build doesn't.

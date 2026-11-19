@@ -46,8 +46,8 @@ public static partial class Txt
     };
 
     public const string PeripheralGamemode = "Gamemode profile", PeripheralUseInGamemode = "Save", PeripheralGamemodeClear = "Remove",
-        PeripheralGamemodeNote = "When gamemode turns on, KOS Governor sets what is chosen here and puts back what the device had when it turns off. On a mouse or the dock these are live values only: nothing is stored in the device.",
-        PeripheralGamemodeSaved = "Gamemode profile saved: KOS Governor applies it when gamemode turns on.", PeripheralGamemodeRemoved = "Gamemode profile removed.",
+        PeripheralGamemodeNote = "When gamemode turns on, KOS Engine sets what is chosen here and puts back what the device had when it turns off. On a mouse or the dock these are live values only: nothing is stored in the device.",
+        PeripheralGamemodeSaved = "Gamemode profile saved: KOS Engine applies it when gamemode turns on.", PeripheralGamemodeRemoved = "Gamemode profile removed.",
         PeripheralGamemodeSetDpi = "Set the DPI", PeripheralGamemodeKeep = "Keep",
         PeripheralGamemodeNone = "No profile saved.", PeripheralGamemodeSavedLabel = "Saved",
         PeripheralGamemodeNothing = "choose at least one thing for gamemode to change.",
@@ -58,8 +58,8 @@ public static partial class Txt
     public const string PeripheralEffect = "Effect", PeripheralColor = "Color (#RRGGBB)", PeripheralColorInvalid = "enter the color as #RRGGBB.",
         PeripheralDockBattery = "Mouse battery on the ring", PeripheralDockBatteryOn = "On", PeripheralDockBatteryOff = "Off",
         PeripheralTurnOn = "Turn on", PeripheralTurnOff = "Turn off",
-        PeripheralDockBatteryNote = "KOS Governor colors the ring by the Razer mouse's battery: red when low, then yellow, green when full, breathing while charging. It checks every minute and stores nothing in the dock; Turn off puts back the effect saved in the dock.",
-        PeripheralDockBatterySaved = "The ring shows the mouse battery: KOS Governor sets it in a few seconds.",
+        PeripheralDockBatteryNote = "KOS Engine colors the ring by the Razer mouse's battery: red when low, then yellow, green when full, breathing while charging. It checks every minute and stores nothing in the dock; Turn off puts back the effect saved in the dock.",
+        PeripheralDockBatterySaved = "The ring shows the mouse battery: KOS Engine sets it in a few seconds.",
         PeripheralDockBatteryRemoved = "The ring no longer shows the mouse battery.",
         PeripheralDockBatteryDark = "The ring's brightness is 0, so the battery colors won't show: raise Brightness.";
 
@@ -88,8 +88,8 @@ public static partial class Txt
         PeripheralSync = "Lighting sync", PeripheralSyncNote = "The checked devices get this effect and color; a keyboard's brightness goes to 100 % if it was 0.",
         PeripheralSyncApply = "Apply to all", PeripheralSyncGamemode = "Use in gamemode",
         PeripheralSyncGamemodeSaved = "Saved in each checked device's gamemode profile.", PeripheralSyncNone = "Check at least one device.",
-        PeripheralShowInTray = "Show in the tray", PeripheralShowInTrayNote = "KOS Governor shows this battery as its own icon in the taskbar tray (a ring that empties as it drops).",
-        PeripheralTrayShown = "KOS Governor shows this battery in the tray.", PeripheralTrayHidden = "KOS Governor no longer shows this battery in the tray.";
+        PeripheralShowInTray = "Show in the tray", PeripheralShowInTrayNote = "KOS Engine shows this battery as its own icon in the taskbar tray (a ring that empties as it drops).",
+        PeripheralTrayShown = "KOS Engine shows this battery in the tray.", PeripheralTrayHidden = "KOS Engine no longer shows this battery in the tray.";
 
     public const string PeripheralGamemodeRing = "Ring", PeripheralGamemodeRingOffShort = "Off", PeripheralGamemodeBattery = "Battery",
         PeripheralGamemodeNoBattery = "No battery",

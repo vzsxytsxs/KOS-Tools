@@ -4,7 +4,7 @@ using KosToolbox.Core.Tools;
 namespace KosToolbox.Core.Gpu;
 
 /// <summary>
-/// Fan curve run by the KOS Governor engine (which lives in the tray): the toolbox only configures. The two
+/// Fan curve run by KOS Engine (which lives in the tray): the toolbox only configures. The two
 /// programs talk through two files in the governor folder, writable only by administrators (the engine writes the
 /// fan as administrator): fan-curve.json (toolbox → engine) and fan-curve-state.json (engine → toolbox).
 /// </summary>
@@ -20,7 +20,7 @@ public sealed class GovernorFanCurve
     public static string StatePath => Path.Combine(Directory, "fan-curve-state.json");
     const string EngineMutex = @"Local\KosGovernor.Engine", ReloadEvent = @"Local\KosGovernor.Reload";
 
-    /// <summary>The governor engine is running in this session.</summary>
+    /// <summary>KOS Engine is running in this session.</summary>
     public static bool EngineRunning
     {
         get

@@ -5,12 +5,14 @@ using System.Security.Principal;
 namespace KosGovernor.Core;
 
 /// <summary>
-/// "KOS Governor" scheduled task that opens the elevated engine at sign-in. Through XML because schtasks' default would kill the
+/// "KOS Engine" scheduled task that opens the elevated engine at sign-in. Through XML because schtasks' default would kill the
 /// engine after 72 h, wouldn't start on battery and would run at below-normal priority.
 /// </summary>
 public static class SignIn
 {
-    public const string TaskName = "KOS Governor";
+    public const string TaskName = "KOS Engine";
+    /// <summary>The task's name while the engine was KosGovernorEngine.exe.</summary>
+    const string OldTaskName = "KOS Governor";
     static string Schtasks => Path.Combine(Environment.SystemDirectory, "schtasks.exe");
 
     /// <summary>
@@ -19,21 +21,21 @@ public static class SignIn
     /// </summary>
     public static string? FolderProblem(string exe) =>
         exe.StartsWith(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
-            ? null : "Starting with Windows needs KOS Governor installed under Program Files (a folder only administrators can change).";
+            ? null : "Starting with Windows needs KOS installed under Program Files (a folder only administrators can change).";
 
     public static bool Enabled() => Run($"/Query /TN \"{TaskName}\"").ExitCode == 0;
 
     public static void Enable()
     {
         // The engine's own executable; without it (interface run from its build folder), the interface's with --engine.
-        var engine = File.Exists(EngineHost.EnginePath);
-        var exe = engine ? EngineHost.EnginePath : Environment.ProcessPath ?? throw new InvalidOperationException("The governor's path is unknown.");
+        var engine = EngineHost.EnginePath is not null;
+        var exe = EngineHost.EnginePath ?? Environment.ProcessPath ?? throw new InvalidOperationException("The engine's path is unknown.");
         if (FolderProblem(exe) is { } problem) throw new InvalidOperationException(problem);
         var user = SecurityElement.Escape(WindowsIdentity.GetCurrent().Name);
         var xml = $"""
             <?xml version="1.0" encoding="UTF-16"?>
             <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-              <RegistrationInfo><Description>KOS Governor: applies process rules.</Description></RegistrationInfo>
+              <RegistrationInfo><Description>KOS Engine: process rules, gamemode and the other KOS background work.</Description></RegistrationInfo>
               <Triggers><LogonTrigger><Enabled>true</Enabled><UserId>{user}</UserId></LogonTrigger></Triggers>
               <Principals><Principal id="Author"><UserId>{user}</UserId><LogonType>InteractiveToken</LogonType><RunLevel>HighestAvailable</RunLevel></Principal></Principals>
               <Settings>
@@ -66,6 +68,30 @@ public static class SignIn
         }
         finally { File.Delete(file); }
         Log.Info("Sign-in task created.");
+    }
+
+    /// <summary>
+    /// From before the engine was renamed: the old task becomes the new one (only from Program Files, like <see cref="Enable"/>) and the
+    /// old engine executable in the governor's folder is deleted. Engine start.
+    /// </summary>
+    public static void MigrateOld()
+    {
+        try
+        {
+            if (EngineHost.EnginePath is not { } exe || FolderProblem(exe) is not null) return;
+            if (Run($"/Query /TN \"{OldTaskName}\"").ExitCode == 0)
+            {
+                Enable(); // the new one first: a failure leaves the old task in place
+                Run($"/Delete /TN \"{OldTaskName}\" /F");
+                Log.Info("Sign-in task renamed from KOS Governor to KOS Engine.");
+            }
+            var old = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(exe)!, "..", "governor", "KosGovernorEngine.exe"));
+            if (File.Exists(old)) { File.Delete(old); Log.Info($"Deleted the engine's old executable {old}."); }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+        {
+            Log.Warn($"Moving from the old engine name didn't finish: {ex.Message}");
+        }
     }
 
     public static void Disable()

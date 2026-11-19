@@ -34,7 +34,7 @@ public sealed class KernelModules
     /// <summary>
     /// SystemModuleInformation. Windows only gives kernel addresses to a process with SeDebugPrivilege enabled (24H2 and
     /// later), so it is enabled for the read and disabled again (<paramref name="keepDebug"/>: left on, for a process that needs it
-    /// anyway, like the governor's engine); without it every routine is <see cref="Unknown"/>.
+    /// anyway, like KOS Engine); without it every routine is <see cref="Unknown"/>.
     /// </summary>
     public static KernelModules Read(bool keepDebug = false)
     {

@@ -4,7 +4,7 @@ using KosToolbox.Core.Persistence;
 namespace KosToolbox.Core.Peripherals;
 
 /// <summary>
-/// Mouse settings the KOS Governor engine writes while gamemode is on, chosen on the toolbox's Peripherals page. Volatile settings only
+/// Mouse settings KOS Engine writes while gamemode is on, chosen on the toolbox's Peripherals page. Volatile settings only
 /// (live DPI, polling rate): nothing goes to onboard flash. gamemode-peripheral.json (toolbox → engine) sits next to gamemode-gpu.json in
 /// the admin-only governor folder; gamemode-peripheral-state.json (engine only) keeps what each device had, to put it back.
 /// It also carries <see cref="DockBattery"/>, the one peripheral setting the engine applies outside gamemode.

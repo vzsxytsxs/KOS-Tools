@@ -18,7 +18,7 @@ public static partial class Txt
     public static string GpuReadFailed(string message) => $"The GPU couldn't be read: {message}";
     public const string GpuDriverReset = "The display driver restarted: readings are back. Its clocks, limits and fans went back to defaults; apply your settings again (or turn on Apply at sign-in to have them reapplied by themselves).",
         GpuDriverResetReapplied = "The display driver restarted: readings are back and the settings saved for sign-in were applied again.",
-        GpuDriverResetGovernor = "The display driver restarted: readings are back; KOS Governor is applying the settings saved for sign-in again.";
+        GpuDriverResetGovernor = "The display driver restarted: readings are back; KOS Engine is applying the settings saved for sign-in again.";
 
     // ---------- monitoring ----------
     public const string GpuMonitor = "Live readings", GpuMonitorNote = "Updated every second while this page is open.";
@@ -36,7 +36,7 @@ public static partial class Txt
 
     // ---------- gamemode (KOS Governor) ----------
     public const string GpuGamemodeTitle = "Gamemode",
-        GpuGamemodeNote = "KOS Governor writes these profiles when its gamemode turns on and off (by hand or automatically with a game). Before writing the gamemode profile it saves what the card has, and \"Back to how it was\" puts that back when gamemode turns off. A profile with a fan curve runs that curve while it is on. The profile's values are copied when you choose it; saving the profile here updates them.",
+        GpuGamemodeNote = "KOS Engine writes these profiles when its gamemode turns on and off (by hand or automatically with a game). Before writing the gamemode profile it saves what the card has, and \"Back to how it was\" puts that back when gamemode turns off. A profile with a fan curve runs that curve while it is on. The profile's values are copied when you choose it; saving the profile here updates them.",
         GpuGamemodeOn = "When gamemode turns on", GpuGamemodeOff = "When gamemode turns off",
         GpuGamemodeNone = "Don't change the card", GpuGamemodeBack = "Back to how it was",
         GpuGamemodeNeedsAdmin = "Choosing gamemode profiles needs the toolbox running as administrator (Settings › Restart as administrator).";
@@ -44,7 +44,7 @@ public static partial class Txt
         $"KOS Governor gamemode: on → {on}{(onValues is null ? "" : $" ({onValues})")}; off → {off}{(offValues is null ? "" : $" ({offValues})")}.";
     public static string GpuGamemodeInvalid(string profile, string problem) => $"Profile \"{profile}\" can't be used for gamemode on this card: {problem}";
     public static string GpuGamemodeSuspended(string profile) =>
-        $"Profile \"{profile}\" is paused: KOS Governor started writing it and never finished (the PC may have crashed). Choose it again to turn it back on.";
+        $"Profile \"{profile}\" is paused: KOS Engine started writing it and never finished (the PC may have crashed). Choose it again to turn it back on.";
 
     // ---------- tuning ----------
     public const string GpuTuningTitle = "Tuning";

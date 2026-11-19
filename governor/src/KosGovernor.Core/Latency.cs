@@ -15,6 +15,8 @@ public static class TimerResolution
     public const int Finest = 5000, Coarsest = 156250;
     const uint IgnoreTimerResolution = 0x4;
     static uint? _held, _failed;
+    /// <summary>The resolution the engine holds now, in 100 ns units.</summary>
+    public static uint? Held => _held;
 
     public static void Sync(TimerSettings s, bool gamemode)
     {

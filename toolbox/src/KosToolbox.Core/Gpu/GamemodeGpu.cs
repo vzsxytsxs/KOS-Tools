@@ -3,7 +3,7 @@ using KosToolbox.Core.Persistence;
 namespace KosToolbox.Core.Gpu;
 
 /// <summary>
-/// GPU profiles the KOS Governor engine writes when gamemode turns on and off, chosen on the toolbox's GPU page.
+/// GPU profiles KOS Engine writes when gamemode turns on and off, chosen on the toolbox's GPU page.
 /// gamemode-gpu.json (toolbox → engine) lives next to fan-curve.json in the admin-only governor folder;
 /// gamemode-gpu-state.json (engine only) keeps what the card had before gamemode, to put it back afterwards.
 /// </summary>

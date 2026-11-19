@@ -175,6 +175,8 @@ public static class Names
     public const string EngineMutex = @"Local\KosGovernor.Engine", UiMutex = @"Local\KosGovernor.Ui";
     public const string Stop = @"Local\KosGovernor.Stop", Reload = @"Local\KosGovernor.Reload", ShowUi = @"Local\KosGovernor.ShowUi";
     public const string ToggleGamemode = @"Local\KosGovernor.ToggleGamemode";
+    /// <summary>Opens the engine's status window (a second start of the engine sets it).</summary>
+    public const string ShowStatus = @"Local\KosGovernor.ShowStatus";
     /// <summary>Exists while gamemode is on (the engine keeps the event open).</summary>
     public const string GamemodeOn = @"Local\KosGovernor.GamemodeOn";
 

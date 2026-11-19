@@ -18,7 +18,7 @@
 | [`toolbox/`](toolbox/README.md) | **KOS Toolbox** | An all-in-one control panel: Windows tweaks, startup, power plans, services, devices/IRQs, BIOS settings (AMI SCEWIN), NVIDIA GPU tuning and driver profiles, display EDID, cleanup, network, app installer and the KOS maintenance scripts. |
 | [`governor/`](governor/README.md) | **KOS Governor** | A Process Lasso–style rules engine that runs in the tray: CPU/I/O/memory priority, affinity, CPU sets, efficiency mode and thread rules per program, a CPU limiter, per-program power plan and screen mode, timer resolution, a gamemode hotkey, GPU profiles for gamemode, per-game Windows settings, the GPU fan curve, mouse settings for gamemode and a tray icon per device battery. |
 
-The two are separate programs on purpose. The toolbox is something you open, change things in and close. The governor has to keep running in the background to enforce rules, so it's a small tray engine with its own UI. They share code: `KosGovernor.Core` references `KosToolbox.Core` (for example, the governor engine runs the GPU fan curve you configure in the toolbox).
+The two are separate programs on purpose. The toolbox is something you open, change things in and close. The governor has to keep running in the background to enforce rules, so it's a small tray engine with its own UI. They share code: `KosGovernor.Core` references `KosToolbox.Core` (for example, KOS Engine runs the GPU fan curve you configure in the toolbox).
 
 Each folder has its own detailed README with every setting, file path and known limitation.
 
@@ -80,6 +80,7 @@ One `KosGovernor.exe` with two modes: opened normally it shows the UI; with `--e
 - **Automatic gamemode** – turns gamemode on when a game from the built-in list (531 games; launchers like Steam or the Riot Client never count) starts, and off a few seconds after the last one closes. Right-click any process to mark it as a game or as never a game.
 - **Windows settings for games** – network priority (a DSCP 46 QoS policy), fullscreen optimizations off and the high-performance GPU per program, from a window on the Gamemode tab or a process's right-click menu; each one is read back after it's applied.
 - **GPU fan curve** – the curve you set in the toolbox is executed by the engine, so the toolbox can be closed; fans return to automatic when the engine exits. After a display driver reset or TDR the engine restarts the curve and re-applies the toolbox's saved overclock.
+- **KOS Engine** – the background process both apps share (`KosEngine.exe`, Native AOT): rules, gamemode, fan curve, device batteries. A click on its tray icon opens a status window with each task's state, CPU and memory (measured only while the window is open); its menu opens KOS Toolbox and KOS Governor.
 - **Start with Windows** – scheduled task at logon with highest privileges (no 72 h limit, runs on battery).
 
 ### How it works

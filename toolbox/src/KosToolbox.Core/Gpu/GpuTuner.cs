@@ -128,7 +128,7 @@ public static class GpuTuner
     public static string SignInFile => Path.Combine(SignInDirectory, "gpu-tuning.json");
     static string Schtasks => Path.Combine(Environment.SystemDirectory, "schtasks.exe");
 
-    /// <summary>"dddd:bb:dd.f" or "dddddddd:bb:dd.f" in hex, function 0-7. No Regex: it was the only use in the governor engine (~1 MB).</summary>
+    /// <summary>"dddd:bb:dd.f" or "dddddddd:bb:dd.f" in hex, function 0-7. No Regex: it was the only use in KOS Engine (~1 MB).</summary>
     internal static bool IsBusId(string? id)
     {
         if (id is null || id.Length < 12) return false;
@@ -620,7 +620,7 @@ public static class GpuTuner
         }
     }
 
-    /// <summary>KOS Governor engine (already elevated): revalidates against the card, writes, and returns what the re-read didn't confirm.</summary>
+    /// <summary>KOS Engine (already elevated): revalidates against the card, writes, and returns what the re-read didn't confirm.</summary>
     public static List<string> Apply(GpuTuning t)
     {
         Write(t);

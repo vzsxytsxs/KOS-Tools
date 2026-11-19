@@ -229,7 +229,7 @@ internal sealed class PeripheralBatteryMonitor
         while (true)
         {
             var asleep = false;
-            try { asleep = Scan(); }
+            try { using (TaskMeter.Measure(EngineTask.Peripherals)) asleep = Scan(); }
             catch (Exception ex) { Log.Warn($"Reading device batteries failed: {ex.Message}"); }
             if (WaitHandle.WaitAny(new WaitHandle[] { _stop, _poke }, asleep ? Asleep : Normal) == 0) return;
         }

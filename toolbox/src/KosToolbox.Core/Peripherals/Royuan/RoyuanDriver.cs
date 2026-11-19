@@ -597,7 +597,7 @@ public sealed class RoyuanDriver : PeripheralDriver
     });
 
     /// <summary>
-    /// One KOS program at a time on the keyboard: the toolbox and the governor engine talking to it together corrupt each other's
+    /// One KOS program at a time on the keyboard: the toolbox and KOS Engine talking to it together corrupt each other's
     /// replies, and a whole-column write made from a corrupted read would land on every key. The named mutex lives only for one
     /// operation; when the other (elevated) program holds it, opening it is denied, which counts as busy too.
     /// </summary>
