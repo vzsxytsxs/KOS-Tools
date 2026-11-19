@@ -56,6 +56,7 @@ struct Chain
     double preampDb = 0;
     int count = 0;
     Coefficients filters[MaxBands];
+    double centers[MaxBands];  // each band's frequency as designed: where its peak sits
     unsigned generation = 0;
 };
 
@@ -84,23 +85,34 @@ Coefficients Design(const Band& band, double rate)
     return { b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0 };
 }
 
-// The curve's highest point in dB, preamp included: 512 log-spaced points from 20 Hz to 20 kHz (as Equalizer.PeakGain).
+// The curve's level in dB at one frequency, preamp included.
+double LevelDb(const Chain& chain, double f, double rate)
+{
+    double w = 2 * Pi * f / rate, c1 = std::cos(w), s1 = -std::sin(w), c2 = std::cos(2 * w), s2 = -std::sin(2 * w), db = chain.preampDb;
+    for (int b = 0; b < chain.count; b++)
+    {
+        const Coefficients& k = chain.filters[b];
+        double nr = k.b0 + k.b1 * c1 + k.b2 * c2, ni = k.b1 * s1 + k.b2 * s2;
+        double dr = 1 + k.a1 * c1 + k.a2 * c2, di = k.a1 * s1 + k.a2 * s2;
+        double power = (nr * nr + ni * ni) / (dr * dr + di * di);
+        db += 10 * std::log10(power > 1e-24 ? power : 1e-24);
+    }
+    return db;
+}
+
+// The curve's highest point (as EqSettingsFile.Peak): 1024 log-spaced points from 20 Hz up to where a band can sit
+// (0.49 x rate), plus each band's own frequency, so a narrow band between two points isn't missed.
 double PeakDb(const Chain& chain, double rate)
 {
-    double peak = -1e9;
-    for (int i = 0; i < 512; i++)
+    double peak = -1e9, top = 0.49 * rate;
+    for (int i = 0; i < 1024; i++)
     {
-        double f = 20 * std::pow(1000.0, i / 511.0);
-        if (f > 0.49 * rate) break;
-        double w = 2 * Pi * f / rate, c1 = std::cos(w), s1 = -std::sin(w), c2 = std::cos(2 * w), s2 = -std::sin(2 * w), db = chain.preampDb;
-        for (int b = 0; b < chain.count; b++)
-        {
-            const Coefficients& k = chain.filters[b];
-            double nr = k.b0 + k.b1 * c1 + k.b2 * c2, ni = k.b1 * s1 + k.b2 * s2;
-            double dr = 1 + k.a1 * c1 + k.a2 * c2, di = k.a1 * s1 + k.a2 * s2;
-            double power = (nr * nr + ni * ni) / (dr * dr + di * di);
-            db += 10 * std::log10(power > 1e-24 ? power : 1e-24);
-        }
+        double db = LevelDb(chain, 20 * std::pow(top / 20, i / 1023.0), rate);
+        if (db > peak) peak = db;
+    }
+    for (int b = 0; b < chain.count; b++)
+    {
+        double db = LevelDb(chain, chain.centers[b], rate);
         if (db > peak) peak = db;
     }
     return peak;
@@ -136,6 +148,7 @@ void ParseLine(char* line, Chain& chain, double rate, _locale_t c)
     double g = _strtod_l(p, &end, c); if (end == p) return; p = end;
     double q = _strtod_l(p, &end, c); if (end == p) return;
     if (!(f >= 10 && f <= 24000) || !(g >= -30 && g <= 30) || !(q >= 0.1 && q <= 30)) return;
+    chain.centers[chain.count] = f > 0.49 * rate ? 0.49 * rate : f;
     chain.filters[chain.count++] = Design({ type, f, g, q }, rate);
 }
 

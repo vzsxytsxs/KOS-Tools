@@ -58,7 +58,20 @@ public static class EqSettingsFile
 
     /// <summary>Null when the DLL would take the profile; otherwise why not (invalid values or a boost above <see cref="MaxBoost"/>).</summary>
     public static string? Problem(EqProfile p) =>
-        Equalizer.Problem(p) ?? (Equalizer.PeakGain(Enabled(p)) > MaxBoost ? $"The curve boosts more than +{MaxBoost:0} dB; lower the bands or the preamp." : null);
+        Equalizer.Problem(p) ?? (Peak(p) > MaxBoost ? $"The curve boosts more than +{MaxBoost:0} dB; lower the bands or the preamp." : null);
+
+    /// <summary>
+    /// The curve's highest point in dB, preamp included, as the DLL checks it: 1024 log-spaced points from 20 Hz up to where a band
+    /// can sit (0.49 × the rate), plus each enabled band's own frequency, so a narrow band between two points isn't missed.
+    /// </summary>
+    public static double Peak(EqProfile p, double sampleRate = 48000)
+    {
+        var enabled = Enabled(p);
+        var top = 0.49 * sampleRate;
+        return Enumerable.Range(0, 1024).Select(i => 20 * Math.Pow(top / 20, i / 1023.0))
+            .Concat(enabled.Bands.Select(b => Math.Clamp(b.Frequency, 1, top)))
+            .Max(f => Equalizer.Response(enabled, f, sampleRate));
+    }
 
     static EqProfile Enabled(EqProfile p) => new() { Name = p.Name, Preamp = p.Preamp, GraphicBands = p.GraphicBands, Bands = p.Bands.Where(b => b.Enabled).ToList() };
 

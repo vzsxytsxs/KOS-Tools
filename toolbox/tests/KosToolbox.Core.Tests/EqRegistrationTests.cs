@@ -61,6 +61,51 @@ public class EqRegistrationTests
     }
 
     [Fact]
+    public void ADriverEndpointEffectTheOtherEqualizerHostsIsRefused()
+    {
+        var fx = Fx((5, FxValue.String(Other)), (7, FxValue.String(OtherEfx)));
+        var record = new Dictionary<string, string> { [EqRegistration.FxKey(5)] = DriverLfx, [EqRegistration.FxKey(7)] = DriverGfx };
+        Assert.Contains("hosted by", EqRegistration.Plan(fx, record).Refused);
+        record[EqRegistration.FxKey(7)] = "!VALUE";
+        Assert.Null(EqRegistration.Plan(fx, record).Refused);
+    }
+
+    [Fact]
+    public void AnUninstalledOtherEqualizerIsNotPutBack()
+    {
+        var fx = Fx((5, FxValue.String(Other)), (7, FxValue.String(OtherEfx)));
+        var plan = EqRegistration.Plan(fx, new Dictionary<string, string> { [EqRegistration.FxKey(5)] = DriverLfx });
+        var now = Fx((5, FxValue.String(DriverLfx)), (7, FxValue.String(EqRegistration.ClsidText)));
+        now[EqRegistration.ModesKey(7)] = FxValue.Multi([EqRegistration.ModeDefault]);
+        var undo = EqRegistration.Undo(plan.Changes, now, new List<string>(), clsid => false);
+        // Slot 5 keeps the driver's effect KOS put back; KOS's own endpoint effect and modes key go.
+        Assert.DoesNotContain(undo, c => c.Name == EqRegistration.FxKey(5));
+        Assert.Null(undo.Single(c => c.Name == EqRegistration.FxKey(7)).After);
+        Assert.Null(undo.Single(c => c.Name == EqRegistration.ModesKey(7)).After);
+        // Still installed: it all goes back.
+        Assert.Equal(Other, EqRegistration.Undo(plan.Changes, now, new List<string>(), clsid => true).Single(c => c.Name == EqRegistration.FxKey(5)).After!.Text);
+    }
+
+    [Fact]
+    public void EndpointsMatchByFlowAndGuid()
+    {
+        Assert.True(EqRegistration.SameEndpoint("{0.0.0.00000000}.{3718CD90-BA40-40AE-9DFC-93593F73D916}", "{0.0.0.00000000}.{3718cd90-ba40-40ae-9dfc-93593f73d916}"));
+        Assert.False(EqRegistration.SameEndpoint("{0.0.0.00000000}.{3718cd90-ba40-40ae-9dfc-93593f73d916}", "{0.0.1.00000000}.{3718cd90-ba40-40ae-9dfc-93593f73d916}"));
+        Assert.False(EqRegistration.SameEndpoint("x", "x"));
+    }
+
+    [Fact]
+    public void ANarrowBoostBetweenCheckPointsOrNearTheTopIsCaught()
+    {
+        var between = new EqProfile { Preamp = 2, Bands = { new EqBand { Type = EqFilterType.Peak, Frequency = 2022.7, Gain = 30, Q = 30 } } };
+        var top = new EqProfile { Preamp = -5, Bands = { new EqBand { Type = EqFilterType.Peak, Frequency = 22000, Gain = 30, Q = 30 } } };
+        Assert.InRange(EqSettingsFile.Peak(between), 31.9, 32.1);
+        Assert.InRange(EqSettingsFile.Peak(top), 24.9, 25.1);
+        Assert.NotNull(EqSettingsFile.Problem(between));
+        Assert.NotNull(EqSettingsFile.Problem(top));
+    }
+
+    [Fact]
     public void UndoPutsBackOnlyWhatStillHoldsWhatKosWrote()
     {
         var fx = Fx((5, FxValue.String(Other)), (7, FxValue.String(OtherEfx)));

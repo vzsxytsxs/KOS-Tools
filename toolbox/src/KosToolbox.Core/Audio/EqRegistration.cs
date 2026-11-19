@@ -67,9 +67,6 @@ public sealed record EqFxPlan(IReadOnlyList<EqFxChange> Changes, bool ReplacesOt
 public sealed class EqJournal
 {
     public List<EqEndpointRecord> Endpoints { get; set; } = new();
-    /// <summary>DisableProtectedAudioDG as it was before KOS set it to 1 (null: KOS didn't change it).</summary>
-    public FxValue? ProtectedAudioBefore { get; set; }
-    public bool ProtectedAudioSet { get; set; }
     /// <summary>KOS created the COM class and APO registration (removed with the last endpoint).</summary>
     public bool RegisteredClass { get; set; }
 }
@@ -91,12 +88,14 @@ public enum EqDeviceState { Off, On, OtherEqualizer, ChangedSince, Unsupported }
 public sealed record EqStatus(EqDeviceState State, string? Detail, bool ReplacedOther, string? Effect = null, DateTime? EffectTime = null);
 
 /// <summary>
-/// Turns KOS Equalizer's audio processing object on and off per endpoint: the COM class and APO registration (once), the
-/// endpoint's effect values (FxProperties) and DisableProtectedAudioDG (unsigned APOs only load with it), then the audio service
-/// restarts. Every value is journaled before it's written and put back on turning off only where it's still as KOS left it.
-/// Where the other equalizer sits on the endpoint, KOS replaces it: its effects come out and what it wrapped goes back (from
-/// its own record of the endpoint), KOS Equalizer takes the endpoint-effect slot; turning off restores it. An endpoint whose
-/// driver has its own endpoint effect is refused (no stacking yet). Everything needs administrator.
+/// Turns KOS Equalizer's audio processing object on and off per endpoint: the COM class and APO registration (once, always the
+/// installed DLL) and the endpoint's effect values (FxProperties), then the audio service restarts. Every value is journaled
+/// before it's written and put back on turning off only where it's still as KOS left it. Where the other equalizer sits on the
+/// endpoint, KOS replaces it: its effects come out and what it wrapped goes back (from its own record of the endpoint), KOS
+/// Equalizer takes the endpoint-effect slot; turning off restores it (unless it was uninstalled meanwhile). An endpoint whose
+/// driver has its own endpoint effect is refused (no stacking yet), also one the other equalizer was hosting. Everything needs
+/// administrator. Standard users can set FxProperties values too (Windows' own permissions): nothing written here is more than
+/// they could write themselves.
 /// </summary>
 public static class EqRegistration
 {
@@ -109,7 +108,6 @@ public static class EqRegistration
     public const string OtherEqualizerName = "Equalizer APO";
     const string OtherChildKey = @"SOFTWARE\EqualizerAPO\Child APOs";
     const string Endpoints = @"SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio";
-    const string AudioKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Audio", ProtectedAudio = "DisableProtectedAudioDG";
     public const string DllName = "KosEqApo.dll";
 
     public static string FxKey(int pid) => $"{Fx},{pid}";
@@ -158,7 +156,13 @@ public static class EqRegistration
         var efx = Get(FxKey(7));
         if (efx is not null && !IsOurs(efx.Text) && !IsOther(efx.Text))
             return new EqFxPlan([], replaces, $"its driver has an endpoint effect of its own ({efx}); KOS Equalizer doesn't stack with it yet.");
-        if (efx is not null && IsOther(efx.Text)) replaces = true;
+        if (efx is not null && IsOther(efx.Text))
+        {
+            replaces = true;
+            // What the other equalizer wrapped there is the driver's own endpoint effect (speaker protection, say): refused too.
+            if (otherChild?.GetValueOrDefault(FxKey(7)) is { } hosted && IsClsid(hosted) && !IsOther(hosted) && !IsOurs(hosted))
+                return new EqFxPlan([], replaces, $"its driver has an endpoint effect of its own ({hosted}, hosted by {OtherEqualizerName}); KOS Equalizer doesn't stack with it yet.");
+        }
         var composite = changes.FirstOrDefault(c => c.Name == FxKey(15)) is { } c15 ? c15.After : Get(FxKey(15));
         if (composite is not null && composite.Items.Any(i => !IsOurs(i)))
             return new EqFxPlan([], replaces, $"its driver has endpoint effects of its own ({composite}); KOS Equalizer doesn't stack with them yet.");
@@ -169,18 +173,40 @@ public static class EqRegistration
 
     /// <summary>
     /// What turning off writes back: each journaled value returns to what it was, only where it still holds what KOS wrote.
-    /// <paramref name="changedSince"/> gets the names something else changed meanwhile (left as they are).
+    /// <paramref name="changedSince"/> gets the names something else changed meanwhile (left as they are). The other equalizer's
+    /// effects go back only while their class is still registered (<paramref name="registered"/>; uninstalled: a slot it held
+    /// keeps what KOS put back there, KOS's own value is removed).
     /// </summary>
-    public static List<EqFxChange> Undo(IEnumerable<EqFxChange> journal, IReadOnlyDictionary<string, FxValue> current, List<string> changedSince)
+    public static List<EqFxChange> Undo(IEnumerable<EqFxChange> journal, IReadOnlyDictionary<string, FxValue> current, List<string> changedSince,
+        Func<string, bool>? registered = null)
     {
         var undo = new List<EqFxChange>();
         foreach (var c in journal)
         {
             var now = current.TryGetValue(c.Name, out var v) ? v : null;
-            if (FxValue.Same(now, c.After)) undo.Add(new EqFxChange { Name = c.Name, Before = c.After, After = c.Before });
-            else if (!FxValue.Same(now, c.Before)) changedSince.Add(c.Name); // still as it was (never written): nothing to undo
+            if (!FxValue.Same(now, c.After))
+            {
+                if (!FxValue.Same(now, c.Before)) changedSince.Add(c.Name); // still as it was (never written): nothing to undo
+                continue;
+            }
+            var back = c.Before;
+            bool Gone(string clsid) => IsOther(clsid) && registered?.Invoke(clsid.Trim()) == false;
+            if (back is not null && back.Items.Any(Gone))
+            {
+                var kept = back.Items.Where(i => !Gone(i)).ToList();
+                back = back.Kind == RegistryValueKind.MultiString ? (kept.Count == 0 ? null : FxValue.Multi(kept))
+                    : now is not null && !IsOurs(now.Text) ? now : null;
+            }
+            if (!FxValue.Same(now, back)) undo.Add(new EqFxChange { Name = c.Name, Before = now, After = back });
         }
         return undo;
+    }
+
+    /// <summary>Both ids name the same endpoint (flow and GUID, whatever the case or the prefix's spelling).</summary>
+    public static bool SameEndpoint(string a, string b)
+    {
+        try { return Endpoint(a) == Endpoint(b); }
+        catch (ArgumentException) { return false; }
     }
 
     // ---------- the system ----------
@@ -240,8 +266,7 @@ public static class EqRegistration
     /// <summary>KOS Equalizer on this endpoint as read now, with the effect's own status line when it has run.</summary>
     public static EqStatus Status(string endpointId)
     {
-        var journal = LoadJournal();
-        var record = journal.Endpoints.FirstOrDefault(e => string.Equals(e.EndpointId, endpointId, StringComparison.OrdinalIgnoreCase));
+        var record = Record(LoadJournal(), endpointId);
         var fx = ReadFx(endpointId);
         if (record is not null && fx is not null && fx.TryGetValue(FxKey(7), out var efx) && IsOurs(efx.Text))
         {
@@ -251,10 +276,12 @@ public static class EqRegistration
         if (record is not null)
             return new EqStatus(EqDeviceState.ChangedSince, "The device's effects were changed since (a driver update?): turn it off, then on again.", record.ReplacedOther);
         if (fx is null) return new EqStatus(EqDeviceState.Unsupported, "This device has no audio effects key.", false);
-        var plan = Plan(fx, null);
+        var plan = Plan(fx, ReadOtherChild(endpointId));
         if (plan.Refused is { } refused) return new EqStatus(EqDeviceState.Unsupported, "This device " + refused, false);
         return new EqStatus(plan.ReplacesOther ? EqDeviceState.OtherEqualizer : EqDeviceState.Off, null, false);
     }
+
+    static EqEndpointRecord? Record(EqJournal journal, string endpointId) => journal.Endpoints.FirstOrDefault(e => SameEndpoint(e.EndpointId, endpointId));
 
     /// <summary>
     /// The line the effect wrote in the audio engine's TEMP (LOCAL SERVICE's): "applied: ...", "flat: ..." or "refused: ...", and
@@ -275,19 +302,17 @@ public static class EqRegistration
     }
 
     /// <summary>
-    /// Turns KOS Equalizer on for an endpoint: registers the DLL (<paramref name="dll"/>, which must be the installed copy under
-    /// Program Files owned by SYSTEM/Administrators), sets DisableProtectedAudioDG, writes the endpoint's effect values (journaled
-    /// first), writes a flat settings file if there's none, restarts the audio service and reads everything back.
+    /// Turns KOS Equalizer on for an endpoint: registers the installed DLL (<see cref="InstalledDll"/>, owned by SYSTEM or
+    /// Administrators), writes the endpoint's effect values (journaled first) and a flat settings file if there's none, reads the
+    /// values back and restarts the audio service. Any failure undoes what was written.
     /// </summary>
-    public static EqEndpointRecord Activate(string endpointId, string name, string dll)
+    public static EqEndpointRecord Activate(string endpointId, string name)
     {
-        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles) + Path.DirectorySeparatorChar;
-        if (!Path.GetFullPath(dll).StartsWith(programFiles, StringComparison.OrdinalIgnoreCase) || !File.Exists(dll))
-            throw new InvalidOperationException($"KOS Equalizer's audio effect ({DllName}) must be installed under {programFiles} first.");
+        var dll = InstalledDll;
+        if (!File.Exists(dll)) throw new InvalidOperationException($"KOS Equalizer's audio effect isn't installed ({dll}).");
         if (ToolDiscovery.OwnerProblem(dll) is { } owner) throw new InvalidOperationException(owner);
         var journal = LoadJournal();
-        if (journal.Endpoints.Any(e => string.Equals(e.EndpointId, endpointId, StringComparison.OrdinalIgnoreCase)))
-            throw new InvalidOperationException("KOS Equalizer is already on for this device.");
+        if (Record(journal, endpointId) is not null) throw new InvalidOperationException("KOS Equalizer is already on for this device.");
         var fx = ReadFx(endpointId) ?? throw new InvalidOperationException("This device has no audio effects key, so an effect can't be added to it.");
         var plan = Plan(fx, ReadOtherChild(endpointId));
         if (plan.Refused is { } refused) throw new InvalidOperationException("This device " + refused);
@@ -295,10 +320,6 @@ public static class EqRegistration
         var record = new EqEndpointRecord { EndpointId = endpointId, Name = name, Changes = plan.Changes.ToList(), ReplacedOther = plan.ReplacesOther, Activated = DateTime.UtcNow };
         journal.Endpoints.Add(record);
         using var root = Hklm;
-        FxValue? protectedNow;
-        using (var audio = root.OpenSubKey(AudioKey)) protectedNow = audio is null ? null : FxValue.Read(audio, ProtectedAudio);
-        var setProtected = protectedNow?.Text != "1";
-        if (setProtected && !journal.ProtectedAudioSet) { journal.ProtectedAudioBefore = protectedNow; journal.ProtectedAudioSet = true; }
         var register = !ClassRegistered(dll);
         if (register) journal.RegisteredClass = true;
         SaveJournal(journal); // before any write: a crash halfway still leaves the way back
@@ -306,51 +327,43 @@ public static class EqRegistration
         try
         {
             if (register) RegisterClass(root, dll);
-            if (setProtected)
-                using (var audio = root.CreateSubKey(AudioKey)) audio.SetValue(ProtectedAudio, 1, RegistryValueKind.DWord);
             WriteFx(root, endpointId, plan.Changes);
             if (!File.Exists(EqSettingsFile.PathFor(endpointId))) EqSettingsFile.Write(endpointId, null);
             Log.Info($"KOS Equalizer on for {name} ({endpointId}): {string.Join("; ", plan.Changes.Select(c => $"{c.Name} {c.Before?.ToString() ?? "absent"} -> {c.After?.ToString() ?? "absent"}"))}");
             var back = ReadFx(endpointId) ?? new();
             var wrong = plan.Changes.Where(c => !FxValue.Same(back.GetValueOrDefault(c.Name), c.After)).Select(c => c.Name).ToList();
             if (wrong.Count > 0) throw new InvalidOperationException($"The device's effects don't read back as written ({string.Join(", ", wrong)}).");
+            RestartAudio(null);
         }
         catch (Exception ex)
         {
-            // Halfway on is worse than off: put back what was written (the journal knows), then report the first failure.
+            // Halfway on is worse than off: put back what was written (the journal knows; its restart starts the audio service
+            // again), then report the first failure.
             Log.Error($"KOS Equalizer: turning on {name} failed; undoing", ex);
             try { Deactivate(endpointId); } catch (Exception undo) { Log.Error("KOS Equalizer: the undo failed too", undo); }
             throw;
         }
-        RestartAudio($"KOS Equalizer is on for {name}");
         return record;
     }
 
     /// <summary>
-    /// Turns KOS Equalizer off for an endpoint: its values go back where they're still as KOS left them (the names changed since
-    /// are returned), and with the last endpoint the registration and DisableProtectedAudioDG go back too; the audio service restarts.
+    /// Turns KOS Equalizer off for an endpoint (connected or not): its values go back where they're still as KOS left them (the
+    /// names changed since are returned), and with the last endpoint the registration goes too; the audio service restarts.
     /// </summary>
     public static List<string> Deactivate(string endpointId)
     {
         var journal = LoadJournal();
-        var record = journal.Endpoints.FirstOrDefault(e => string.Equals(e.EndpointId, endpointId, StringComparison.OrdinalIgnoreCase))
-            ?? throw new InvalidOperationException("KOS Equalizer isn't on for this device.");
+        var record = Record(journal, endpointId) ?? throw new InvalidOperationException("KOS Equalizer isn't on for this device.");
+        endpointId = record.EndpointId;
         var changedSince = new List<string>();
         using var root = Hklm;
         // Nothing to put back (a turn-on that failed before writing, or everything changed since): the key isn't opened for writing.
         var fx = ReadFx(endpointId);
         if (fx is null) changedSince.AddRange(record.Changes.Select(c => c.Name)); // the device's key is gone: nothing left to put back
-        else if (Undo(record.Changes, fx, changedSince) is { Count: > 0 } undo) WriteFx(root, endpointId, undo);
+        else if (Undo(record.Changes, fx, changedSince, ClassExists) is { Count: > 0 } undo) WriteFx(root, endpointId, undo);
         journal.Endpoints.Remove(record);
         if (journal.Endpoints.Count == 0)
         {
-            if (journal.ProtectedAudioSet)
-                using (var audio = root.CreateSubKey(AudioKey))
-                    if (FxValue.Read(audio, ProtectedAudio)?.Text == "1")
-                    {
-                        if (journal.ProtectedAudioBefore is { } before) before.Write(audio, ProtectedAudio);
-                        else audio.DeleteValue(ProtectedAudio, false);
-                    }
             if (journal.RegisteredClass) UnregisterClass(root);
             journal = new EqJournal();
         }
@@ -358,6 +371,14 @@ public static class EqRegistration
         Log.Info($"KOS Equalizer off for {record.Name} ({endpointId}); left as found: {(changedSince.Count == 0 ? "none" : string.Join(", ", changedSince))}");
         RestartAudio($"KOS Equalizer is off for {record.Name}");
         return changedSince;
+    }
+
+    /// <summary>The class is registered with an in-process server (another program's effect still installed).</summary>
+    static bool ClassExists(string clsid)
+    {
+        using var root = Hklm;
+        using var server = root.OpenSubKey($@"SOFTWARE\Classes\CLSID\{clsid}\InprocServer32");
+        return server is not null;
     }
 
     static void WriteFx(RegistryKey root, string endpointId, IEnumerable<EqFxChange> changes)
@@ -403,13 +424,14 @@ public static class EqRegistration
     }
 
     /// <summary>The audio service restarts so the audio engine loads the endpoints' effects again (sound stops for a moment).</summary>
-    static void RestartAudio(string done)
+    static void RestartAudio(string? done)
     {
         try { ServiceControl.Restart("Audiosrv", TimeSpan.FromSeconds(20)); }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or TimeoutException)
         {
-            Log.Error($"KOS Equalizer: {done}, but the audio service didn't restart", ex);
-            throw new InvalidOperationException($"{done}, but Windows Audio didn't restart ({ex.Message}). Restart Windows Audio in Services, or the PC.");
+            Log.Error($"KOS Equalizer: {done ?? "turning on"}: the audio service didn't restart", ex);
+            throw new InvalidOperationException(done is null ? $"Windows Audio didn't restart ({ex.Message})."
+                : $"{done}, but Windows Audio didn't restart ({ex.Message}). Restart Windows Audio in Services, or the PC.");
         }
     }
 }

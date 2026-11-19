@@ -237,6 +237,9 @@ int main()
     Sleep(1200);
     printf("     status: %s", Status().c_str());
     Check(std::fabs(Gain(1000)) < 0.01 && Status().find("+24 dB") != std::string::npos, "a curve boosting over +24 dB is refused");
+    WriteSettings("preamp 2\npeak 2022.7 30 30\n");
+    Sleep(1200);
+    Check(std::fabs(Gain(1000)) < 0.01 && Status().find("+24 dB") != std::string::npos, "a narrow +32 dB band between the check points is refused");
     if (PlantUserOwned("peak 1000 -6 1\n"))
     {
         Sleep(1200);

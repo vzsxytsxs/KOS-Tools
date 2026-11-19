@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using KosToolbox.Core.Persistence;
 
 namespace KosToolbox.Core.Interop;
 
@@ -11,7 +12,7 @@ public static class ServiceControl
 {
     public const uint TypeWin32 = 0x30, TypeDriver = 0x0B;
     const uint ScManagerConnect = 0x0001, ScManagerEnumerate = 0x0004;
-    const uint ServiceQueryConfig = 0x0001, ServiceChangeConfig = 0x0002, ServiceQueryStatus = 0x0004, ServiceStart = 0x0010, ServiceStop = 0x0020;
+    const uint ServiceQueryConfig = 0x0001, ServiceChangeConfig = 0x0002, ServiceQueryStatus = 0x0004, ServiceEnumerateDependents = 0x0008, ServiceStart = 0x0010, ServiceStop = 0x0020;
     const int ErrorServiceNotActive = 1062, ErrorServiceAlreadyRunning = 1056;
     public const uint StateStopped = 1, StateRunning = 4;
     const uint ServiceNoChange = 0xFFFFFFFF;
@@ -59,6 +60,12 @@ public static class ServiceControl
     [StructLayout(LayoutKind.Sequential)]
     struct ServiceStatus { public uint ServiceType, CurrentState, ControlsAccepted, Win32ExitCode, ServiceSpecificExitCode, CheckPoint, WaitHint; }
 
+    [StructLayout(LayoutKind.Sequential)]
+    struct EnumServiceStatus { public IntPtr ServiceName, DisplayName; public ServiceStatus Status; }
+
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode, EntryPoint = "EnumDependentServicesW")]
+    static extern bool EnumDependentServices(IntPtr service, uint state, IntPtr buffer, uint size, out uint needed, out uint count);
+
     [DllImport("advapi32.dll", SetLastError = true)]
     static extern bool ControlService(IntPtr service, uint control, out ServiceStatus status);
 
@@ -67,7 +74,7 @@ public static class ServiceControl
 
     /// <summary>
     /// Stops the service (if running) and starts it again, waiting up to <paramref name="timeout"/> for each; throws
-    /// <see cref="Win32Exception"/> or <see cref="TimeoutException"/>. A service with running dependents refuses to stop (1051).
+    /// <see cref="Win32Exception"/> or <see cref="TimeoutException"/>. Running services that depend on it are stopped first and started again after.
     /// </summary>
     public static void Restart(string name, TimeSpan timeout)
     {
@@ -75,20 +82,74 @@ public static class ServiceControl
         if (scm == IntPtr.Zero) throw new Win32Exception();
         try
         {
-            var svc = OpenService(scm, name, ServiceStart | ServiceStop | ServiceQueryStatus);
+            var svc = OpenService(scm, name, ServiceStart | ServiceStop | ServiceQueryStatus | ServiceEnumerateDependents);
             if (svc == IntPtr.Zero) throw new Win32Exception();
+            var stopped = new List<string>();
             try
             {
-                if (!ControlService(svc, 1 /*SERVICE_CONTROL_STOP*/, out _) && Marshal.GetLastWin32Error() is var stop && stop != ErrorServiceNotActive)
-                    throw new Win32Exception(stop);
-                Wait(svc, name, StateStopped, timeout);
-                if (!StartService(svc, 0, IntPtr.Zero) && Marshal.GetLastWin32Error() is var start && start != ErrorServiceAlreadyRunning)
-                    throw new Win32Exception(start);
-                Wait(svc, name, StateRunning, timeout);
+                // Services that depend on it and run must stop first (in the order Windows lists them) and start again after.
+                foreach (var dependent in RunningDependents(svc))
+                {
+                    With(scm, dependent, d => Stop(d, dependent, timeout));
+                    stopped.Add(dependent);
+                }
+                Stop(svc, name, timeout);
+                Start(svc, name, timeout);
             }
-            finally { CloseServiceHandle(svc); }
+            finally
+            {
+                // Whatever failed past a stop: one more start, so a failure never leaves it (or what was stopped with it) off.
+                StartService(svc, 0, IntPtr.Zero);
+                for (var i = stopped.Count - 1; i >= 0; i--)
+                {
+                    var dependent = stopped[i];
+                    try { With(scm, dependent, d => StartService(d, 0, IntPtr.Zero)); }
+                    catch (Win32Exception ex) { Log.Warn($"{dependent} wasn't started again after {name} restarted: {ex.Message}"); }
+                }
+                CloseServiceHandle(svc);
+            }
         }
         finally { CloseServiceHandle(scm); }
+    }
+
+    static void With(IntPtr scm, string name, Action<IntPtr> act)
+    {
+        var svc = OpenService(scm, name, ServiceStart | ServiceStop | ServiceQueryStatus);
+        if (svc == IntPtr.Zero) throw new Win32Exception();
+        try { act(svc); }
+        finally { CloseServiceHandle(svc); }
+    }
+
+    static void Stop(IntPtr svc, string name, TimeSpan timeout)
+    {
+        if (!ControlService(svc, 1 /*SERVICE_CONTROL_STOP*/, out _) && Marshal.GetLastWin32Error() is var error && error != ErrorServiceNotActive)
+            throw new Win32Exception(error);
+        Wait(svc, name, StateStopped, timeout);
+    }
+
+    static void Start(IntPtr svc, string name, TimeSpan timeout)
+    {
+        if (!StartService(svc, 0, IntPtr.Zero) && Marshal.GetLastWin32Error() is var error && error != ErrorServiceAlreadyRunning)
+            throw new Win32Exception(error);
+        Wait(svc, name, StateRunning, timeout);
+    }
+
+    /// <summary>Running services that depend on this one, directly or not, in the order they must stop.</summary>
+    static List<string> RunningDependents(IntPtr svc)
+    {
+        if (EnumDependentServices(svc, 1 /*SERVICE_ACTIVE*/, IntPtr.Zero, 0, out var needed, out _)) return []; // none
+        var error = Marshal.GetLastWin32Error();
+        if (error != ErrorMoreData) throw new Win32Exception(error);
+        var buffer = Marshal.AllocHGlobal((int)needed);
+        try
+        {
+            if (!EnumDependentServices(svc, 1, buffer, needed, out _, out var count)) throw new Win32Exception();
+            var size = Marshal.SizeOf<EnumServiceStatus>();
+            return Enumerable.Range(0, (int)count)
+                .Select(i => Marshal.PtrToStringUni(Marshal.PtrToStructure<EnumServiceStatus>(buffer + i * size).ServiceName) ?? "")
+                .Where(n => n.Length > 0).ToList();
+        }
+        finally { Marshal.FreeHGlobal(buffer); }
     }
 
     static void Wait(IntPtr svc, string name, uint state, TimeSpan timeout)

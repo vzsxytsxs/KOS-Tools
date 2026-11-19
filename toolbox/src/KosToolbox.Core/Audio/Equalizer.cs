@@ -134,7 +134,7 @@ public static class Equalizer
         return result;
     }
 
-    /// <summary>The highest point of the curve in dB (compare with 0 to warn about clipping).</summary>
+    /// <summary>The highest point of the curve in dB between 20 Hz and 20 kHz, for display (the +24 dB limit uses <see cref="EqSettingsFile.Peak"/>).</summary>
     public static double PeakGain(EqProfile p) => Curve(p, 512).Max(c => c.Db);
 
     /// <summary>A preamp that keeps the curve at or below 0 dB, rounded to 0.1 dB.</summary>
