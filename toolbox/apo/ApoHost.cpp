@@ -78,6 +78,20 @@ struct MediaType : IAudioMediaType
     STDMETHODIMP GetUncompressedAudioFormat(UNCOMPRESSEDAUDIOFORMAT* f) override { *f = format; return S_OK; }
 };
 
+// The audio engine creates each APO aggregated: its own outer object, holding the APO's inner IUnknown.
+struct Outer : IUnknown
+{
+    IUnknown* inner = nullptr;
+    ULONG refs = 1;
+    STDMETHODIMP QueryInterface(REFIID iid, void** out) override
+    {
+        if (iid == __uuidof(IUnknown)) { *out = this; AddRef(); return S_OK; }
+        return inner ? inner->QueryInterface(iid, out) : E_NOINTERFACE;
+    }
+    STDMETHODIMP_(ULONG) AddRef() override { return ++refs; }
+    STDMETHODIMP_(ULONG) Release() override { return --refs; }
+};
+
 static std::wstring SettingsPath()
 {
     wchar_t data[MAX_PATH];
@@ -149,6 +163,26 @@ int main()
     IAudioProcessingObject* apo = nullptr;
     Check(factory && SUCCEEDED(factory->CreateInstance(nullptr, __uuidof(IAudioProcessingObject), reinterpret_cast<void**>(&apo))), "an instance");
     if (!apo) return 1;
+    {
+        Outer outer;
+        IUnknown* wrong = nullptr;
+        Check(factory->CreateInstance(&outer, __uuidof(IAudioProcessingObject), reinterpret_cast<void**>(&wrong)) == CLASS_E_NOAGGREGATION,
+            "aggregated, only the inner IUnknown is handed out");
+        Check(SUCCEEDED(factory->CreateInstance(&outer, __uuidof(IUnknown), reinterpret_cast<void**>(&outer.inner))) && outer.inner,
+            "an aggregated instance, as the audio engine creates them");
+        IAudioProcessingObject* part = nullptr;
+        IUnknown* identity = nullptr;
+        if (outer.inner && SUCCEEDED(outer.QueryInterface(__uuidof(IAudioProcessingObject), reinterpret_cast<void**>(&part))) && part)
+        {
+            part->QueryInterface(__uuidof(IUnknown), reinterpret_cast<void**>(&identity));
+            Check(identity == &outer && outer.refs == 3, "its interfaces answer for the outer object and count on it");
+            if (identity) identity->Release();
+            part->Release();
+        }
+        else Check(false, "its interfaces through the outer object");
+        if (outer.inner) outer.inner->Release();
+        Check(outer.refs == 1, "and the outer object's count is back where it was");
+    }
     IAudioProcessingObjectRT* rt = nullptr;
     IAudioProcessingObjectConfiguration* config = nullptr;
     IAudioSystemEffects* sfx = nullptr;

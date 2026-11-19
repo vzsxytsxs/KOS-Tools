@@ -36,6 +36,39 @@ DEFINE_GUID(CLSID_KosEqApo, 0x610c4861, 0xeb61, 0x417d, 0xa6, 0x53, 0x45, 0xb0, 
 
 static std::atomic<long> g_objects{0}, g_locks{0};
 
+// One line to the debugger output (DebugView, "capture global"): what the audio engine asked and what was answered. Never
+// called on the audio thread.
+static void Trace(const char* format, ...)
+{
+    char line[300] = "KosEqApo: ";
+    va_list args;
+    va_start(args, format);
+    _vsnprintf_s(line + 10, sizeof line - 12, _TRUNCATE, format, args);
+    va_end(args);
+    strcat_s(line, "\n");
+    OutputDebugStringA(line);
+#ifdef KOS_TRACE_FILE
+    // Diagnostic builds only (build.cmd doesn't define it): the same lines appended to a file anyone can read.
+    HANDLE h = CreateFileW(L"C:\\Users\\Public\\KosEqApo-trace.txt", FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h != INVALID_HANDLE_VALUE)
+    {
+        char stamped[340];
+        SYSTEMTIME t;
+        GetLocalTime(&t);
+        int n = sprintf_s(stamped, "%02u:%02u:%02u.%03u [%lu] %s", t.wHour, t.wMinute, t.wSecond, t.wMilliseconds, GetCurrentProcessId(), line);
+        DWORD written = 0;
+        if (n > 0) WriteFile(h, stamped, static_cast<DWORD>(n), &written, nullptr);
+        CloseHandle(h);
+    }
+#endif
+}
+
+static void TraceGuid(const char* what, REFIID iid)
+{
+    Trace("%s {%08lX-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}", what, iid.Data1, iid.Data2, iid.Data3, iid.Data4[0], iid.Data4[1],
+        iid.Data4[2], iid.Data4[3], iid.Data4[4], iid.Data4[5], iid.Data4[6], iid.Data4[7]);
+}
+
 namespace
 {
 constexpr int MaxBands = 64;
@@ -241,7 +274,8 @@ void WriteStatus(const wchar_t* guid, const char* text)
     DWORD n = GetTempPathW(MAX_PATH, temp);
     if (n == 0 || n >= MAX_PATH || swprintf_s(path, L"%sKosEqApo-%s.txt", temp, guid) < 0) return;
     HANDLE h = CreateFileW(path, GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return;
+    Trace("status %S: %s", path, text);
+    if (h == INVALID_HANDLE_VALUE) { Trace("status file not written: error %lu", GetLastError()); return; }
     DWORD written = 0;
     WriteFile(h, text, static_cast<DWORD>(strlen(text)), &written, nullptr);
     CloseHandle(h);
@@ -366,7 +400,9 @@ class CKosEqApo final : public IAudioProcessingObject, public IAudioProcessingOb
 public:
     static APO_REG_PROPERTIES Registration;
 
-    CKosEqApo() { g_objects++; }
+    // The audio engine creates APOs aggregated (an outer object of its own holds the inner IUnknown): the interfaces' IUnknown
+    // methods go to the outer object, the inner one (m_inner) owns the lifetime. Created alone, the outer object is the inner one.
+    explicit CKosEqApo(IUnknown* outer) : m_inner(this), m_outer(outer ? outer : &m_inner) { g_objects++; }
     ~CKosEqApo()
     {
         StopWatcher();
@@ -374,38 +410,29 @@ public:
         g_objects--;
     }
 
-    // IUnknown
-    STDMETHODIMP QueryInterface(REFIID iid, void** out) override
-    {
-        if (!out) return E_POINTER;
-        if (iid == __uuidof(IUnknown) || iid == __uuidof(IAudioProcessingObject)) *out = static_cast<IAudioProcessingObject*>(this);
-        else if (iid == __uuidof(IAudioProcessingObjectRT)) *out = static_cast<IAudioProcessingObjectRT*>(this);
-        else if (iid == __uuidof(IAudioProcessingObjectConfiguration)) *out = static_cast<IAudioProcessingObjectConfiguration*>(this);
-        else if (iid == __uuidof(IAudioSystemEffects)) *out = static_cast<IAudioSystemEffects*>(this);
-        else { *out = nullptr; return E_NOINTERFACE; }
-        AddRef();
-        return S_OK;
-    }
-    STDMETHODIMP_(ULONG) AddRef() override { return ++m_refs; }
-    STDMETHODIMP_(ULONG) Release() override
-    {
-        ULONG left = --m_refs;
-        if (left == 0) delete this;
-        return left;
-    }
+    IUnknown* Inner() { return &m_inner; }
+
+    // IUnknown of every interface: delegated
+    STDMETHODIMP QueryInterface(REFIID iid, void** out) override { return m_outer->QueryInterface(iid, out); }
+    STDMETHODIMP_(ULONG) AddRef() override { return m_outer->AddRef(); }
+    STDMETHODIMP_(ULONG) Release() override { return m_outer->Release(); }
 
     // Which endpoint this instance serves: the last device of the collection system effects get is always the endpoint (the
     // others are the topology devices the driver's connectors belong to).
     STDMETHODIMP Initialize(UINT32 size, BYTE* data) override
     {
-        if (!data || size < sizeof(APOInitBaseStruct)) return E_INVALIDARG;
+        if (!data || size < sizeof(APOInitBaseStruct)) { Trace("Initialize: %u bytes, refused", size); return E_INVALIDARG; }
         auto base = reinterpret_cast<APOInitBaseStruct*>(data);
+        Trace("Initialize: %u bytes, cbSize %u, clsid %s", size, base->cbSize, base->clsid == CLSID_KosEqApo ? "ours" : "another (refused)");
         if (base->clsid != CLSID_KosEqApo) return E_INVALIDARG;
         m_guid[0] = 0;
         if (size >= sizeof(APOInitSystemEffects2) && base->cbSize >= sizeof(APOInitSystemEffects2))
             EndpointGuid(reinterpret_cast<APOInitSystemEffects2*>(data)->pDeviceCollection);
         else if (size >= sizeof(APOInitSystemEffects) && base->cbSize >= sizeof(APOInitSystemEffects))
             EndpointGuid(reinterpret_cast<APOInitSystemEffects*>(data)->pDeviceCollection);
+        // The audio engine created it for this device; "applied" follows once a stream runs through it.
+        if (m_guid[0]) WriteStatus(m_guid, "loaded: waiting for a stream\r\n");
+        else WriteStatus(L"unknown", "loaded, but the device's id couldn't be read\r\n");
         m_initialized = true;
         return S_OK;
     }
@@ -420,8 +447,18 @@ public:
         **props = Registration;
         return S_OK;
     }
-    STDMETHODIMP IsInputFormatSupported(IAudioMediaType* output, IAudioMediaType* requested, IAudioMediaType** supported) override { return Supported(output, requested, supported); }
-    STDMETHODIMP IsOutputFormatSupported(IAudioMediaType* input, IAudioMediaType* requested, IAudioMediaType** supported) override { return Supported(input, requested, supported); }
+    STDMETHODIMP IsInputFormatSupported(IAudioMediaType* output, IAudioMediaType* requested, IAudioMediaType** supported) override
+    {
+        HRESULT hr = Supported(output, requested, supported);
+        TraceFormat("input", requested, hr);
+        return hr;
+    }
+    STDMETHODIMP IsOutputFormatSupported(IAudioMediaType* input, IAudioMediaType* requested, IAudioMediaType** supported) override
+    {
+        HRESULT hr = Supported(input, requested, supported);
+        TraceFormat("output", requested, hr);
+        return hr;
+    }
     STDMETHODIMP GetInputChannelCount(UINT32* count) override { if (!count) return E_POINTER; *count = m_channels; return S_OK; }
     STDMETHODIMP_(UINT32) CalcInputFrames(UINT32 frames) override { return frames; }
     STDMETHODIMP_(UINT32) CalcOutputFrames(UINT32 frames) override { return frames; }
@@ -433,8 +470,12 @@ public:
         if (inCount != 1 || outCount != 1 || !in || !out || !in[0] || !out[0]) return APOERR_NUM_CONNECTIONS_INVALID;
         UNCOMPRESSEDAUDIOFORMAT fi = {}, fo = {};
         if (!IsFloat(in[0]->pFormat, fi) || !IsFloat(out[0]->pFormat, fo) || fi.dwSamplesPerFrame != fo.dwSamplesPerFrame || fi.fFramesPerSecond != fo.fFramesPerSecond)
+        {
+            if (m_guid[0]) WriteStatus(m_guid, "refused: the stream isn't the same 32-bit float format on both sides\r\n");
             return APOERR_INVALID_CONNECTION_FORMAT;
+        }
         if (out[0]->u32MaxFrameCount < in[0]->u32MaxFrameCount) return APOERR_INVALID_OUTPUT_MAXFRAMECOUNT;
+        Trace("LockForProcess: %u channels, %.0f Hz, %u frames", fi.dwSamplesPerFrame, fi.fFramesPerSecond, in[0]->u32MaxFrameCount);
         m_channels = fi.dwSamplesPerFrame;
         size_t bytes = sizeof(double) * 2 * MaxBands * m_channels;
         HRESULT hr = AERT_Allocate(bytes, reinterpret_cast<void**>(&m_state));
@@ -530,7 +571,33 @@ public:
     }
 
 private:
-    std::atomic<ULONG> m_refs{1};
+    // The non-delegating IUnknown: the object's identity and reference count.
+    struct InnerUnknown final : IUnknown
+    {
+        CKosEqApo* self;
+        std::atomic<ULONG> refs{1};
+        explicit InnerUnknown(CKosEqApo* owner) : self(owner) {}
+        STDMETHODIMP QueryInterface(REFIID iid, void** out) override
+        {
+            if (!out) return E_POINTER;
+            if (iid == __uuidof(IUnknown)) *out = static_cast<IUnknown*>(this);
+            else if (iid == __uuidof(IAudioProcessingObject)) *out = static_cast<IAudioProcessingObject*>(self);
+            else if (iid == __uuidof(IAudioProcessingObjectRT)) *out = static_cast<IAudioProcessingObjectRT*>(self);
+            else if (iid == __uuidof(IAudioProcessingObjectConfiguration)) *out = static_cast<IAudioProcessingObjectConfiguration*>(self);
+            else if (iid == __uuidof(IAudioSystemEffects)) *out = static_cast<IAudioSystemEffects*>(self);
+            else { TraceGuid("QueryInterface: not implemented:", iid); *out = nullptr; return E_NOINTERFACE; }
+            static_cast<IUnknown*>(*out)->AddRef(); // the outer object's count for an interface, this one's for the inner IUnknown
+            return S_OK;
+        }
+        STDMETHODIMP_(ULONG) AddRef() override { return ++refs; }
+        STDMETHODIMP_(ULONG) Release() override
+        {
+            ULONG left = --refs;
+            if (left == 0) delete self;
+            return left;
+        }
+    } m_inner;
+    IUnknown* m_outer;
     bool m_initialized = false, m_locked = false;
     wchar_t m_guid[64] = {};
     UINT32 m_channels = 0;
@@ -539,6 +606,15 @@ private:
     unsigned m_ranGeneration = ~0u;
     Shared* m_shared = nullptr;
     HANDLE m_watcher = nullptr;
+
+    static void TraceFormat(const char* side, IAudioMediaType* type, HRESULT hr)
+    {
+        UNCOMPRESSEDAUDIOFORMAT f = {};
+        if (type && SUCCEEDED(type->GetUncompressedAudioFormat(&f)))
+            Trace("%s format %u ch, %.0f Hz, %s %u/%u bits: 0x%08lX", side, f.dwSamplesPerFrame, f.fFramesPerSecond,
+                f.guidFormatType == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT ? "float" : "other", f.dwValidBitsPerSample, f.dwBytesPerSampleContainer * 8, hr);
+        else Trace("%s format unreadable: 0x%08lX", side, hr);
+    }
 
     // The endpoint's GUID (what follows the id's last '.', hex digits and '-' only, lower case) names its settings file.
     void EndpointGuid(IMMDeviceCollection* devices)
@@ -555,6 +631,7 @@ private:
             for (size_t i = 0; guid[i] && j < 60; i++)
                 if (iswxdigit(guid[i]) || guid[i] == L'-') m_guid[j++] = towlower(guid[i]);
             m_guid[j] = 0;
+            Trace("endpoint %S (item %u of %u)", id, count - 1, count);
             CoTaskMemFree(id);
         }
         device->Release();
@@ -612,11 +689,12 @@ public:
     {
         if (!out) return E_POINTER;
         *out = nullptr;
-        if (outer) return CLASS_E_NOAGGREGATION;
-        auto apo = new (std::nothrow) CKosEqApo();
+        TraceGuid(outer ? "CreateInstance (aggregated) for" : "CreateInstance for", iid);
+        if (outer && iid != __uuidof(IUnknown)) return CLASS_E_NOAGGREGATION; // an aggregated object hands out its inner IUnknown only
+        auto apo = new (std::nothrow) CKosEqApo(outer);
         if (!apo) return E_OUTOFMEMORY;
-        HRESULT hr = apo->QueryInterface(iid, out);
-        apo->Release();
+        HRESULT hr = apo->Inner()->QueryInterface(iid, out);
+        apo->Inner()->Release();
         return hr;
     }
     STDMETHODIMP LockServer(BOOL lock) override
@@ -632,6 +710,7 @@ STDAPI DllGetClassObject(REFCLSID clsid, REFIID iid, void** out)
 {
     if (!out) return E_POINTER;
     *out = nullptr;
+    TraceGuid("DllGetClassObject for", iid);
     if (clsid != CLSID_KosEqApo) return CLASS_E_CLASSNOTAVAILABLE;
     return g_factory.QueryInterface(iid, out);
 }
