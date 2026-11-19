@@ -28,6 +28,7 @@ toolbox/
 │  ├─ Apps/                    installed programs (Uninstall keys), Store packages (PackageManager) and program leftovers (Leftovers)
 │  ├─ Network/                 advanced properties of network adapters (Ndi\Params), adapter restart and DNS (NetDns)
 │  ├─ Firewall/                KOS Firewall: config, WFP filters (Wfp, FirewallPolicy, FirewallRules), Windows Firewall profiles, service/package SIDs, hosts file
+│  ├─ Audio/                   audio endpoints (Core Audio: format, exclusive mode, enhancements, volume, default device), equalizer math and Equalizer APO/AutoEQ import
 │  ├─ Peripherals/             HID devices (Hid/: enumeration, grouping, report I/O and IHidTransport for the device drivers; AOT-safe)
 │  ├─ Drivers/                 driver store: oemNN.inf packages, old versions, export and delete; display driver (pnputil); NVIDIA driver lookup, download and debloated install (NvidiaDriver); Display Driver Uninstaller (Ddu)
 │  ├─ Display/                 EDID (E-EDID 1.4 + CTA-861), CVT-RB timings and EDID_OVERRIDE override
@@ -39,6 +40,7 @@ toolbox/
 │  ├─ Themes/Theme.xaml        black/white/gray palette, styles and animations
 │  ├─ Views/                   window, page and card templates, dialog, icons, animations
 │  └─ ViewModels/              pages, cards, search, preferences
+├─ apo/                       KOS Equalizer: C++ audio processing object (no ATL), a host that drives it like the audio engine, a registration dry run (build.cmd; not registered or shipped yet)
 └─ tests/KosToolbox.Core.Tests/   xUnit (run on any OS)
 ```
 
