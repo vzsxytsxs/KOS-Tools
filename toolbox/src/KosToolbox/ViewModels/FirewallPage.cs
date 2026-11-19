@@ -106,6 +106,9 @@ public sealed class FirewallPageViewModel : PageViewModel
 {
     FirewallConfig _config = new();
     int? _filters;
+    // Every rebuild gives the filters new ids, and the engine's log keeps the old ones: every KOS filter id read this session.
+    // shortcut: drops under ids from a rebuild made while this page never read them (KOS Engine, another run) aren't shown; upgrade if the engine logs drops itself.
+    readonly HashSet<ulong> _kosIds = new();
     string _status = "", _windows = "";
     bool _statusWarning, _anyWindowsOff, _busy, _hostsLoaded;
     string? _bfe;
@@ -246,7 +249,18 @@ public sealed class FirewallPageViewModel : PageViewModel
         await LoadTabAsync(reload: true);
     }
 
+    /// <summary>Never throws (it also runs after a change, inside its error handling): what can't be read goes to the notes.</summary>
     async Task ReadAsync()
+    {
+        try { await ReadCoreAsync(); }
+        catch (Exception ex)
+        {
+            Log.Error("Firewall: reading the state failed", ex);
+            Notes = [ex.Message];
+        }
+    }
+
+    async Task ReadCoreAsync()
     {
         var r = await Task.Run(() =>
         {
@@ -255,10 +269,11 @@ public sealed class FirewallPageViewModel : PageViewModel
             string? bfe;
             try { bfe = KosFirewall.BfeProblem(); } catch (Exception ex) { bfe = ex.Message; }
             if (bfe is not null) notes.Add(bfe);
-            if (KosFirewall.Problem() is { } folder) notes.Add(folder);
+            try { if (KosFirewall.Problem() is { } folder) notes.Add(folder); } catch (Exception ex) { notes.Add(ex.Message); }
             int? filters = null;
+            var ids = new List<ulong>();
             if (bfe is null)
-                try { filters = KosFirewall.Filters().Count; }
+                try { ids = KosFirewall.Filters().Select(f => f.Id).ToList(); filters = ids.Count; }
                 catch (Exception ex) { notes.Add(Txt.FwStatusUnread(ex.Message)); }
             bool[] windows = new bool[WindowsFirewall.Profiles.Length];
             string windowsText;
@@ -270,12 +285,14 @@ public sealed class FirewallPageViewModel : PageViewModel
                     : Txt.FwWindowsServiceStopped;
             }
             catch (Exception ex) { windowsText = ex.Message; }
-            if (config is { Enabled: true, Popups: true } && !GovernorFanCurve.EngineRunning) notes.Add(Txt.FwEngineNotRunning);
-            return (config, bfe, filters, notes, windows, windowsText);
+            try { if (config is { Enabled: true, Popups: true } && !GovernorFanCurve.EngineRunning) notes.Add(Txt.FwEngineNotRunning); }
+            catch (Exception ex) { notes.Add(ex.Message); }
+            return (config, bfe, filters, ids, notes, windows, windowsText);
         });
         _config = r.config;
         _bfe = r.bfe;
         _filters = r.filters;
+        _kosIds.UnionWith(r.ids);
         _anyWindowsOff = r.windows.Any(on => !on);
         WindowsState = Txt.FwWindows(r.windowsText);
         Notes = r.notes;
@@ -358,14 +375,16 @@ public sealed class FirewallPageViewModel : PageViewModel
         if (_bfe is not null) { (Events, LogNote) = ([], _bfe); return; }
         try
         {
+            var known = _kosIds.ToHashSet();
             var (events, collects) = await Task.Run(() =>
             {
                 using var s = WfpSession.Open(dynamic: false);
-                var ours = s.Filters().Select(f => f.Id).ToHashSet();
-                var dropped = s.RecentEvents().Where(e => e.Dropped && ours.Contains(e.FilterId)).Reverse()
+                known.UnionWith(s.Filters().Select(f => f.Id));
+                var dropped = s.RecentEvents().Where(e => e.Dropped && known.Contains(e.FilterId)).Reverse()
                     .Select(e => (Event: e, Path: FirewallIdentity.DosPath(e.AppDevicePath))).ToList();
                 return (dropped, s.CollectsNetEvents);
             });
+            _kosIds.UnionWith(known);
             Events = events.Select(x => new FirewallEventRow(x.Event, x.Path, this)).ToList();
             LogNote = !collects ? Txt.FwLogOff : events.Count == 0 ? Txt.FwLogEmpty : null;
         }

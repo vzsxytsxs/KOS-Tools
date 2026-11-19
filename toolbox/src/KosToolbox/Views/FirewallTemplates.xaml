@@ -88,7 +88,7 @@
                 <ColumnDefinition Width="230" />
                 <ColumnDefinition Width="64" />
                 <ColumnDefinition Width="40" />
-                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="160" /><!-- fixed: rows without the buttons keep the same columns -->
             </Grid.ColumnDefinitions>
             <TextBlock Style="{StaticResource Secondary}" Text="{Binding Time}" VerticalAlignment="Center" />
             <StackPanel Grid.Column="1" Margin="0,0,12,0" VerticalAlignment="Center">
@@ -99,7 +99,7 @@
             <TextBlock Grid.Column="2" Text="{Binding Remote}" FontFamily="Consolas" TextTrimming="CharacterEllipsis" ToolTip="{Binding Remote}" Margin="0,0,12,0" VerticalAlignment="Center" />
             <TextBlock Grid.Column="3" Style="{StaticResource Secondary}" Text="{Binding Protocol}" VerticalAlignment="Center" />
             <TextBlock Grid.Column="4" Style="{StaticResource Secondary}" Text="{Binding Direction}" VerticalAlignment="Center" />
-            <StackPanel Grid.Column="5" Orientation="Horizontal" VerticalAlignment="Center" Visibility="{Binding HasPath, Converter={StaticResource BoolToVis}}">
+            <StackPanel Grid.Column="5" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Visibility="{Binding HasPath, Converter={StaticResource BoolToVis}}">
                 <Button Content="{x:Static t:Txt.FwAllow}" MinWidth="72" Command="{Binding AllowCommand}" />
                 <Button Content="{x:Static t:Txt.FwBlock}" MinWidth="72" Margin="8,0,0,0" Command="{Binding BlockCommand}" />
             </StackPanel>
