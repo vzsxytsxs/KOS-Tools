@@ -64,7 +64,7 @@ public sealed class PlayStationDriver : PeripheralDriver
     readonly HidCollection _gamepad;
 
     PlayStationDriver(HidDevice d, HidCollection gamepad)
-        : base(d, "Battery (input report)", PlayStationCodec.IsDualSense(d.ProductId) ? "DualSense" : "DualShock 4",
+        : base(d, "PlayStation", PlayStationCodec.IsDualSense(d.ProductId) ? "DualSense" : "DualShock 4",
             tested: d.ProductId == 0x09CC && !d.Bluetooth) => _gamepad = gamepad; // DualShock 4 v2 on its cable: battery, rate and light bar checked
 
     public static PlayStationDriver? Claim(HidDevice d) =>

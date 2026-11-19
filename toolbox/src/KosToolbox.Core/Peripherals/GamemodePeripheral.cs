@@ -77,6 +77,10 @@ public sealed class GamemodePeripheralEntry
     /// <summary>Keyboards with magnetic switches: rapid trigger on (both steps <see cref="RapidTriggerMm"/>) or off on every key, each key's actuation kept.</summary>
     public bool? RapidTrigger { get; set; }
     public double? RapidTriggerMm { get; set; }
+    /// <summary>A DualShock 4's light bar in gamemode (0xRRGGBB, 0 = off); in the state, the color put back.</summary>
+    public int? LightBar { get; set; }
+    /// <summary>The light bar put back when gamemode turns off: the controller can't report it, so the toolbox keeps the color it last set.</summary>
+    public int? LightBarAfter { get; set; }
     /// <summary>State only, ROYUAN keyboards (every write stored): the lighting and the switch columns from before gamemode, written back as they were.</summary>
     public Royuan.RoyuanLight? KeyboardLight { get; set; }
     public Royuan.RoyuanColumns? KeyboardSwitches { get; set; }

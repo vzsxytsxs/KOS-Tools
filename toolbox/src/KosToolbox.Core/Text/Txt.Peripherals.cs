@@ -75,7 +75,11 @@ public static partial class Txt
             g.Effect is { } fx ? LightingEffectName(fx).ToLowerInvariant() + (g.Color is { } c ? $" #{c:X6}" : "") : null,
             g.DockBattery switch { true => "battery on the ring", false => "no battery on the ring", _ => null },
             g.RapidTrigger switch { true => $"rapid trigger {g.RapidTriggerMm ?? 0.1:0.##} mm", false => "rapid trigger off", _ => null },
+            g.LightBar switch { 0 => "light bar off", { } bar => $"light bar #{bar:X6}", _ => null },
         }.OfType<string>()) is { Length: > 0 } s ? s : "—";
+
+    public const string PeripheralGamemodeLightBarNote = "When gamemode turns off, the light bar goes back to the color it has on this page (the controller can't report its own, so set it here first).",
+        PeripheralGamemodeLightBarUnknown = "set the light bar on this page first: the controller can't report it, and gamemode needs it to put it back.";
 
     public static string PeripheralGamemodeRtInvalid(double max) => $"the rapid-trigger step goes from 0.01 to {max} mm.";
 

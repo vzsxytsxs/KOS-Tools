@@ -166,9 +166,14 @@ public sealed class PeripheralRowViewModel : ObservableObject
     public bool CanGmDpi => Driver is { HasLiveDpi: true } && CanDpi && Dpi is not null;
     public bool CanGmPolling => CanPolling && HasPolling;
     /// <summary>A light gamemode can turn off: live on a mouse or the dock; stored on a keyboard that stores everything.</summary>
-    public bool CanGmLight => Driver is { HasLiveBrightness: true } or { StoredOnly: true } && HasLight;
-    /// <summary>Effects in gamemode: a Razer device's live effect, or a stored-only keyboard's.</summary>
-    public bool CanGmEffect => CanLighting && Driver is KosToolbox.Core.Peripherals.Razer.RazerDriver { IsDock: false } or { StoredOnly: true };
+    public bool CanGmLight => (Driver is { HasLiveBrightness: true } or { StoredOnly: true } && HasLight) || IsLightBar;
+    /// <summary>Effects in gamemode: a Razer device's live effect, a stored-only keyboard's, or a DualShock 4's light bar color.</summary>
+    public bool CanGmEffect => CanLighting && Driver is KosToolbox.Core.Peripherals.Razer.RazerDriver { IsDock: false } or { StoredOnly: true }
+        or KosToolbox.Core.Peripherals.Batteries.PlayStationDriver { HasLightBar: true };
+    /// <summary>A DualShock 4 on its cable: gamemode sets its light bar and puts back the color last set here.</summary>
+    public bool IsLightBar => Driver is KosToolbox.Core.Peripherals.Batteries.PlayStationDriver { HasLightBar: true };
+    /// <summary>The light bar's color as last set from this page (0 = off); null when not set since the toolbox started.</summary>
+    public int? LightBarNow => IsLightBar && _state?.Lighting is { } l ? l.Effect == LightingEffect.Off ? 0 : l.Color : null;
     public bool CanGmRt => Writable.Contains(PeripheralSetting.Magnetic) && Driver is KosToolbox.Core.Peripherals.Royuan.RoyuanDriver;
     public bool CanGamemode => Driver is { BatteryOnly: false } && (CanGmDpi || CanGmPolling || CanGmLight || CanGmRt);
     /// <summary>The device stores every write: gamemode writes its flash on each start and stop.</summary>
@@ -216,8 +221,9 @@ public sealed class PeripheralRowViewModel : ObservableObject
         _gmDpiOn = _gamemode?.Dpi is not null;
         _gmDpiText = (_gamemode?.Dpi ?? _state.Dpi?.X)?.ToString();
         _gmHz = _gamemode?.PollingHz;
-        _gmLight = _gamemode?.Brightness == 0 ? "off" : _gamemode?.Effect?.ToString() ?? "";
-        _gmColorText = $"#{_gamemode?.Color ?? _state.Lighting?.Color ?? 0xFFFFFF:X6}";
+        _gmLight = _gamemode?.Brightness == 0 || _gamemode?.LightBar == 0 ? "off"
+            : _gamemode?.LightBar is not null ? nameof(LightingEffect.Static) : _gamemode?.Effect?.ToString() ?? "";
+        _gmColorText = $"#{(_gamemode?.LightBar is > 0 ? _gamemode.LightBar : null) ?? _gamemode?.Color ?? _state.Lighting?.Color ?? 0xFFFFFF:X6}";
         _gmRing = _gamemode?.Brightness == 0 ? "off" : _gamemode?.DockBattery switch { true => "battery", false => "nobattery", _ => "" };
         _gmRt = _gamemode?.RapidTrigger switch { true => "on", false => "off", _ => "" };
         _gmRtText = (_gamemode?.RapidTriggerMm ?? 0.1).ToString(System.Globalization.CultureInfo.InvariantCulture);
@@ -244,7 +250,12 @@ public sealed class PeripheralRowViewModel : ObservableObject
                 if (_gmDpiOn && CanGmDpi)
                     entry.Dpi = Int(_gmDpiText) is { } v && v >= Dpi!.Min && v <= Dpi.Max ? v : throw new InvalidOperationException(Txt.PeripheralGamemodeDpiInvalid(Dpi!.Min, Dpi.Max));
                 if (_gmHz is { } h && CanGmPolling && _state!.Polling!.Supported.Contains(h)) entry.PollingHz = h;
-                if (CanGmLightChoice && _gmLight == "off") entry.Brightness = 0;
+                if (IsLightBar && _gmLight != "")
+                {
+                    entry.LightBar = _gmLight == "off" ? 0 : Hex(_gmColorText) ?? throw new InvalidOperationException(Txt.PeripheralColorInvalid);
+                    entry.LightBarAfter = LightBarNow ?? throw new InvalidOperationException(Txt.PeripheralGamemodeLightBarUnknown);
+                }
+                else if (CanGmLightChoice && _gmLight == "off") entry.Brightness = 0;
                 else if (CanGmLightChoice && CanGmEffect && Enum.TryParse<LightingEffect>(_gmLight, out var fx))
                 {
                     entry.Effect = fx;
@@ -263,7 +274,7 @@ public sealed class PeripheralRowViewModel : ObservableObject
                             System.Globalization.CultureInfo.InvariantCulture, out var mm) && mm is >= 0.01 and <= PeripheralMagnetic.RtMaxMm
                             ? mm : throw new InvalidOperationException(Txt.PeripheralGamemodeRtInvalid(PeripheralMagnetic.RtMaxMm));
                 }
-                if (entry is { Dpi: null, PollingHz: null, Brightness: null, Effect: null, DockBattery: null, RapidTrigger: null })
+                if (entry is { Dpi: null, PollingHz: null, Brightness: null, Effect: null, DockBattery: null, RapidTrigger: null, LightBar: null })
                     throw new InvalidOperationException(Txt.PeripheralGamemodeNothing);
             }
             var config = GamemodePeripheral.Load() ?? new GamemodePeripheral();
@@ -858,7 +869,26 @@ public sealed class PeripheralRowViewModel : ObservableObject
         LoadRemap();
         Info.Rows = InfoRows();
         LoadGamemodeEditor();
+        KeepLightBarAfter();
         Raise(string.Empty); // every derived property
+    }
+
+    /// <summary>A light bar color set here while the controller has a gamemode light bar: gamemode off now puts this one back.</summary>
+    void KeepLightBarAfter()
+    {
+        if (LightBarNow is not { } now || _gamemode is not { LightBar: not null } g || g.LightBarAfter == now || !KosToolbox.Core.Execution.Elevation.IsAdmin) return;
+        try
+        {
+            var config = GamemodePeripheral.Load() ?? new GamemodePeripheral();
+            if (config.Devices.FirstOrDefault(e => e.VendorId == Device.VendorId && e.ProductId == Device.ProductId) is not { } e) return;
+            e.LightBarAfter = now;
+            config.Save();
+            _gamemode = Gamemode();
+        }
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+        {
+            Log.Warn($"Peripherals: {Name}: saving the light bar for after gamemode failed: {ex.Message}");
+        }
     }
 
     List<InfoRow> InfoRows()
@@ -1029,7 +1059,9 @@ public sealed class PeripheralsPageViewModel : PageViewModel
     void SyncGamemode()
     {
         if (SyncChoice() is not { } choice) return;
-        var rows = choice.Rows.Where(r => r.CanGmLightChoice && (_syncEffect == LightingEffect.Off || r.CanGmEffect)).ToList();
+        // A light bar takes off or one color, and needs a color set on its page to go back to
+        var rows = choice.Rows.Where(r => r.CanGmLightChoice && (_syncEffect == LightingEffect.Off || r.CanGmEffect)
+            && (!r.IsLightBar || r.LightBarNow is not null && _syncEffect is LightingEffect.Off or LightingEffect.Static)).ToList();
         try
         {
             if (!KosToolbox.Core.Execution.Elevation.IsAdmin) throw new InvalidOperationException(Txt.GpuGamemodeNeedsAdmin);
@@ -1040,7 +1072,8 @@ public sealed class PeripheralsPageViewModel : PageViewModel
                 var e = config.Devices.FirstOrDefault(x => x.VendorId == row.Device.VendorId && x.ProductId == row.Device.ProductId);
                 if (e is null) config.Devices.Add(e = new GamemodePeripheralEntry { VendorId = row.Device.VendorId, ProductId = row.Device.ProductId, Name = row.Name });
                 var off = _syncEffect == LightingEffect.Off;
-                (e.Brightness, e.Effect, e.Color) = (off ? 0 : null, off ? null : _syncEffect, SyncHasColor ? choice.Color : null);
+                if (row.IsLightBar) (e.LightBar, e.LightBarAfter) = (off ? 0 : choice.Color, row.LightBarNow);
+                else (e.Brightness, e.Effect, e.Color) = (off ? 0 : null, off ? null : _syncEffect, SyncHasColor ? choice.Color : null);
             }
             config.Suspended = false;
             config.Save();

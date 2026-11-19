@@ -1,4 +1,5 @@
 using KosToolbox.Core.Peripherals;
+using KosToolbox.Core.Peripherals.Batteries;
 using KosToolbox.Core.Peripherals.Hid;
 using KosToolbox.Core.Peripherals.Razer;
 using KosToolbox.Core.Peripherals.Royuan;
@@ -47,6 +48,7 @@ internal sealed class GamemodePeripheralHost
                     Brightness = b.Brightness is null && b.KeyboardLight is null ? null : e.Brightness,
                     Effect = b.Effect is null && b.KeyboardLight is null ? null : e.Effect, Color = e.Color,
                     RapidTrigger = b.KeyboardSwitches is null ? null : e.RapidTrigger, RapidTriggerMm = e.RapidTriggerMm,
+                    LightBar = b.LightBar is null ? null : e.LightBar,
                 }, $"gamemode values for {e.Name}");
             else Log.Warn($"Gamemode mouse: {e.Name} wasn't read before gamemode (not connected or asleep): left as it is.");
         state.Applying = false;
@@ -96,6 +98,12 @@ internal sealed class GamemodePeripheralHost
     {
         var b = new GamemodePeripheralEntry { VendorId = e.VendorId, ProductId = e.ProductId, Name = e.Name,
             Dpi = e.Dpi is null ? null : s.Dpi?.X, PollingHz = e.PollingHz is null ? null : s.Polling?.Hz };
+        // The light bar can't be read: what goes back is the color the toolbox last set (saved with the profile)
+        if (d is PlayStationDriver)
+        {
+            b.LightBar = e.LightBar is null ? null : e.LightBarAfter;
+            return b;
+        }
         if (d is RoyuanDriver r)
         {
             if (e.Brightness is not null || e.Effect is not null) b.KeyboardLight = r.StoredLight;
@@ -149,6 +157,11 @@ internal sealed class GamemodePeripheralHost
             if (e.Dpi is { } dpi && now.Dpi?.X != dpi && d.HasLiveDpi && d.Writable.Contains(PeripheralSetting.Dpi)) d.SetDpiLive(dpi, dpi);
             if (e.PollingHz is { } hz && now.Polling?.Hz != hz && d.Writable.Contains(PeripheralSetting.PollingRate)) d.SetPollingRate(hz);
             if (d is RoyuanDriver r) WriteKeyboard(r, now, e);
+            else if (d is PlayStationDriver ps)
+            {
+                // Sent every time: the controller can't report its light bar, so there's nothing to compare it with
+                if (e.LightBar is { } bar) ps.SetLighting(bar == 0 ? LightingEffect.Off : LightingEffect.Static, bar);
+            }
             else
             {
                 if (e.Effect is { } fx && d is RazerDriver rz && LiveLighting(d) is var live
@@ -156,7 +169,7 @@ internal sealed class GamemodePeripheralHost
                     rz.SetLightingLive(fx, e.Color ?? 0xFFFFFF);
                 if (e.Brightness is { } br && d.HasLiveBrightness && LiveBrightness(d) != br) d.SetBrightnessLive(br);
             }
-            Log.Info($"Gamemode mouse: {what} written and read back.");
+            Log.Info($"Gamemode mouse: {what} written{(d is PlayStationDriver ? " (a light bar can't be read back)" : " and read back")}.");
             return true;
         }
         catch (Exception ex) when (ex is PeripheralException or ArgumentException or NotSupportedException or System.ComponentModel.Win32Exception or IOException or TimeoutException)

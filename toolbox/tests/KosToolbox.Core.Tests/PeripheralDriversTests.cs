@@ -483,6 +483,8 @@ public class PeripheralDriversTests
         Assert.Equal(250, PlayStationCodec.Rate(122, 0.5));
         Assert.Equal(1000, PlayStationCodec.Rate(530, 0.5));
         Assert.Equal(125, PlayStationCodec.Rate(60, 0.5));
+        Assert.Equal("light bar off", KosToolbox.Core.Text.Txt.PeripheralGamemodeValues(new GamemodePeripheralEntry { LightBar = 0 }, false));
+        Assert.Equal("light bar #00FF00", KosToolbox.Core.Text.Txt.PeripheralGamemodeValues(new GamemodePeripheralEntry { LightBar = 0x00FF00 }, false));
     }
 
     [Fact]

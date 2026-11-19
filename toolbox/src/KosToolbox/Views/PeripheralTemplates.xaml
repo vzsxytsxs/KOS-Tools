@@ -564,6 +564,8 @@
                     <TextBlock Style="{StaticResource GpuHint}" Text="{x:Static t:Txt.PeripheralGamemodeNote}" Margin="0,2,0,12" />
                     <TextBlock Style="{StaticResource GpuHint}" Text="{x:Static t:Txt.PeripheralGamemodeStoredNote}" Foreground="{StaticResource WarningBrush}" Margin="0,-6,0,12"
                                Visibility="{Binding GmStoredOnly, Converter={StaticResource BoolToVis}}" />
+                    <TextBlock Style="{StaticResource GpuHint}" Text="{x:Static t:Txt.PeripheralGamemodeLightBarNote}" Margin="0,-6,0,12"
+                               Visibility="{Binding IsLightBar, Converter={StaticResource BoolToVis}}" />
                     <StackPanel Style="{StaticResource PeriField}" Visibility="{Binding CanGmDpi, Converter={StaticResource BoolToVis}}">
                         <CheckBox Style="{StaticResource GpuSwitch}" Content="{x:Static t:Txt.PeripheralGamemodeSetDpi}" IsChecked="{Binding GmDpiOn}" HorizontalAlignment="Left" Margin="0,0,0,6" />
                         <Grid IsEnabled="{Binding GmDpiOn}">
