@@ -426,12 +426,17 @@ public:
         Trace("Initialize: %u bytes, cbSize %u, clsid %s", size, base->cbSize, base->clsid == CLSID_KosEqApo ? "ours" : "another (refused)");
         if (base->clsid != CLSID_KosEqApo) return E_INVALIDARG;
         m_guid[0] = 0;
+        bool discovery = false; // an instance made only to list the device's effects: it never runs, so it leaves the status line alone
         if (size >= sizeof(APOInitSystemEffects2) && base->cbSize >= sizeof(APOInitSystemEffects2))
+        {
             EndpointGuid(reinterpret_cast<APOInitSystemEffects2*>(data)->pDeviceCollection);
+            discovery = reinterpret_cast<APOInitSystemEffects2*>(data)->InitializeForDiscoveryOnly != FALSE;
+        }
         else if (size >= sizeof(APOInitSystemEffects) && base->cbSize >= sizeof(APOInitSystemEffects))
             EndpointGuid(reinterpret_cast<APOInitSystemEffects*>(data)->pDeviceCollection);
         // The audio engine created it for this device; "applied" follows once a stream runs through it.
-        if (m_guid[0]) WriteStatus(m_guid, "loaded: waiting for a stream\r\n");
+        if (discovery) {}
+        else if (m_guid[0]) WriteStatus(m_guid, "loaded: waiting for a stream\r\n");
         else WriteStatus(L"unknown", "loaded, but the device's id couldn't be read\r\n");
         m_initialized = true;
         return S_OK;

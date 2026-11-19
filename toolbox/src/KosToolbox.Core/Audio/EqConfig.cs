@@ -95,6 +95,10 @@ public sealed class EqConfig
             catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException)
             {
                 Log.Warn($"Equalizer: {d.Name} couldn't switch to {profile?.Name ?? "flat"}: {ex.Message}");
+                // A profile that can't be played (saved past +24 dB, say): flat rather than the other profile staying on.
+                if (profile is not null)
+                    try { EqSettingsFile.Write(d.EndpointId, null); written++; Log.Warn($"Equalizer: {d.Name} plays flat instead."); }
+                    catch (Exception flat) when (flat is IOException or UnauthorizedAccessException or InvalidOperationException) { Log.Warn($"Equalizer: {d.Name} couldn't go flat either: {flat.Message}"); }
             }
         }
         if (!Directory.Exists(EqSettingsFile.AudioDirectory)) return written; // KOS Equalizer never ran: nothing to mark

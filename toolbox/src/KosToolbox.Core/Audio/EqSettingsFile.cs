@@ -87,7 +87,7 @@ public static class EqSettingsFile
         GpuTuner.PrepareDirectory(Directory);
         var path = PathFor(endpointId);
         var text = profile is null ? FlatText : Format(profile);
-        var tmp = path + ".tmp";
+        var tmp = $"{path}.{Environment.ProcessId}.tmp"; // KOS Equalizer and KOS Engine may write at once: each its own temporary file
         File.Delete(tmp); // an old .tmp could be a hard link to another file
         File.WriteAllText(tmp, text, Encoding.ASCII);
         File.Move(tmp, path, overwrite: true);
