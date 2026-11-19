@@ -19,6 +19,10 @@ public sealed class RuleRow
     public ICommand? DeleteCommand { get; init; }
     public ICommand? AddServiceCommand { get; init; }
     public ICommand? AddThreadCommand { get; init; }
+    /// <summary>A program gamemode opens: <see cref="Summary"/> is its path, shown as text, not as chips.</summary>
+    public bool IsStart { get; init; }
+    /// <summary>The summary's parts, one chip each (Gamemode tab).</summary>
+    public string[] Chips => IsStart ? [] : Summary.Split(" · ", StringSplitOptions.RemoveEmptyEntries);
 }
 
 public sealed class ColumnOption(string key, bool visible, Action<string, bool> changed) : ObservableObject
@@ -106,6 +110,12 @@ public sealed class ConfigViewModel : ObservableObject
     public IReadOnlyList<RuleRow> RuleRows => Rows(RulesList, _search).ToList();
     public IReadOnlyList<RuleRow> GamemodeRows => StartRows().Concat(Rows(PhaseList, "")).ToList();
 
+    // Gamemode tabs: "While it is on" (the Windows actions) or one of the two rule phases. View only, not saved.
+    bool _showActions = true;
+    public bool ShowGamemodeActions { get => _showActions; set { if (value && !_showActions) { _showActions = true; RaisePhase(); } } }
+    public bool IsEnableTab { get => !_showActions && _enablePhase; set { if (value) { _showActions = false; _enablePhase = true; RaisePhase(); } } }
+    public bool IsDisableTab { get => !_showActions && !_enablePhase; set { if (value) { _showActions = false; _enablePhase = false; RaisePhase(); } } }
+
     public bool IsEnablePhase { get => _enablePhase; set { if (value && !_enablePhase) { _enablePhase = true; RaisePhase(); } } }
     public bool IsDisablePhase { get => !_enablePhase; set { if (value && _enablePhase) { _enablePhase = false; RaisePhase(); } } }
     public string PhaseHint => _enablePhase
@@ -116,6 +126,9 @@ public sealed class ConfigViewModel : ObservableObject
     {
         Raise(nameof(IsEnablePhase));
         Raise(nameof(IsDisablePhase));
+        Raise(nameof(ShowGamemodeActions));
+        Raise(nameof(IsEnableTab));
+        Raise(nameof(IsDisableTab));
         Raise(nameof(GamemodeRows));
         Raise(nameof(PhaseHint));
     }
@@ -322,7 +335,7 @@ public sealed class ConfigViewModel : ObservableObject
             yield return new RuleRow
             {
                 Title = $"Start: {Path.GetFileName(s.Path)}", Summary = string.IsNullOrWhiteSpace(s.Arguments) ? s.Path : $"{s.Path}  {s.Arguments}",
-                Indent = new Thickness(12, 0, 0, 0), Weight = FontWeights.SemiBold,
+                Indent = new Thickness(12, 0, 0, 0), Weight = FontWeights.SemiBold, IsStart = true,
                 EditCommand = new RelayCommand(() => EditStart(index)),
                 DeleteCommand = new RelayCommand(() => Delete($"\"{Path.GetFileName(s.Path)}\" from the list", c => Phase(c.Active).Start.RemoveAt(index))),
             };

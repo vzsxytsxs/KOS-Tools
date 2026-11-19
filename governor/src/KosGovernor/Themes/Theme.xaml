@@ -20,6 +20,9 @@
     <SolidColorBrush x:Key="PressedBrush" Color="{StaticResource PressedColor}" />
     <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource BorderColor}" />
     <SolidColorBrush x:Key="BorderStrongBrush" Color="{StaticResource BorderStrongColor}" />
+    <!-- A card on the content pane (which is CardBrush), and the faint line between rows inside it. -->
+    <SolidColorBrush x:Key="RaisedBrush" Color="#121212" />
+    <SolidColorBrush x:Key="HairlineBrush" Color="#1A1A1A" />
     <SolidColorBrush x:Key="TextBrush" Color="{StaticResource TextColor}" />
     <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondaryColor}" />
     <SolidColorBrush x:Key="OnLightBrush" Color="#000000" />
@@ -731,8 +734,9 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="CheckBox">
-                    <StackPanel Orientation="Horizontal" Background="Transparent">
-                        <Grid Width="18" Height="18" VerticalAlignment="Center">
+                    <!-- DockPanel, not StackPanel: a wrapping label gets the width that is left. -->
+                    <DockPanel Background="Transparent">
+                        <Grid DockPanel.Dock="Left" Width="18" Height="18" VerticalAlignment="Center">
                             <Border x:Name="box" CornerRadius="4" BorderThickness="1" BorderBrush="{StaticResource BorderStrongBrush}" Background="{StaticResource ControlBrush}" />
                             <Border CornerRadius="4" Background="{StaticResource TextBrush}" Opacity="0"
                                     v:Motion.ShowWhen="{Binding IsChecked, RelativeSource={RelativeSource TemplatedParent}}">
@@ -740,7 +744,7 @@
                             </Border>
                         </Grid>
                         <ContentPresenter x:Name="label" Margin="8,0,0,0" VerticalAlignment="Center" />
-                    </StackPanel>
+                    </DockPanel>
                     <ControlTemplate.Triggers>
                         <Trigger Property="Content" Value="{x:Null}">
                             <Setter TargetName="label" Property="Margin" Value="0" />

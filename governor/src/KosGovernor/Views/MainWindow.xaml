@@ -81,6 +81,53 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <!-- Gamemode section: the big on/off switch (DataContext: this window's view model), its cards and the rule table's column titles. -->
+        <Style x:Key="GamemodeSwitch" TargetType="Button">
+            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusVisual}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid Height="40">
+                            <Border x:Name="Frame" CornerRadius="20" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" />
+                            <Border CornerRadius="20" Margin="1" Background="{StaticResource HoverBrush}" Opacity="0" v:Motion.ShowWhen="{TemplateBinding IsMouseOver}" />
+                            <StackPanel Orientation="Horizontal" Margin="10,0,16,0">
+                                <Grid Width="40" Height="22" VerticalAlignment="Center">
+                                    <Border x:Name="Track" CornerRadius="11" Background="{StaticResource ControlBrush}" BorderBrush="{StaticResource BorderStrongBrush}" BorderThickness="1" />
+                                    <Ellipse x:Name="Knob" Width="14" Height="14" Margin="4,0" HorizontalAlignment="Left" Fill="{StaticResource TextSecondaryBrush}" />
+                                </Grid>
+                                <TextBlock x:Name="Label" Text="Gamemode off" Margin="12,0,0,0" VerticalAlignment="Center" FontSize="14" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                <TextBlock Text="{Binding Config.HotkeyText}" Margin="12,1,0,0" VerticalAlignment="Center" FontSize="11.5" Foreground="{StaticResource TextSecondaryBrush}" />
+                            </StackPanel>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <DataTrigger Binding="{Binding GamemodeOn}" Value="True">
+                                <Setter TargetName="Frame" Property="BorderBrush" Value="{StaticResource TextBrush}" />
+                                <Setter TargetName="Track" Property="Background" Value="#1E9BE0" />
+                                <Setter TargetName="Track" Property="BorderBrush" Value="#1E9BE0" />
+                                <Setter TargetName="Knob" Property="Fill" Value="#FFFFFF" />
+                                <Setter TargetName="Knob" Property="HorizontalAlignment" Value="Right" />
+                                <Setter TargetName="Label" Property="Text" Value="Gamemode on" />
+                                <Setter TargetName="Label" Property="Foreground" Value="{StaticResource TextBrush}" />
+                            </DataTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="GmCard" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource RaisedBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="14,12" />
+        </Style>
+        <Style x:Key="GmColumn" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+        </Style>
     </Window.Resources>
 
     <DockPanel>
@@ -176,6 +223,16 @@
             <Border Grid.Column="1" Margin="0,8,0,0" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,1,0,0" CornerRadius="10,0,0,0">
                 <DockPanel>
                     <Grid DockPanel.Dock="Top" Margin="16,12">
+                        <Grid.Style>
+                            <Style TargetType="Grid">
+                                <Style.Triggers>
+                                    <!-- Gamemode draws its own title, with the on/off switch. -->
+                                    <DataTrigger Binding="{Binding SelectedSection.Key}" Value="Gamemode">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Grid.Style>
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <TextBlock Text="{Binding SelectedSection.Title}" FontSize="20" FontWeight="SemiBold" />
                             <TextBlock Text="Click a process to open its details below." Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="14,3,0,0">
@@ -384,225 +441,375 @@
                                     </ListBox>
                                 </DockPanel>
 
-                                <!-- Gamemode -->
-                                <DockPanel Visibility="{Binding IsGamemode, Converter={StaticResource BoolToVis}}">
-                                    <Border DockPanel.Dock="Top" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="12,8">
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="Toggle hotkey:" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                            <TextBlock Text="{Binding HotkeyText}" VerticalAlignment="Center" Margin="10,0,0,0" MinWidth="150" />
-                                            <Button Style="{StaticResource Small}" Content="Change" Margin="12,0,0,0" Command="{Binding ChangeHotkeyCommand}" />
-                                            <Button Style="{StaticResource Small}" Content="Reset" Margin="6,0,0,0" Command="{Binding ResetHotkeyCommand}" />
-                                            <TextBlock Text="Timer resolution:" FontWeight="SemiBold" VerticalAlignment="Center" Margin="36,0,0,0" />
-                                            <ComboBox ItemsSource="{Binding TimerModeOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding TimerMode}"
-                                                      Width="170" Margin="10,0,0,0" VerticalAlignment="Center"
-                                                      ToolTip="The engine asks Windows for a finer system timer: only while gamemode is on, or all the time. Games also keep their own timer requests while minimized." />
-                                            <ComboBox ItemsSource="{Binding TimerResolutionOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding TimerResolution}"
-                                                      Width="110" Margin="6,0,0,0" VerticalAlignment="Center" IsEnabled="{Binding TimerOn}" />
-                                        </StackPanel>
-                                    </Border>
-                                    <Border DockPanel.Dock="Top" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="12,6"
-                                            Visibility="{Binding TimerNote, Converter={StaticResource VisibleIf}, ConverterParameter=text}">
-                                        <TextBlock Text="{Binding TimerNote}" Foreground="{StaticResource WarningBrush}" FontSize="11.5" TextWrapping="Wrap" />
-                                    </Border>
-                                    <!-- Automatic gamemode: turns on when a game from the list is open and turns off after the last one closes. -->
-                                    <Border DockPanel.Dock="Top" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="12,8">
-                                        <StackPanel>
-                                            <StackPanel Orientation="Horizontal">
-                                                <CheckBox Content="Turn on automatically when a game starts" IsChecked="{Binding AutoGamemode}" VerticalAlignment="Center" />
-                                                <TextBlock Text="{Binding Value, ElementName=OffDelaySlider, StringFormat=Turn off {0} s after the last game closes}" Margin="24,0,10,0"
-                                                           VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" IsEnabled="{Binding AutoGamemode}" />
-                                                <Slider x:Name="OffDelaySlider" Minimum="0" Maximum="120" TickFrequency="5" SmallChange="5" LargeChange="15" IsSnapToTickEnabled="True" Width="160"
-                                                        VerticalAlignment="Center" Value="{Binding AutoOffDelay, Delay=400}" IsEnabled="{Binding AutoGamemode}" />
+                                <!-- Gamemode: header with the on/off switch, three cards, then tabs (Windows actions, rules when it turns on, rules when it turns off). -->
+                                <ScrollViewer Visibility="{Binding IsGamemode, Converter={StaticResource BoolToVis}}" VerticalScrollBarVisibility="Auto">
+                                    <StackPanel Margin="22,18,22,20">
+                                        <!-- Header. GamemodeOn and the toggle live on the window's view model; GamemodeOn is polled, so the switch follows the real state. -->
+                                        <DockPanel>
+                                            <Button DockPanel.Dock="Right" Style="{StaticResource GamemodeSwitch}" VerticalAlignment="Center"
+                                                    DataContext="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Window}}" Command="{Binding ToggleGamemodeCommand}"
+                                                    AutomationProperties.Name="Gamemode" AutomationProperties.HelpText="Turns gamemode on or off" />
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Gamemode" FontSize="24" FontWeight="SemiBold" />
+                                                <TextBlock Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2,0,0" TextWrapping="Wrap">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Text" Value="Off · turn it on here or with the hotkey." />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding AutoGamemode}" Value="True">
+                                                                    <Setter Property="Text" Value="Off · turns on by itself when a game starts." />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding DataContext.GamemodeOn, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                                                    <Setter Property="Text" Value="On · stays on until you turn it off." />
+                                                                </DataTrigger>
+                                                                <MultiDataTrigger>
+                                                                    <MultiDataTrigger.Conditions>
+                                                                        <Condition Binding="{Binding DataContext.GamemodeOn, RelativeSource={RelativeSource AncestorType=Window}}" Value="True" />
+                                                                        <Condition Binding="{Binding AutoGamemode}" Value="True" />
+                                                                    </MultiDataTrigger.Conditions>
+                                                                    <Setter Property="Text" Value="On · turns off by itself after the last game closes, unless it was turned on by hand." />
+                                                                </MultiDataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
                                             </StackPanel>
-                                            <CheckBox Content="Also open this profile's programs (below) when it switches automatically" IsChecked="{Binding AutoOpensPrograms}" Margin="0,8,0,0"
-                                                      IsEnabled="{Binding AutoGamemode}" />
-                                            <TextBlock Text="Turned on by hand stays on until you turn it off; turned off by hand while a game runs stays off until that game closes."
-                                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" Margin="0,6,0,0" TextWrapping="Wrap" />
-                                            <DockPanel Margin="0,8,0,0">
-                                                <Button DockPanel.Dock="Right" Style="{StaticResource Small}" Content="+ Add Game" Command="{Binding AddGameCommand}" VerticalAlignment="Top" Margin="6,0,0,0" />
-                                                <Button DockPanel.Dock="Right" Style="{StaticResource Small}" Content="Windows settings" Command="{Binding ShowGameSettingsCommand}" VerticalAlignment="Top" Margin="6,0,0,0"
-                                                        ToolTip="Network priority (DSCP 46), fullscreen optimizations and GPU choice per game" />
-                                                <Button DockPanel.Dock="Right" Style="{StaticResource Small}" Content="Show list" Command="{Binding ShowGameListCommand}" VerticalAlignment="Top"
-                                                        ToolTip="Every game and every program that never counts, with search" />
-                                                <TextBlock Text="{Binding GameListText}" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0" />
+                                        </DockPanel>
+
+                                        <!-- Cards: turning on, timer resolution, games. -->
+                                        <Grid Margin="0,16,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="1.1*" />
+                                                <ColumnDefinition Width="0.9*" />
+                                                <ColumnDefinition Width="1.3*" />
+                                            </Grid.ColumnDefinitions>
+                                            <!-- Automatic gamemode: turns on when a game from the list is open and turns off after the last one closes. -->
+                                            <Border Style="{StaticResource GmCard}">
+                                                <StackPanel>
+                                                    <TextBlock Style="{StaticResource PanelLabel}" Text="TURNING ON" />
+                                                    <CheckBox Content="When a game starts" IsChecked="{Binding AutoGamemode}"
+                                                              ToolTip="Turned on by hand stays on until you turn it off; turned off by hand while a game runs stays off until that game closes." />
+                                                    <TextBlock Text="{Binding Value, ElementName=OffDelaySlider, StringFormat=Turn off {0} s after the last game closes}" Margin="0,10,0,4"
+                                                               Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" IsEnabled="{Binding AutoGamemode}" />
+                                                    <Slider x:Name="OffDelaySlider" Minimum="0" Maximum="120" TickFrequency="5" SmallChange="5" LargeChange="15" IsSnapToTickEnabled="True"
+                                                            Value="{Binding AutoOffDelay, Delay=400}" IsEnabled="{Binding AutoGamemode}" AutomationProperties.Name="Seconds before turning off" />
+                                                    <CheckBox IsChecked="{Binding AutoOpensPrograms}" Margin="0,10,0,0" IsEnabled="{Binding AutoGamemode}">
+                                                        <TextBlock Text="Also open this profile's programs when it switches automatically" TextWrapping="Wrap" />
+                                                    </CheckBox>
+                                                    <Border BorderBrush="{StaticResource HairlineBrush}" BorderThickness="0,1,0,0" Margin="0,12,0,0" Padding="0,10,0,0">
+                                                        <DockPanel>
+                                                            <Button DockPanel.Dock="Right" Style="{StaticResource Small}" Content="Reset" Margin="6,0,0,0" Command="{Binding ResetHotkeyCommand}" />
+                                                            <Button DockPanel.Dock="Right" Style="{StaticResource Small}" Content="Change" Command="{Binding ChangeHotkeyCommand}" />
+                                                            <TextBlock VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,10,0">
+                                                                <Run Text="Hotkey" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                                <Run Text="{Binding HotkeyText, Mode=OneWay}" FontWeight="SemiBold" />
+                                                            </TextBlock>
+                                                        </DockPanel>
+                                                    </Border>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <Border Grid.Column="1" Style="{StaticResource GmCard}" Margin="10,0,10,0">
+                                                <StackPanel>
+                                                    <TextBlock Style="{StaticResource PanelLabel}" Text="TIMER RESOLUTION" />
+                                                    <!-- The resolution, big; dimmed (disabled) while the mode is Off. -->
+                                                    <ComboBox ItemsSource="{Binding TimerResolutionOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding TimerResolution}"
+                                                              IsEnabled="{Binding TimerOn}" HorizontalAlignment="Left" MinWidth="150" MinHeight="40" FontSize="22" FontWeight="SemiBold"
+                                                              AutomationProperties.Name="Timer resolution">
+                                                        <ComboBox.ItemContainerStyle>
+                                                            <Style TargetType="ComboBoxItem" BasedOn="{StaticResource {x:Type ComboBoxItem}}">
+                                                                <Setter Property="FontSize" Value="12" />
+                                                                <Setter Property="FontWeight" Value="Normal" />
+                                                            </Style>
+                                                        </ComboBox.ItemContainerStyle>
+                                                    </ComboBox>
+                                                    <ListBox Style="{StaticResource SegmentList}" ItemsSource="{Binding TimerModeOptions}" SelectedValuePath="Value" SelectedValue="{Binding TimerMode}"
+                                                             Margin="0,10,0,0" AutomationProperties.Name="When"
+                                                             ToolTip="The engine asks Windows for a finer system timer: only while gamemode is on, or all the time. Games also keep their own timer requests while minimized." />
+                                                    <TextBlock Text="{Binding TimerNote}" Foreground="{StaticResource WarningBrush}" FontSize="11.5" TextWrapping="Wrap" Margin="0,8,0,0"
+                                                               Visibility="{Binding TimerNote, Converter={StaticResource VisibleIf}, ConverterParameter=text}" />
+                                                </StackPanel>
+                                            </Border>
+
+                                            <Border Grid.Column="2" Style="{StaticResource GmCard}">
+                                                <StackPanel>
+                                                    <DockPanel>
+                                                        <Button DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Content="Show list" Command="{Binding ShowGameListCommand}" FontSize="12"
+                                                                ToolTip="Every game and every program that never counts, with search" />
+                                                        <TextBlock Style="{StaticResource PanelLabel}" Text="GAMES" />
+                                                    </DockPanel>
+                                                    <TextBlock Text="{Binding GameListText}" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                                                    <ItemsControl ItemsSource="{Binding GameRows}" Margin="0,6,0,0" Focusable="False">
+                                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="13" Height="26" Padding="10,0,3,0" Margin="0,4,6,0">
+                                                                    <StackPanel Orientation="Horizontal">
+                                                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                                                        <TextBlock Text="{Binding Kind}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" Margin="6,0,0,0" VerticalAlignment="Center" />
+                                                                        <Button Command="{Binding RemoveCommand}" Width="20" Height="20" MinHeight="0" Padding="0" Margin="6,0,0,0" VerticalAlignment="Center"
+                                                                                BorderThickness="0" ToolTip="Back to what the built-in list says" AutomationProperties.Name="{Binding Name, StringFormat=Remove {0}}">
+                                                                            <TextBlock Style="{StaticResource Icon}" Text="&#xE711;" FontSize="8" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                                        </Button>
+                                                                    </StackPanel>
+                                                                </Border>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                    <WrapPanel Margin="0,4,0,0">
+                                                        <Button Style="{StaticResource DashedChip}" Content="+ Add game" Command="{Binding AddGameCommand}" Margin="0,4,6,0" />
+                                                        <Button Style="{StaticResource Small}" Content="Windows settings" Command="{Binding ShowGameSettingsCommand}" Margin="0,4,0,0"
+                                                                ToolTip="Network priority (DSCP 46), fullscreen optimizations and GPU choice per game" />
+                                                    </WrapPanel>
+                                                </StackPanel>
+                                            </Border>
+                                        </Grid>
+
+                                        <!-- Tabs, underlined; the rule tabs get their add buttons on the right. -->
+                                        <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Margin="0,16,0,0">
+                                            <DockPanel>
+                                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center"
+                                                            Visibility="{Binding ShowGamemodeActions, Converter={StaticResource VisibleIf}, ConverterParameter=false}">
+                                                    <Button Style="{StaticResource Small}" Content="Start a program" Command="{Binding AddStartCommand}" />
+                                                    <Button Style="{StaticResource Small}" Content="+ Add process rule" Margin="6,0,0,0" Command="{Binding AddGamemodeRuleCommand}" />
+                                                </StackPanel>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <RadioButton Style="{StaticResource UnderlineTab}" Content="While it is on" IsChecked="{Binding ShowGamemodeActions}" GroupName="GamemodeTab" />
+                                                    <RadioButton Style="{StaticResource UnderlineTab}" Content="When it turns on" IsChecked="{Binding IsEnableTab}" GroupName="GamemodeTab" />
+                                                    <RadioButton Style="{StaticResource UnderlineTab}" Content="When it turns off" IsChecked="{Binding IsDisableTab}" GroupName="GamemodeTab" />
+                                                </StackPanel>
                                             </DockPanel>
-                                            <ItemsControl ItemsSource="{Binding GameRows}" Margin="0,4,0,0">
-                                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="8,2,2,2" Margin="0,4,6,0">
-                                                            <StackPanel Orientation="Horizontal">
-                                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                                                <TextBlock Text="{Binding Kind}" Foreground="{StaticResource TextSecondaryBrush}" Margin="6,0,0,0" VerticalAlignment="Center" />
-                                                                <Button Style="{StaticResource Tiny}" Content="Remove" Margin="6,0,0,0" Command="{Binding RemoveCommand}"
-                                                                        ToolTip="Back to what the built-in list says" />
-                                                            </StackPanel>
-                                                        </Border>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
-                                        </StackPanel>
-                                    </Border>
-                                    <!-- Windows changes while gamemode is on (active profile). -->
-                                    <Border DockPanel.Dock="Top" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="12,8,12,10">
-                                        <StackPanel>
-                                            <TextBlock Text="While gamemode is on (this profile)" FontWeight="SemiBold" />
+                                        </Border>
+
+                                        <!-- While it is on: Windows changes of the active profile. -->
+                                        <StackPanel Visibility="{Binding ShowGamemodeActions, Converter={StaticResource BoolToVis}}" Margin="0,10,0,0">
                                             <TextBlock Text="Applied when gamemode turns on, by hand or automatically, and undone when it turns off, when the engine exits, or the next time it starts after a crash. Only what is still as gamemode left it is undone. Changes here count from the next time gamemode turns on."
-                                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" TextWrapping="Wrap" Margin="0,2,0,4" />
-                                            <ScrollViewer MaxHeight="330" VerticalScrollBarVisibility="Auto">
-                                            <UniformGrid Columns="2">
-                                                <StackPanel Orientation="Horizontal" Margin="0,8,24,0">
-                                                    <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysPowerPlan}">
-                                                        <StackPanel>
-                                                            <TextBlock Text="Power plan" />
-                                                            <TextBlock Text="Switches to this plan, then back to the previous one." Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" />
+                                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,4" />
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="24" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition />
+                                                </Grid.RowDefinitions>
+                                                <Grid.Resources>
+                                                    <Style x:Key="ActionRow" TargetType="DockPanel">
+                                                        <Setter Property="MinHeight" Value="50" />
+                                                    </Style>
+                                                    <Style x:Key="ActionLine" TargetType="Border">
+                                                        <Setter Property="BorderBrush" Value="{StaticResource HairlineBrush}" />
+                                                        <Setter Property="BorderThickness" Value="0,0,0,1" />
+                                                    </Style>
+                                                    <Style x:Key="ActionName" TargetType="TextBlock">
+                                                        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                                    </Style>
+                                                    <Style x:Key="ActionDesc" TargetType="TextBlock">
+                                                        <Setter Property="FontSize" Value="12" />
+                                                        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                                                        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                                        <Setter Property="ToolTip" Value="{Binding Text, RelativeSource={RelativeSource Self}}" />
+                                                    </Style>
+                                                </Grid.Resources>
+
+                                                <Border Grid.Row="0" Grid.Column="0" Style="{StaticResource ActionLine}">
+                                                    <DockPanel Style="{StaticResource ActionRow}">
+                                                        <ComboBox DockPanel.Dock="Right" Style="{StaticResource CompactCombo}" Width="170" ItemsSource="{Binding PowerPlanOptions}" DisplayMemberPath="Name"
+                                                                  SelectedValuePath="Id" SelectedValue="{Binding SysPowerPlanId}" IsEnabled="{Binding SysPowerPlan}" AutomationProperties.Name="Power plan" />
+                                                        <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysPowerPlan}">
+                                                            <StackPanel>
+                                                                <TextBlock Style="{StaticResource ActionName}" Text="Power plan" />
+                                                                <TextBlock Style="{StaticResource ActionDesc}" Text="Switches to this plan, then back to the previous one." />
+                                                            </StackPanel>
+                                                        </CheckBox>
+                                                    </DockPanel>
+                                                </Border>
+                                                <Border Grid.Row="0" Grid.Column="2" Style="{StaticResource ActionLine}">
+                                                    <DockPanel Style="{StaticResource ActionRow}">
+                                                        <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysStopUpdate}">
+                                                            <StackPanel>
+                                                                <TextBlock Style="{StaticResource ActionName}" Text="Stop Windows Update" />
+                                                                <TextBlock Style="{StaticResource ActionDesc}" Text="Stops Windows Update, Update Orchestrator and Delivery Optimization (startup type unchanged); stopped again if Windows restarts them." />
+                                                            </StackPanel>
+                                                        </CheckBox>
+                                                    </DockPanel>
+                                                </Border>
+                                                <Border Grid.Row="1" Grid.Column="0" Style="{StaticResource ActionLine}">
+                                                    <DockPanel Style="{StaticResource ActionRow}">
+                                                        <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysStopSearch}">
+                                                            <StackPanel>
+                                                                <TextBlock Style="{StaticResource ActionName}" Text="Stop Windows Search indexing" />
+                                                                <TextBlock Style="{StaticResource ActionDesc}" Text="Stops the indexer (WSearch); searching files still works, without the index." />
+                                                            </StackPanel>
+                                                        </CheckBox>
+                                                    </DockPanel>
+                                                </Border>
+                                                <Border Grid.Row="1" Grid.Column="2" Style="{StaticResource ActionLine}">
+                                                    <DockPanel Style="{StaticResource ActionRow}">
+                                                        <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysTransparency}">
+                                                            <StackPanel>
+                                                                <TextBlock Style="{StaticResource ActionName}" Text="Turn off transparency effects" />
+                                                                <TextBlock Style="{StaticResource ActionDesc}" Text="Same as Personalization › Colors › Transparency effects." />
+                                                            </StackPanel>
+                                                        </CheckBox>
+                                                    </DockPanel>
+                                                </Border>
+                                                <Border Grid.Row="2" Grid.Column="0" Style="{StaticResource ActionLine}">
+                                                    <DockPanel Style="{StaticResource ActionRow}">
+                                                        <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysCStates}">
+                                                            <StackPanel>
+                                                                <TextBlock Style="{StaticResource ActionName}" Text="Disable processor idle states (C-states)" />
+                                                                <TextBlock Style="{StaticResource ActionDesc}" Text="On the active power plan. Lower latency; higher power use and temperature, even when idle." />
+                                                            </StackPanel>
+                                                        </CheckBox>
+                                                    </DockPanel>
+                                                </Border>
+                                                <Border Grid.Row="2" Grid.Column="2" Style="{StaticResource ActionLine}">
+                                                    <DockPanel Style="{StaticResource ActionRow}">
+                                                        <ComboBox DockPanel.Dock="Right" Style="{StaticResource CompactCombo}" Width="110" ItemsSource="{Binding CleanDelayOptions}" DisplayMemberPath="Label"
+                                                                  SelectedValuePath="Value" SelectedValue="{Binding SysCleanDelay}" IsEnabled="{Binding SysCleanMemory}"
+                                                                  ToolTip="Wait after gamemode turns on, so the clean doesn't run while the game is loading." AutomationProperties.Name="Wait after gamemode turns on" />
+                                                        <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysCleanMemory}">
+                                                            <StackPanel>
+                                                                <TextBlock Style="{StaticResource ActionName}" Text="Clean memory when gamemode turns on" />
+                                                                <TextBlock Style="{StaticResource ActionDesc}" Text="Once: trims the memory of open programs and purges the standby list. Left alone: Windows processes like Explorer, the games, what they opened, their launcher and anti-cheats." />
+                                                            </StackPanel>
+                                                        </CheckBox>
+                                                    </DockPanel>
+                                                </Border>
+                                                <Border Grid.Row="3" Grid.Column="0" Style="{StaticResource ActionLine}">
+                                                    <DockPanel Style="{StaticResource ActionRow}">
+                                                        <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysBackgroundEfficiency}">
+                                                            <StackPanel>
+                                                                <TextBlock Style="{StaticResource ActionName}" Text="Efficiency mode for background programs" />
+                                                                <TextBlock Style="{StaticResource ActionDesc}" Text="Programs behind the game run in efficiency mode (EcoQoS), back to automatic when gamemode turns off. Left alone: games, the program in front, Windows' own, voice and capture programs (Discord, OBS, Voicemeeter) and programs with a rule: add a rule to keep one out." />
+                                                            </StackPanel>
+                                                        </CheckBox>
+                                                    </DockPanel>
+                                                </Border>
+                                                <Border Grid.Row="3" Grid.Column="2" Style="{StaticResource ActionLine}">
+                                                    <DockPanel Style="{StaticResource ActionRow}">
+                                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" IsEnabled="{Binding SysPurgeStandby}">
+                                                            <ComboBox Style="{StaticResource CompactCombo}" Width="96" ItemsSource="{Binding MemoryMbOptions}" SelectedItem="{Binding SysPurgeStandbyMb}"
+                                                                      ItemStringFormat="{}{0:N0} MB" ToolTip="Standby over" AutomationProperties.Name="Standby over" />
+                                                            <ComboBox Style="{StaticResource CompactCombo}" Width="96" Margin="4,0,0,0" ItemsSource="{Binding MemoryMbOptions}" SelectedItem="{Binding SysPurgeFreeMb}"
+                                                                      ItemStringFormat="{}{0:N0} MB" ToolTip="And free under" AutomationProperties.Name="Free under" />
                                                         </StackPanel>
-                                                    </CheckBox>
-                                                    <ComboBox ItemsSource="{Binding PowerPlanOptions}" DisplayMemberPath="Name" SelectedValuePath="Id" SelectedValue="{Binding SysPowerPlanId}"
-                                                              Width="220" Margin="14,0,0,0" VerticalAlignment="Center" IsEnabled="{Binding SysPowerPlan}" />
-                                                </StackPanel>
-                                                <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysStopUpdate}" Margin="0,8,24,0" HorizontalAlignment="Left">
-                                                    <StackPanel>
-                                                        <TextBlock Text="Stop Windows Update" />
-                                                        <TextBlock Text="Stops Windows Update, Update Orchestrator and Delivery Optimization (startup type unchanged); stopped again if Windows restarts them."
-                                                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" TextWrapping="Wrap" MaxWidth="440" />
-                                                    </StackPanel>
-                                                </CheckBox>
-                                                <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysStopSearch}" Margin="0,8,24,0" HorizontalAlignment="Left">
-                                                    <StackPanel>
-                                                        <TextBlock Text="Stop Windows Search indexing" />
-                                                        <TextBlock Text="Stops the indexer (WSearch); searching files still works, without the index." Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5"
-                                                                   TextWrapping="Wrap" MaxWidth="440" />
-                                                    </StackPanel>
-                                                </CheckBox>
-                                                <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysTransparency}" Margin="0,8,24,0" HorizontalAlignment="Left">
-                                                    <StackPanel>
-                                                        <TextBlock Text="Turn off transparency effects" />
-                                                        <TextBlock Text="Same as Personalization › Colors › Transparency effects." Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" />
-                                                    </StackPanel>
-                                                </CheckBox>
-                                                <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysCStates}" Margin="0,8,24,0" HorizontalAlignment="Left">
-                                                    <StackPanel>
-                                                        <TextBlock Text="Disable processor idle states (C-states)" />
-                                                        <TextBlock Text="On the active power plan. Lower latency; higher power use and temperature, even when idle." Foreground="{StaticResource TextSecondaryBrush}"
-                                                                   FontSize="11.5" TextWrapping="Wrap" MaxWidth="440" />
-                                                    </StackPanel>
-                                                </CheckBox>
-                                                <StackPanel Margin="0,8,24,0">
-                                                    <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysCleanMemory}" HorizontalAlignment="Left">
-                                                        <StackPanel>
-                                                            <TextBlock Text="Clean memory when gamemode turns on" />
-                                                            <TextBlock Text="Once: trims the memory of open programs and purges the standby list. Left alone: Windows processes like Explorer, the games, what they opened, their launcher and anti-cheats."
-                                                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" TextWrapping="Wrap" MaxWidth="440" />
-                                                        </StackPanel>
-                                                    </CheckBox>
-                                                    <StackPanel Orientation="Horizontal" Margin="50,4,0,0" IsEnabled="{Binding SysCleanMemory}">
-                                                        <TextBlock Text="Wait after gamemode turns on" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" />
-                                                        <ComboBox ItemsSource="{Binding CleanDelayOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding SysCleanDelay}"
-                                                                  Width="120" Margin="8,0" ToolTip="So the clean doesn't run while the game is loading." />
-                                                    </StackPanel>
-                                                </StackPanel>
-                                                <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysBackgroundEfficiency}" Margin="0,8,24,0" HorizontalAlignment="Left">
-                                                    <StackPanel>
-                                                        <TextBlock Text="Efficiency mode for background programs" />
-                                                        <TextBlock Text="Programs behind the game run in efficiency mode (EcoQoS), back to automatic when gamemode turns off. Left alone: games, the program in front, Windows' own, voice and capture programs (Discord, OBS, Voicemeeter) and programs with a rule: add a rule to keep one out."
-                                                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" TextWrapping="Wrap" MaxWidth="440" />
-                                                    </StackPanel>
-                                                </CheckBox>
-                                                <StackPanel Margin="0,8,24,0">
-                                                    <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysPurgeStandby}" HorizontalAlignment="Left">
-                                                        <StackPanel>
-                                                            <TextBlock Text="Purge the standby list during the game" />
-                                                            <TextBlock Text="When the file cache grows past the first size while free memory is under the second (at most once a minute). Running programs keep their memory."
-                                                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" TextWrapping="Wrap" MaxWidth="440" />
-                                                        </StackPanel>
-                                                    </CheckBox>
-                                                    <StackPanel Orientation="Horizontal" Margin="50,4,0,0" IsEnabled="{Binding SysPurgeStandby}">
-                                                        <TextBlock Text="Standby over" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" />
-                                                        <ComboBox ItemsSource="{Binding MemoryMbOptions}" SelectedItem="{Binding SysPurgeStandbyMb}" ItemStringFormat="{}{0:N0} MB" Width="110" Margin="8,0" />
-                                                        <TextBlock Text="and free under" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" />
-                                                        <ComboBox ItemsSource="{Binding MemoryMbOptions}" SelectedItem="{Binding SysPurgeFreeMb}" ItemStringFormat="{}{0:N0} MB" Width="110" Margin="8,0" />
-                                                    </StackPanel>
-                                                </StackPanel>
-                                                <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysRestrain}" Margin="0,8,24,0" HorizontalAlignment="Left">
-                                                    <StackPanel>
-                                                        <TextBlock Text="Lower busy background programs" />
-                                                        <TextBlock Text="A background program that keeps using more than 15 % of the CPU for 6 s drops to Below normal priority until it has been quiet for 15 s. The same programs are left alone as for efficiency mode."
-                                                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" TextWrapping="Wrap" MaxWidth="440" />
-                                                    </StackPanel>
-                                                </CheckBox>
-                                                <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysKeepAwake}" Margin="0,8,24,0" HorizontalAlignment="Left">
-                                                    <StackPanel>
-                                                        <TextBlock Text="Keep the PC and the screen awake" />
-                                                        <TextBlock Text="For controller play and long loading screens, where nothing resets the idle timer."
-                                                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" TextWrapping="Wrap" MaxWidth="440" />
-                                                    </StackPanel>
-                                                </CheckBox>
-                                                <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysDwmMmcss}" Margin="0,8,24,0" HorizontalAlignment="Left">
-                                                    <StackPanel>
-                                                        <TextBlock Text="Desktop compositor in MMCSS" />
-                                                        <TextBlock Text="DWM (the desktop compositor) runs in the multimedia scheduling class while gamemode is on, for steadier frame pacing in windowed and borderless games."
-                                                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" TextWrapping="Wrap" MaxWidth="440" />
-                                                    </StackPanel>
-                                                </CheckBox>
-                                                <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysWifi}" Margin="0,8,24,0" HorizontalAlignment="Left">
-                                                    <StackPanel>
-                                                        <TextBlock Text="Wi-Fi without background scans" />
-                                                        <TextBlock Text="Connected Wi-Fi adapters stop scanning for other networks (ping spikes) and use the driver's streaming mode. No effect on wired connections."
-                                                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" TextWrapping="Wrap" MaxWidth="440" />
-                                                    </StackPanel>
-                                                </CheckBox>
-                                                <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysAudio}" Margin="0,8,24,0" HorizontalAlignment="Left">
-                                                    <StackPanel>
-                                                        <TextBlock Text="Low-latency audio" />
-                                                        <TextBlock Text="The default playback device runs at the driver's smallest buffer instead of 10 ms. Only if the driver supports it; can crackle under heavy CPU load."
-                                                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" TextWrapping="Wrap" MaxWidth="440" />
-                                                    </StackPanel>
-                                                </CheckBox>
-                                                <StackPanel Margin="0,8,24,0">
-                                                    <StackPanel Orientation="Horizontal">
+                                                        <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysPurgeStandby}">
+                                                            <StackPanel>
+                                                                <TextBlock Style="{StaticResource ActionName}" Text="Purge the standby list during the game" />
+                                                                <TextBlock Style="{StaticResource ActionDesc}" Text="When the file cache grows past the first size while free memory is under the second (at most once a minute). Running programs keep their memory." />
+                                                            </StackPanel>
+                                                        </CheckBox>
+                                                    </DockPanel>
+                                                </Border>
+                                                <Border Grid.Row="4" Grid.Column="0" Style="{StaticResource ActionLine}">
+                                                    <DockPanel Style="{StaticResource ActionRow}">
+                                                        <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysRestrain}">
+                                                            <StackPanel>
+                                                                <TextBlock Style="{StaticResource ActionName}" Text="Lower busy background programs" />
+                                                                <TextBlock Style="{StaticResource ActionDesc}" Text="A background program that keeps using more than 15 % of the CPU for 6 s drops to Below normal priority until it has been quiet for 15 s. The same programs are left alone as for efficiency mode." />
+                                                            </StackPanel>
+                                                        </CheckBox>
+                                                    </DockPanel>
+                                                </Border>
+                                                <Border Grid.Row="4" Grid.Column="2" Style="{StaticResource ActionLine}">
+                                                    <DockPanel Style="{StaticResource ActionRow}">
+                                                        <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysKeepAwake}">
+                                                            <StackPanel>
+                                                                <TextBlock Style="{StaticResource ActionName}" Text="Keep the PC and the screen awake" />
+                                                                <TextBlock Style="{StaticResource ActionDesc}" Text="For controller play and long loading screens, where nothing resets the idle timer." />
+                                                            </StackPanel>
+                                                        </CheckBox>
+                                                    </DockPanel>
+                                                </Border>
+                                                <Border Grid.Row="5" Grid.Column="0" Style="{StaticResource ActionLine}">
+                                                    <DockPanel Style="{StaticResource ActionRow}">
+                                                        <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysDwmMmcss}">
+                                                            <StackPanel>
+                                                                <TextBlock Style="{StaticResource ActionName}" Text="Desktop compositor in MMCSS" />
+                                                                <TextBlock Style="{StaticResource ActionDesc}" Text="DWM (the desktop compositor) runs in the multimedia scheduling class while gamemode is on, for steadier frame pacing in windowed and borderless games." />
+                                                            </StackPanel>
+                                                        </CheckBox>
+                                                    </DockPanel>
+                                                </Border>
+                                                <Border Grid.Row="5" Grid.Column="2" Style="{StaticResource ActionLine}">
+                                                    <DockPanel Style="{StaticResource ActionRow}">
+                                                        <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysWifi}">
+                                                            <StackPanel>
+                                                                <TextBlock Style="{StaticResource ActionName}" Text="Wi-Fi without background scans" />
+                                                                <TextBlock Style="{StaticResource ActionDesc}" Text="Connected Wi-Fi adapters stop scanning for other networks (ping spikes) and use the driver's streaming mode. No effect on wired connections." />
+                                                            </StackPanel>
+                                                        </CheckBox>
+                                                    </DockPanel>
+                                                </Border>
+                                                <Border Grid.Row="6" Grid.Column="0" Style="{StaticResource ActionLine}">
+                                                    <DockPanel Style="{StaticResource ActionRow}">
+                                                        <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysAudio}">
+                                                            <StackPanel>
+                                                                <TextBlock Style="{StaticResource ActionName}" Text="Low-latency audio" />
+                                                                <TextBlock Style="{StaticResource ActionDesc}" Text="The default playback device runs at the driver's smallest buffer instead of 10 ms. Only if the driver supports it; can crackle under heavy CPU load." />
+                                                            </StackPanel>
+                                                        </CheckBox>
+                                                    </DockPanel>
+                                                </Border>
+                                                <Border Grid.Row="6" Grid.Column="2" Style="{StaticResource ActionLine}">
+                                                    <DockPanel Style="{StaticResource ActionRow}">
+                                                        <ComboBox DockPanel.Dock="Right" Style="{StaticResource CompactCombo}" Width="170" ItemsSource="{Binding GameCoresOptions}" DisplayMemberPath="Label"
+                                                                  SelectedValuePath="Spec" SelectedValue="{Binding SysGameCoresSpec}" IsEnabled="{Binding SysGameCores}" AutomationProperties.Name="Cores for games" />
                                                         <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysGameCores}">
-                                                            <TextBlock Text="Cores for games" VerticalAlignment="Center" />
+                                                            <StackPanel>
+                                                                <TextBlock Style="{StaticResource ActionName}" Text="Cores for games" />
+                                                                <TextBlock Style="{StaticResource ActionDesc}" Text="Listed games without a rule of their own get these cores as CPU sets; back to all cores when gamemode turns off." />
+                                                            </StackPanel>
                                                         </CheckBox>
-                                                        <ComboBox ItemsSource="{Binding GameCoresOptions}" DisplayMemberPath="Label" SelectedValuePath="Spec" SelectedValue="{Binding SysGameCoresSpec}"
-                                                                  Width="220" Margin="14,0,0,0" VerticalAlignment="Center" IsEnabled="{Binding SysGameCores}" />
+                                                    </DockPanel>
+                                                </Border>
+                                                <!-- Thread director: the whole width, with its three options under it. -->
+                                                <Border Grid.Row="7" Grid.ColumnSpan="3" Style="{StaticResource ActionLine}" Padding="0,8">
+                                                    <StackPanel>
+                                                        <DockPanel Style="{StaticResource ActionRow}" MinHeight="0">
+                                                            <ComboBox DockPanel.Dock="Right" Style="{StaticResource CompactCombo}" Width="170" ItemsSource="{Binding HeavyThreadOptions}" SelectedItem="{Binding SysHeavyThreads}"
+                                                                      ItemStringFormat="{}{0} busiest thread(s)" IsEnabled="{Binding SysDirector}" AutomationProperties.Name="Busiest threads" />
+                                                            <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysDirector}">
+                                                                <StackPanel>
+                                                                    <TextBlock Style="{StaticResource ActionName}" Text="Thread director" />
+                                                                    <TextBlock Style="{StaticResource ActionDesc}" Text="The game's busiest threads (by CPU cycles) get a core of their own that the rest of the game stays off; worker and pool threads, threads the game pinned and threads with a rule are left alone. Undone when the game closes." />
+                                                                </StackPanel>
+                                                            </CheckBox>
+                                                        </DockPanel>
+                                                        <WrapPanel Margin="46,6,0,0" IsEnabled="{Binding SysDirector}">
+                                                            <CheckBox IsChecked="{Binding SysMoveBackground}" Margin="0,2,24,2" Content="Move other programs off the game's cores" />
+                                                            <CheckBox IsChecked="{Binding SysNormalizePriorities}" Margin="0,2,24,2" Content="Lower other programs' Realtime priority and time-critical threads" />
+                                                            <CheckBox IsChecked="{Binding SysAvoidInterrupts}" Margin="0,2,24,2" Content="Avoid the processors with the most interrupt work (short trace once a minute outside gamemode)" />
+                                                        </WrapPanel>
                                                     </StackPanel>
-                                                    <TextBlock Text="Listed games without a rule of their own get these cores as CPU sets; back to all cores when gamemode turns off."
-                                                               Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" TextWrapping="Wrap" MaxWidth="440" Margin="0,2,0,0" />
-                                                </StackPanel>
-                                                <StackPanel Margin="0,8,24,0">
-                                                    <StackPanel Orientation="Horizontal">
-                                                        <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding SysDirector}">
-                                                            <TextBlock Text="Thread director" VerticalAlignment="Center" />
-                                                        </CheckBox>
-                                                        <ComboBox ItemsSource="{Binding HeavyThreadOptions}" SelectedItem="{Binding SysHeavyThreads}" ItemStringFormat="{}{0} busiest thread(s)"
-                                                                  Width="170" Margin="14,0,0,0" VerticalAlignment="Center" IsEnabled="{Binding SysDirector}" />
-                                                    </StackPanel>
-                                                    <TextBlock Text="The game's busiest threads (by CPU cycles) get a core of their own that the rest of the game stays off; worker and pool threads, threads the game pinned and threads with a rule are left alone. Undone when the game closes."
-                                                               Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5" TextWrapping="Wrap" MaxWidth="440" Margin="0,2,0,0" />
-                                                    <StackPanel Margin="50,4,0,0" IsEnabled="{Binding SysDirector}">
-                                                        <CheckBox IsChecked="{Binding SysMoveBackground}" Margin="0,2"><TextBlock Text="Move other programs off the game's cores" TextWrapping="Wrap" MaxWidth="390" /></CheckBox>
-                                                        <CheckBox IsChecked="{Binding SysNormalizePriorities}" Margin="0,2"><TextBlock Text="Lower other programs' Realtime priority and time-critical threads" TextWrapping="Wrap" MaxWidth="390" /></CheckBox>
-                                                        <CheckBox IsChecked="{Binding SysAvoidInterrupts}" Margin="0,2"><TextBlock Text="Avoid the processors with the most interrupt work (short trace once a minute outside gamemode)" TextWrapping="Wrap" MaxWidth="390" /></CheckBox>
-                                                    </StackPanel>
-                                                </StackPanel>
-                                            </UniformGrid>
-                                            </ScrollViewer>
+                                                </Border>
+                                            </Grid>
                                         </StackPanel>
-                                    </Border>
-                                    <Grid DockPanel.Dock="Top" Margin="10,8">
-                                        <StackPanel Orientation="Horizontal">
-                                            <RadioButton Style="{StaticResource Tab}" Content="On Enable" IsChecked="{Binding IsEnablePhase}" GroupName="Phase" />
-                                            <RadioButton Style="{StaticResource Tab}" Content="On Disable" IsChecked="{Binding IsDisablePhase}" GroupName="Phase" />
+
+                                        <!-- When it turns on / off: the phase's programs to open and its rules. -->
+                                        <StackPanel Visibility="{Binding ShowGamemodeActions, Converter={StaticResource VisibleIf}, ConverterParameter=false}" Margin="0,10,0,0">
+                                            <TextBlock Text="{Binding PhaseHint}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,8" />
+                                            <!-- Same columns as GamemodeRuleRowTemplate. -->
+                                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Height="28">
+                                                <Grid VerticalAlignment="Center">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="1.4*" />
+                                                        <ColumnDefinition Width="110" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="Program" Style="{StaticResource GmColumn}" Margin="12,0,0,0" />
+                                                    <TextBlock Grid.Column="1" Text="What changes" Style="{StaticResource GmColumn}" />
+                                                </Grid>
+                                            </Border>
+                                            <ItemsControl ItemsSource="{Binding GamemodeRows}" ItemTemplate="{StaticResource GamemodeRuleRowTemplate}" Focusable="False" />
+                                            <TextBlock Text="Nothing yet: add a process rule or a program to start." Foreground="{StaticResource TextSecondaryBrush}" Margin="12,12,0,0"
+                                                       Visibility="{Binding GamemodeRows, Converter={StaticResource VisibleIf}, ConverterParameter=empty}" />
                                         </StackPanel>
-                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                            <Button Style="{StaticResource Small}" Content="Start Process" Command="{Binding AddStartCommand}" />
-                                            <Button Style="{StaticResource Small}" Content="+ Add Process Rule" Margin="6,0,0,0" Command="{Binding AddGamemodeRuleCommand}" />
-                                        </StackPanel>
-                                    </Grid>
-                                    <TextBlock DockPanel.Dock="Top" Text="{Binding PhaseHint}" Foreground="{StaticResource TextSecondaryBrush}" Margin="12,0,12,8" TextWrapping="Wrap" />
-                                    <ListBox Style="{StaticResource DataList}" ItemsSource="{Binding GamemodeRows}" ItemTemplate="{StaticResource RuleRowTemplate}" Margin="4,0" />
-                                </DockPanel>
+                                    </StackPanel>
+                                </ScrollViewer>
 
                                 <!-- RTSS: on-screen display and frame limit while gamemode is on (active profile). -->
                                 <ScrollViewer Visibility="{Binding IsRtss, Converter={StaticResource BoolToVis}}" VerticalScrollBarVisibility="Auto">

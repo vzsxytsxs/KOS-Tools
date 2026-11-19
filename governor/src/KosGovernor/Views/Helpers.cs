@@ -34,6 +34,35 @@ public sealed class VisibleIf : System.Windows.Data.IValueConverter
     public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture) => throw new NotSupportedException();
 }
 
+/// <summary>True when the value (a width) is under the parameter: a layout for narrow windows.</summary>
+public sealed class NarrowerThan : System.Windows.Data.IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture) =>
+        value is double width && width > 0 && width < double.Parse((string)parameter, System.Globalization.CultureInfo.InvariantCulture);
+
+    public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture) => throw new NotSupportedException();
+}
+
+/// <summary>A button whose ContextMenu also opens on a left click, under the button (the "···" of a gamemode rule).</summary>
+public static class ClickMenu
+{
+    public static readonly DependencyProperty OpenProperty = DependencyProperty.RegisterAttached("Open", typeof(bool), typeof(ClickMenu),
+        new PropertyMetadata(false, (d, e) =>
+        {
+            if (d is not System.Windows.Controls.Button b || e.NewValue is not true) return;
+            b.Click += (_, _) =>
+            {
+                if (b.ContextMenu is not { } menu) return;
+                menu.DataContext = b.DataContext;
+                menu.PlacementTarget = b;
+                menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+                menu.IsOpen = true;
+            };
+        }));
+    public static bool GetOpen(DependencyObject d) => (bool)d.GetValue(OpenProperty);
+    public static void SetOpen(DependencyObject d, bool value) => d.SetValue(OpenProperty, value);
+}
+
 /// <summary>Explorer's "Properties" window for the file.</summary>
 static class ShellProperties
 {
