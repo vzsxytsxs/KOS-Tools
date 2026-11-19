@@ -352,6 +352,7 @@ public sealed class PeripheralRowViewModel : ObservableObject
     public string? Note => Driver is null ? Txt.PeripheralNotSupportedNote
         : _state?.Battery?.Asleep == true ? Txt.PeripheralAsleepNote
         : IsBatteryOnly ? Txt.PeripheralBatteryOnlyNote
+        : Driver is KosToolbox.Core.Peripherals.Batteries.PlayStationDriver { HasLightBar: true } ? Txt.PeripheralLightBarNote
         : IsUntested ? Txt.PeripheralUntestedNote : null;
     /// <summary>A vendor app for this brand is running (it may overwrite what the toolbox writes).</summary>
     public string? VendorNote { get; private set; }

@@ -474,6 +474,18 @@ public class PeripheralDriversTests
     }
 
     [Fact]
+    public void Ds4LightBarAndRate()
+    {
+        var p = PlayStationCodec.Ds4LightBar(0x12AB34);
+        Assert.Equal(31, p.Length);
+        Assert.Equal(0x06, p[0]); // light bar + steady blink, no rumble flag
+        Assert.Equal(new byte[] { 0, 0, 0x12, 0xAB, 0x34, 0, 0 }, p[3..10]); // motors untouched, R G B, no blink
+        Assert.Equal(250, PlayStationCodec.Rate(122, 0.5));
+        Assert.Equal(1000, PlayStationCodec.Rate(530, 0.5));
+        Assert.Equal(125, PlayStationCodec.Rate(60, 0.5));
+    }
+
+    [Fact]
     public void HeadsetControlJson()
     {
         var list = HeadsetControl.Parse("""

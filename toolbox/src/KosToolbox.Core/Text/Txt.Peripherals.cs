@@ -21,6 +21,7 @@ public static partial class Txt
     public const string PeripheralsSupportedHeader = "DEVICES", PeripheralUntested = "Untested model",
         PeripheralUntestedNote = "This model hasn't been checked on hardware yet. Every change is read back from the device, but check it behaves as expected.",
         PeripheralBatteryOnlyNote = "The toolbox reads this device's battery only; it has no settings here.",
+        PeripheralLightBarNote = "The controller can't report its light bar, so the color shown is the last one sent from here. It goes back to the default when the controller disconnects, and Steam or DS4Windows, while running, set it themselves. The polling rate is counted from its reports: the controller asks USB for it, and changing it takes a USB filter driver.",
         PeripheralPerformance = "Performance", PeripheralPower = "Power", PeripheralLighting = "Lighting",
         PeripheralDpi = "DPI", PeripheralDpiStages = "DPI stages", PeripheralPolling = "Polling rate", PeripheralBatteryLabel = "Battery",
         PeripheralCharging = "Charging", PeripheralSleep = "Sleep after (minutes)", PeripheralLowBattery = "Low-battery warning (%)",
