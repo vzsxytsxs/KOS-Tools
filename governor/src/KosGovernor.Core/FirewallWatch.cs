@@ -174,8 +174,10 @@ internal sealed class FirewallWatch(Action<FirewallAsk> ask, Action<string, stri
             Log.Info("Windows Firewall was turned on: KOS Firewall turns itself off.");
             try
             {
-                KosFirewall.TurnOff(restoreWindows: false);
-                warn("KOS Firewall is off", "Windows Firewall was turned on, so KOS Firewall turned itself off. Turn it on again on the toolbox's Firewall page.");
+                // Turned off from the page, Windows Firewall comes back on first: then the filters are already gone and this removes
+                // none, and there's nothing to tell.
+                if (KosFirewall.TurnOff(restoreWindows: false) > 0)
+                    warn("KOS Firewall is off", "Windows Firewall was turned on, so KOS Firewall turned itself off. Turn it on again on the toolbox's Firewall page.");
             }
             catch (Exception ex) { Log.Error("KOS Firewall: turning off after Windows Firewall was turned on failed", ex); }
             _stamp = default;

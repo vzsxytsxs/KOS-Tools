@@ -37,9 +37,9 @@ internal sealed class FirewallPopup(Action<FirewallAsk, bool?> answer)
         Open(ask);
     }
 
+    /// <summary>Closes it with everything open or waiting unanswered (asked again later; see WM_DESTROY).</summary>
     public void Close()
     {
-        _waiting.Clear();
         if (_hwnd != IntPtr.Zero) DestroyWindow(_hwnd);
     }
 

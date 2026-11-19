@@ -72,8 +72,20 @@ public static class KosFirewall
             config.RestoreProfiles = WindowsFirewall.Profiles.Where((_, i) => state[i]).ToList();
         }
         config.Enabled = true;
-        var result = Apply(config);
-        Save(config);
+        FirewallApplyResult result;
+        try
+        {
+            result = Apply(config);
+            Save(config);
+        }
+        catch
+        {
+            // After the commit, a failed read-back or save would leave the catch-all block in place with the config saying off
+            // (no popups, the page showing Off): take everything out again so the PC is as it was.
+            try { using var s = WfpSession.Open(dynamic: false); s.RemoveEverything(); }
+            catch (Exception cleanup) { Log.Error("KOS Firewall: removing the filters after a failed turn-on", cleanup); }
+            throw;
+        }
         Log.Info($"KOS Firewall on: {result.Filters} filters, {result.Skipped.Count} rule(s) left out.");
         if (WindowsFirewall.AnyOn) WindowsFirewall.Set(on: false);
         return result;
