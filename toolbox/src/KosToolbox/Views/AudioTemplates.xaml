@@ -32,8 +32,9 @@
     </DataTemplate>
 
     <!-- One device's settings (the Audio page's detail, and KOS Equalizer's). Each control writes its change and the device is read back;
-         a switch shows what was read (OneWay), its command writes the other value. The slider writes once it rests. -->
-    <DataTemplate DataType="{x:Type vm:AudioDeviceSettingsViewModel}">
+         a switch shows what was read (OneWay), its command writes the other value. The slider writes once it rests.
+         In two parts: the header (name, default badges, read error) and the cards; KOS Equalizer puts its own cards between them. -->
+    <DataTemplate x:Key="AudioDeviceHeader">
         <StackPanel>
             <TextBlock Style="{StaticResource Secondary}" FontSize="12" Text="{Binding FlowText}" />
             <WrapPanel Margin="0,4,0,10">
@@ -47,7 +48,11 @@
             </WrapPanel>
             <TextBlock Style="{StaticResource Secondary}" Text="{Binding Error}" Foreground="{StaticResource ErrorBrush}" Margin="0,0,0,10"
                        Visibility="{Binding Error, Converter={StaticResource NotEmptyToVis}}" />
+        </StackPanel>
+    </DataTemplate>
 
+    <DataTemplate x:Key="AudioDeviceCards">
+        <StackPanel>
             <!-- Default device: for everything (console and multimedia roles) or for communications. -->
             <Border Style="{StaticResource AudioCard}">
                 <StackPanel>
@@ -117,6 +122,13 @@
                                Visibility="{Binding HasEnhancements, Converter={StaticResource InverseBoolToVis}}" />
                 </StackPanel>
             </Border>
+        </StackPanel>
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vm:AudioDeviceSettingsViewModel}">
+        <StackPanel>
+            <ContentPresenter Content="{Binding}" ContentTemplate="{StaticResource AudioDeviceHeader}" />
+            <ContentPresenter Content="{Binding}" ContentTemplate="{StaticResource AudioDeviceCards}" />
         </StackPanel>
     </DataTemplate>
 

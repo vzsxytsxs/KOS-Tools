@@ -18,6 +18,8 @@ public static partial class Txt
     // The other KOS apps, opened from the sidebar
     public const string AppFirewall = "KOS Firewall", AppFirewallLink = "Firewall",
         AppFirewallSubtitle = "Opens KOS Firewall: the allow-list firewall, Windows Firewall and the hosts file.";
+    public const string AppEqualizer = "KOS Equalizer", AppEqualizerLink = "Equalizer",
+        AppEqualizerSubtitle = "Opens KOS Equalizer: a parametric or graphic equalizer for each playback device, with a gamemode profile.";
     public static string AppNotInstalled(string name, string path) => $"{name} isn't installed ({path}).";
     public const string PageHome = "Home", PageHomeSubtitle = "Hardware, system status and pending changes.";
 

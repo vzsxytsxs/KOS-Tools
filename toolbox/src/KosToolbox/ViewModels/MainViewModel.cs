@@ -56,7 +56,9 @@ public sealed class MainViewModel : ObservableObject
                 gpu, // includes the former Display page as a tab, the NVIDIA tool tweaks and the Driver tab
                 new NetworkPageViewModel(),
                 new PeripheralsPageViewModel(), // HID mice, keyboards and other devices: the list and each one's collections
-                new AudioPageViewModel()), // playback and recording devices: default, volume, format, exclusive mode, enhancements
+                new AudioPageViewModel(), // playback and recording devices: default, volume, format, exclusive mode, enhancements
+                // KOS Equalizer is an app of its own: this entry opens it.
+                new AppLinkViewModel("app-equalizer", Txt.AppEqualizerLink, "", Txt.AppEqualizerSubtitle, "equalizer", "KosEqualizer.exe")),
             new NavListViewModel(select, Txt.NavSystem, new StartupPageViewModel(), new ServicesPageViewModel(), new DevicesPageViewModel(),
                 new BiosPageViewModel(), // BIOS settings through SCEWIN, with a backup on every write
                 // KOS Firewall is an app of its own: this entry opens it.

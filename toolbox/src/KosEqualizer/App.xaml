@@ -1,0 +1,17 @@
+<Application x:Class="KosEqualizerApp.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnMainWindowClose">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- The toolbox's theme and shared templates, the Audio page's device settings, then this app's page. -->
+                <ResourceDictionary Source="pack://application:,,,/KosToolbox;component/Themes/Theme.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/KosToolbox;component/Views/Templates.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/KosToolbox;component/Views/GpuTemplates.xaml" /><!-- GpuSwitch, GpuSlider, GpuHint -->
+                <ResourceDictionary Source="pack://application:,,,/KosToolbox;component/Views/AudioTemplates.xaml" />
+                <ResourceDictionary Source="EqualizerTemplates.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
