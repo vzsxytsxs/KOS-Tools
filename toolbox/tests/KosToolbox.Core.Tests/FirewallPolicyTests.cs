@@ -265,3 +265,58 @@ public class WfpLayoutTests
         finally { Marshal.FreeHGlobal(e); Marshal.FreeHGlobal(drop); Marshal.FreeHGlobal(app); }
     }
 }
+
+public class FirewallRulesTests
+{
+    static FirewallRule App(string path, FirewallDirection direction = FirewallDirection.Out) => new() { Kind = FirewallRuleKind.App, Path = path, Direction = direction };
+
+    [Fact]
+    public void ChooseKeepsOneRulePerTargetAndDirection()
+    {
+        var config = new FirewallConfig();
+        FirewallRules.Choose(config, App(@"C:\Games\a.exe"), allow: true);
+        FirewallRules.Choose(config, App(@"c:\games\A.EXE"), allow: false); // same program, another case: changed, not added
+        var rule = Assert.Single(config.Rules);
+        Assert.False(rule.Allow);
+        Assert.Equal(false, FirewallRules.Current(config, App(@"C:\Games\a.exe")));
+
+        rule.Enabled = false;
+        FirewallRules.Choose(config, App(@"C:\Games\a.exe"), allow: true);
+        Assert.True(rule.Allow && rule.Enabled); // choosing again turns it back on
+
+        FirewallRules.Choose(config, App(@"C:\Games\a.exe", FirewallDirection.In), allow: true); // the other direction is its own rule
+        Assert.Equal(2, config.Rules.Count);
+
+        FirewallRules.Choose(config, App(@"C:\Games\a.exe"), allow: null);
+        Assert.Equal(FirewallDirection.In, Assert.Single(config.Rules).Direction);
+        Assert.Null(FirewallRules.Current(config, App(@"C:\Games\a.exe")));
+    }
+
+    [Fact]
+    public void ServicesStoreAppsAndCustomRulesMatch()
+    {
+        var service = new FirewallRule { Kind = FirewallRuleKind.Service, Service = "BITS", Sid = "S-1-5-80-1" };
+        Assert.True(FirewallRules.Same(service, new FirewallRule { Kind = FirewallRuleKind.Service, Service = "bits" })); // by name: the SID is looked up only to add
+        var app = new FirewallRule { Kind = FirewallRuleKind.StoreApp, Sid = "S-1-15-2-1" };
+        Assert.False(FirewallRules.Same(app, new FirewallRule { Kind = FirewallRuleKind.StoreApp, Sid = "S-1-15-2-2" }));
+        var custom = new FirewallRule { Kind = FirewallRuleKind.Custom, Name = "x" };
+        Assert.False(FirewallRules.Same(custom, custom)); // each custom rule is its own
+    }
+
+    [Fact]
+    public void PresetsAreValidAndAddedOnce()
+    {
+        var presets = FirewallRules.Ntp().Concat(FirewallRules.NetworkDiscovery()).ToList();
+        Assert.All(presets, r => Assert.Null(FirewallPolicy.Problem(r)));
+        Assert.Equal(17, presets[0].Protocol);
+        Assert.All(FirewallRules.NetworkDiscovery(), r => Assert.Equal(FirewallDirection.In, r.Direction));
+        Assert.Equal(11, FirewallRules.NetworkDiscovery().Sum(r => FirewallPolicy.Ports(r.LocalPorts)!.Count));
+
+        var config = new FirewallConfig();
+        Assert.Equal(3, FirewallRules.AddMissing(config, presets));
+        Assert.Equal(0, FirewallRules.AddMissing(config, FirewallRules.Ntp().Concat(FirewallRules.NetworkDiscovery())));
+        Assert.Equal(3, config.Rules.Count);
+        // They build into filters: none is left out.
+        Assert.Empty(FirewallPolicy.Build(config, [], _ => true).Skipped);
+    }
+}

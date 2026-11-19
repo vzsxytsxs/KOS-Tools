@@ -57,7 +57,8 @@ public sealed class MainViewModel : ObservableObject
                 new NetworkPageViewModel(),
                 new PeripheralsPageViewModel()), // HID mice, keyboards and other devices: the list and each one's collections
             new NavListViewModel(select, Txt.NavSystem, new StartupPageViewModel(), new ServicesPageViewModel(), new DevicesPageViewModel(),
-                new BiosPageViewModel()), // BIOS settings through SCEWIN, with a backup on every write
+                new BiosPageViewModel(), // BIOS settings through SCEWIN, with a backup on every write
+                new FirewallPageViewModel()), // KOS Firewall (WFP allow-list), Windows Firewall and the hosts file
             new NavListViewModel(select, Txt.NavSoftware, setup,
                 new WindowsUpdatePageViewModel(), // search, install and hide updates while Windows Update stays off
                 new DebloatPageViewModel(),

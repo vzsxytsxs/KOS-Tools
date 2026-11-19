@@ -79,6 +79,11 @@ public sealed class Tweak
     public string Source { get; set; } = "";
     /// <summary>Additional compatibility check; returns the reason it is unavailable, or null.</summary>
     public Func<string?>? Compatibility { get; set; }
+    /// <summary>
+    /// Why this option (null: values that match no option, a custom restore) can't be applied right now, read from the system;
+    /// null = allowed. <see cref="TweakEngine"/> checks it and the elevated process checks it again.
+    /// </summary>
+    public Func<string?, string?>? Refuse { get; set; }
 
     public bool NeedsAdmin => Specs.Any(s => s.Setting.MachineWide) || Scripts.Values.Any(s => s.RequiresAdmin);
     public string SearchText => $"{Name} {Description} {Tab} {Group}";

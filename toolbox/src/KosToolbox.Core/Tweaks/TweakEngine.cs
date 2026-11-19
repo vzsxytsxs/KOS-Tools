@@ -66,6 +66,8 @@ public sealed class TweakEngine
                 return new(false, before.Detail ?? Txt.Unavailable, before);
             if (before.Status == TweakStatus.ReadError)
                 return new(false, Txt.CantApplyReadError(before.Detail), before);
+            if (tweak.Refuse?.Invoke(option) is { } refused)
+                return new(false, refused, before);
             if (before.Status == TweakStatus.Matched && before.Option == option)
                 return new(true, Txt.AlreadySet(label), before);
 
@@ -145,6 +147,7 @@ public sealed class TweakEngine
         ct = CancellationToken.None;
         try
         {
+            if (tweak.Refuse?.Invoke(null) is { } refused) return new(false, refused, Query(tweak));
             var wanted = tweak.Specs.Where(s => snap.Values.ContainsKey(s.Setting.Key))
                 .Select(s => (Spec: s, Value: snap.Values[s.Setting.Key])).ToList();
             var writes = wanted.Where(w => Restorable(w.Spec, w.Value)).Select(w => (w.Spec.Setting, w.Value)).ToList();

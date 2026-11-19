@@ -770,6 +770,8 @@ public static partial class KosCatalog
             {
                 t.RequiresReboot = true; t.LessSecureOption = Off; t.Source = WinFeatures + "Firewall Enable-Disable.bat";
                 t.SecurityNote = "Without a firewall, services that listen on the network are exposed. Disabling BFE also affects VPNs and Internet Connection Sharing.";
+                // KOS Firewall's filters live in BFE: disabling it under them would leave the PC with no firewall at all.
+                t.Refuse = o => o != On && Firewall.KosFirewall.IsOn() ? Txt.FirewallToggleRefused : null;
             }),
 
         Toggle("firewall-rules", "Windows Firewall rules",

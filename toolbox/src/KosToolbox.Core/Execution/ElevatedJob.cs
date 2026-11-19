@@ -193,6 +193,7 @@ public sealed class ElevatedJob
         var tweak = Catalog.KosCatalog.Find(TweakId!) ?? throw new InvalidOperationException($"Unknown setting: {TweakId}");
         if (Option is null || tweak.Options.All(o => o.Key != Option))
             throw new InvalidOperationException($"Invalid option for {tweak.Id}: {Option}");
+        if (tweak.Refuse?.Invoke(Option) is { } refused) throw new InvalidOperationException(refused);
     }
 
     static void ValidateSnapshot(SnapshotJob s)

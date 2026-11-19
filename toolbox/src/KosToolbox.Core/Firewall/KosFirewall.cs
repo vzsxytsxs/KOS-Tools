@@ -24,6 +24,9 @@ public static class KosFirewall
     public static FirewallConfig Load() =>
         File.Exists(ConfigPath) && Problem() is null ? JsonFile.Load(ConfigPath, KosJson.Default.FirewallConfig) : new FirewallConfig();
 
+    /// <summary>Whether KOS Firewall is on, as saved (users can read the config); replaceable in tests.</summary>
+    public static Func<bool> IsOn { get; set; } = () => Load().Enabled;
+
     /// <summary>Null if the folder and file are trustworthy (not links, owned by SYSTEM/Administrators).</summary>
     public static string? Problem() =>
         GpuTuner.FolderProblem(AppPaths.TheKosRoot, Directory) ?? (File.Exists(ConfigPath) ? ToolDiscovery.OwnerProblem(ConfigPath) : null);

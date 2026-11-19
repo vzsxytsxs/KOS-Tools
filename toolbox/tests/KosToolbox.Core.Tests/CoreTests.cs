@@ -182,6 +182,49 @@ public class EngineTests : IDisposable
     }
 
     [Fact]
+    public async Task RefusedOptionChangesNothing()
+    {
+        var a = new FakeSetting("a", "1");
+        var t = Tweak.Toggle("refused", "T", "d", "p").Add(a, (Tweak.On, Target.Set("1")), (Tweak.Off, Target.Set("0")));
+        t.Refuse = o => o != Tweak.On ? "not now" : null;
+        var engine = new TweakEngine { VerifyDelay = TimeSpan.Zero, RunElevated = (_, _) => throw new InvalidOperationException("must not elevate") };
+
+        var r = await engine.ApplyAsync(t, Tweak.Off);
+        Assert.False(r.Success);
+        Assert.Equal("not now", r.Message);
+        Assert.Equal("1", a.Value);
+
+        // A custom restore (values that match no option) asks with null and is refused too.
+        a.Value = "7";
+        Assert.True((await engine.ApplyAsync(t, Tweak.On)).Success);
+        r = await engine.RestoreAsync(t, RestoreTarget.Previous);
+        Assert.False(r.Success);
+        Assert.Equal("1", a.Value);
+    }
+
+    /// <summary>The Windows Firewall toggle's Off (it disables BFE) is refused while KOS Firewall is on, in the elevated process too. Validation only: nothing is applied.</summary>
+    [Fact]
+    public void FirewallToggleOffRefusedWhileKosFirewallOn()
+    {
+        var saved = KosToolbox.Core.Firewall.KosFirewall.IsOn;
+        try
+        {
+            KosToolbox.Core.Firewall.KosFirewall.IsOn = () => true;
+            var tweak = KosCatalog.Find("firewall")!;
+            Assert.Equal(Txt.FirewallToggleRefused, tweak.Refuse!(Tweak.Off));
+            Assert.NotNull(tweak.Refuse(null));
+            Assert.Null(tweak.Refuse(Tweak.On));
+            var ex = Assert.Throws<InvalidOperationException>(() => new ElevatedJob { TweakId = "firewall", Option = Tweak.Off }.Validate());
+            Assert.Equal(Txt.FirewallToggleRefused, ex.Message);
+            new ElevatedJob { TweakId = "firewall", Option = Tweak.On }.Validate();
+
+            KosToolbox.Core.Firewall.KosFirewall.IsOn = () => false;
+            new ElevatedJob { TweakId = "firewall", Option = Tweak.Off }.Validate();
+        }
+        finally { KosToolbox.Core.Firewall.KosFirewall.IsOn = saved; }
+    }
+
+    [Fact]
     public async Task FailedVerificationIsReported()
     {
         var a = new StickySetting();
