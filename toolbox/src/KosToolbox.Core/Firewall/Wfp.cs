@@ -34,7 +34,12 @@ public sealed record WfpCondition(Guid Field, uint Match, uint Type, object Valu
 }
 
 /// <summary>A filter to add. <paramref name="Weight"/> 0..15: the higher one is evaluated first inside the sublayer.</summary>
-public sealed record WfpFilter(string Name, Guid Layer, WfpAction Action, byte Weight, IReadOnlyList<WfpCondition> Conditions, bool BootTime = false);
+/// <summary>
+/// One filter. In a non-dynamic session it's persistent (kept across restarts), or <paramref name="BootTime"/> (enforced while
+/// Windows starts), or <paramref name="UntilRestart"/>: neither, so the filter engine keeps it only until it stops (a restart).
+/// </summary>
+public sealed record WfpFilter(string Name, Guid Layer, WfpAction Action, byte Weight, IReadOnlyList<WfpCondition> Conditions, bool BootTime = false,
+    bool UntilRestart = false);
 
 /// <summary>A filter of ours as the engine has it.</summary>
 public sealed record WfpFilterInfo(Guid Key, ulong Id, string Name, Guid Layer, WfpAction Action, bool Persistent, bool BootTime);
@@ -117,7 +122,7 @@ public sealed class WfpSession : IDisposable
         {
             Key = Guid.NewGuid(), ProviderKey = mem.Guid(ProviderKey), Layer = f.Layer, SubLayer = SubLayerKey,
             // A dynamic session's filters can't be persistent; boot-time and persistent are two different filters
-            Flags = _dynamic ? 0 : f.BootTime ? Wfp.FilterFlagBootTime : Wfp.FilterFlagPersistent,
+            Flags = _dynamic || f.UntilRestart ? 0 : f.BootTime ? Wfp.FilterFlagBootTime : Wfp.FilterFlagPersistent,
             Weight = new Wfp.Value { Type = Wfp.TypeUInt8, UInt8 = f.Weight },
             NumConditions = (uint)f.Conditions.Count, Conditions = f.Conditions.Count == 0 ? IntPtr.Zero : conditions,
             ActionType = f.Action == WfpAction.Block ? Wfp.ActionBlock : Wfp.ActionPermit,

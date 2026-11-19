@@ -33,6 +33,8 @@ public sealed class FirewallRuleRow : ObservableObject
     public string Detail => Rule.Kind == FirewallRuleKind.App ? Rule.Path ?? "" : FirewallPageViewModel.Summary(Rule);
     public string Direction => FirewallPageViewModel.DirectionText(Rule.Direction);
     public bool Enabled => Rule.Enabled;
+    /// <summary>An allow until Windows restarts: no Allow/Block choice, only removal (it ends then).</summary>
+    public bool UntilRestart => Rule.UntilRestart;
     public string? Problem { get; }
     public IReadOnlyList<OptionItem> Actions { get; }
     public ICommand SetActionCommand { get; }
@@ -81,6 +83,7 @@ public sealed class FirewallEventRow
         Direction = e.Inbound ? Txt.FwIn : Txt.FwOut;
         var direction = e.Inbound ? FirewallDirection.In : FirewallDirection.Out;
         AllowCommand = new AsyncCommand(() => page.SetAppAsync(path!, true, direction), () => page.CanEdit);
+        AllowUntilRestartCommand = new AsyncCommand(() => page.SetAppUntilRestartAsync(path!, direction), () => page.CanEdit);
         BlockCommand = new AsyncCommand(() => page.SetAppAsync(path!, false, direction), () => page.CanEdit);
     }
 
@@ -94,6 +97,7 @@ public sealed class FirewallEventRow
     public string Protocol { get; }
     public string Direction { get; }
     public ICommand AllowCommand { get; }
+    public ICommand AllowUntilRestartCommand { get; }
     public ICommand BlockCommand { get; }
 }
 
@@ -109,6 +113,7 @@ public sealed class FirewallPageViewModel : PageViewModel
     // Every rebuild gives the filters new ids, and the engine's log keeps the old ones: every KOS filter id read this session.
     // shortcut: drops under ids from a rebuild made while this page never read them (KOS Engine, another run) aren't shown; upgrade if the engine logs drops itself.
     readonly HashSet<ulong> _kosIds = new();
+    HashSet<string> _filterNames = new();
     string _status = "", _windows = "";
     bool _statusWarning, _anyWindowsOff, _busy, _hostsLoaded;
     string? _bfe;
@@ -273,8 +278,13 @@ public sealed class FirewallPageViewModel : PageViewModel
             try { if (KosFirewall.Problem() is { } folder) notes.Add(folder); } catch (Exception ex) { notes.Add(ex.Message); }
             int? filters = null;
             var ids = new List<ulong>();
+            var names = new HashSet<string>();
             if (bfe is null)
-                try { ids = KosFirewall.Filters().Select(f => f.Id).ToList(); filters = ids.Count; }
+                try
+                {
+                    var list = KosFirewall.Filters();
+                    (ids, names, filters) = (list.Select(f => f.Id).ToList(), list.Select(f => f.Name).ToHashSet(StringComparer.Ordinal), list.Count);
+                }
                 catch (Exception ex) { notes.Add(Txt.FwStatusUnread(ex.Message)); }
             bool[] windows = new bool[WindowsFirewall.Profiles.Length];
             string windowsText;
@@ -288,9 +298,10 @@ public sealed class FirewallPageViewModel : PageViewModel
             catch (Exception ex) { windowsText = ex.Message; }
             try { if (config is { Enabled: true, Popups: true } && !GovernorFanCurve.EngineRunning) notes.Add(Txt.FwEngineNotRunning); }
             catch (Exception ex) { notes.Add(ex.Message); }
-            return (config, bfe, filters, ids, notes, windows, windowsText);
+            return (config, bfe, filters, ids, names, notes, windows, windowsText);
         });
         _config = r.config;
+        _filterNames = r.names;
         _bfe = r.bfe;
         _filters = r.filters;
         _kosIds.UnionWith(r.ids);
@@ -307,7 +318,9 @@ public sealed class FirewallPageViewModel : PageViewModel
         };
         Raise(nameof(KosOn));
         Raise(nameof(Popups));
-        AppRows = _config.Rules.Where(x => x.Kind == FirewallRuleKind.App).Select(x => new FirewallRuleRow(x, this)).ToList();
+        // A rule until restart shows while its filters are in the engine; after a restart it's gone (dropped at the next change).
+        AppRows = _config.Rules.Where(x => x.Kind == FirewallRuleKind.App && (!x.UntilRestart || FirewallPolicy.Holds(x, _filterNames)))
+            .Select(x => new FirewallRuleRow(x, this)).ToList();
         CustomRows = _config.Rules.Where(x => x.Kind == FirewallRuleKind.Custom).Select(x => new FirewallRuleRow(x, this)).ToList();
         foreach (var row in (_services ?? []).Concat(_storeApps ?? [])) row.Show(_config);
         CommandManager.InvalidateRequerySuggested();
@@ -471,6 +484,10 @@ public sealed class FirewallPageViewModel : PageViewModel
 
     internal Task RemoveAsync(string id, string name) =>
         ChangeAsync(c => c.Rules.RemoveAll(r => r.Id == id), () => Txt.FwRuleSet(name, null));
+
+    internal Task SetAppUntilRestartAsync(string path, FirewallDirection direction) =>
+        ChangeAsync(c => FirewallRules.AllowUntilRestart(c, new FirewallRule { Kind = FirewallRuleKind.App, Path = path, Direction = direction }),
+            () => Txt.FwAllowedUntilRestart(Path.GetFileName(path)));
 
     internal Task SetAppAsync(string path, bool allow, FirewallDirection direction) =>
         ChangeAsync(c => FirewallRules.Choose(c, new FirewallRule { Kind = FirewallRuleKind.App, Path = path, Direction = direction }, allow),

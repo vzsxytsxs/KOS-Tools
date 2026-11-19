@@ -7,6 +7,9 @@ namespace KosGovernor.Core;
 /// <summary>A program KOS Firewall blocked that has no rule yet: what the popup asks about.</summary>
 public sealed record FirewallAsk(string Path, string Name, IPAddress? Remote, int RemotePort, byte Protocol);
 
+/// <summary>The popup's answer; closing it without one is null.</summary>
+public enum FirewallAnswer { Allow, AllowUntilRestart, Block }
+
 /// <summary>
 /// Which blocked programs to ask about. A program is asked once; while its popup is open or waiting it isn't asked again, and
 /// after the popup is closed without an answer it stays blocked and is asked at its next blocked connection after
@@ -142,18 +145,23 @@ internal sealed class FirewallWatch(Action<FirewallAsk> ask, Action<string, stri
         ask(new FirewallAsk(path, Path.GetFileName(path), e.Remote, e.RemotePort, e.Protocol));
     }
 
-    /// <summary>The popup's answer (tray thread): true allow, false block, null closed (asked again later).</summary>
-    public void Answer(FirewallAsk a, bool? allow)
+    /// <summary>The popup's answer (tray thread); null = closed (asked again later).</summary>
+    public void Answer(FirewallAsk a, FirewallAnswer? answer)
     {
-        if (allow is not { } yes) { _asks.Dismissed(a.Path, DateTime.UtcNow); return; }
+        if (answer is not { } chosen) { _asks.Dismissed(a.Path, DateTime.UtcNow); return; }
         ThreadPool.QueueUserWorkItem(_ =>
         {
             try
             {
                 // Its outbound rule only, as the page sets it: an inbound rule for the same program stays.
-                var result = KosFirewall.Change(c => FirewallRules.Choose(c,
-                    new FirewallRule { Kind = FirewallRuleKind.App, Path = a.Path, Name = a.Name, Direction = FirewallDirection.Out }, yes));
-                Log.Info($"KOS Firewall: {(yes ? "allowed" : "blocked")} {a.Path} from a popup ({result?.Filters ?? 0} filters).");
+                var target = new FirewallRule { Kind = FirewallRuleKind.App, Path = a.Path, Name = a.Name, Direction = FirewallDirection.Out };
+                var result = KosFirewall.Change(c =>
+                {
+                    if (chosen == FirewallAnswer.AllowUntilRestart) FirewallRules.AllowUntilRestart(c, target);
+                    else FirewallRules.Choose(c, target, chosen == FirewallAnswer.Allow);
+                });
+                var what = chosen switch { FirewallAnswer.Allow => "allowed", FirewallAnswer.AllowUntilRestart => "allowed until restart", _ => "blocked" };
+                Log.Info($"KOS Firewall: {what} {a.Path} from a popup ({result?.Filters ?? 0} filters).");
                 _asks.Answered(a.Path);
                 _stamp = default; // read the new filter ids now
                 Wake.Set();

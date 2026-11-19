@@ -33,6 +33,41 @@ public class FirewallPolicyTests
     }
 
     [Fact]
+    public void AnAllowUntilRestartIsNotPersistentAndOutranksABlock()
+    {
+        var temp = new FirewallRule { Kind = FirewallRuleKind.App, Path = @"C:\Games\a.exe", UntilRestart = true, Allow = false }; // allows anyway
+        var plan = Build(new FirewallRule { Kind = FirewallRuleKind.App, Path = @"C:\Games\a.exe", Allow = false }, temp);
+        var filters = plan.Filters.Where(f => f.Name == FirewallPolicy.TemporaryName(temp)).ToList();
+        Assert.Equal(new[] { Wfp.LayerConnectV4, Wfp.LayerConnectV6 }, filters.Select(f => f.Layer)); // one per layer: no boot-time copy
+        Assert.All(filters, f =>
+        {
+            Assert.True(f.UntilRestart);
+            Assert.False(f.BootTime);
+            Assert.Equal(WfpAction.Permit, f.Action);
+            Assert.True(f.Weight > FirewallPolicy.WeightBlock && f.Weight < FirewallPolicy.WeightBuiltIn);
+        });
+        Assert.Contains(temp.Id, FirewallPolicy.TemporaryName(temp));
+        Assert.All(plan.Filters.Where(f => f.Name != FirewallPolicy.TemporaryName(temp)), f => Assert.False(f.UntilRestart)); // everything else stays persistent
+    }
+
+    [Fact]
+    public void RulesUntilRestartHoldOnlyWhileTheirFiltersAreInTheEngine()
+    {
+        var alive = new FirewallRule { Kind = FirewallRuleKind.App, Path = @"C:\a.exe", UntilRestart = true };
+        var restarted = new FirewallRule { Kind = FirewallRuleKind.App, Path = @"C:\b.exe", UntilRestart = true };
+        var justAdded = new FirewallRule { Kind = FirewallRuleKind.App, Path = @"C:\c.exe", UntilRestart = true };
+        var permanent = new FirewallRule { Kind = FirewallRuleKind.App, Path = @"C:\d.exe" };
+        var config = new FirewallConfig { Rules = [alive, restarted, justAdded, permanent] };
+        var engine = new HashSet<string> { FirewallPolicy.TemporaryName(alive), FirewallPolicy.NamePrefix + "allow d.exe" };
+
+        Assert.True(FirewallPolicy.Holds(alive, engine));
+        Assert.False(FirewallPolicy.Holds(restarted, engine));
+        Assert.False(FirewallPolicy.Holds(permanent, engine)); // not a rule until restart at all
+        Assert.Equal(1, FirewallPolicy.DropExpired(config, engine, new HashSet<string> { justAdded.Id }));
+        Assert.Equal([alive, justAdded, permanent], config.Rules);
+    }
+
+    [Fact]
     public void DnsClientGetsEncryptedDnsWhenItsSidIsKnown()
     {
         const string sid = "S-1-5-80-859482183-879914841-863379149-1145462774-2388618682";
@@ -322,6 +357,22 @@ public class WfpLayoutTests
 public class FirewallRulesTests
 {
     static FirewallRule App(string path, FirewallDirection direction = FirewallDirection.Out) => new() { Kind = FirewallRuleKind.App, Path = path, Direction = direction };
+
+    [Fact]
+    public void AllowUntilRestartSitsBesideThePermanentRule()
+    {
+        var config = new FirewallConfig();
+        FirewallRules.Choose(config, App(@"C:\Games\a.exe"), allow: false);
+        FirewallRules.AllowUntilRestart(config, App(@"C:\Games\a.exe"));
+        FirewallRules.AllowUntilRestart(config, App(@"c:\games\A.exe")); // again: still one
+        Assert.Equal(2, config.Rules.Count);
+        Assert.Equal(false, FirewallRules.Current(config, App(@"C:\Games\a.exe"))); // the permanent block is untouched
+        var temp = Assert.Single(config.Rules, r => r.UntilRestart);
+        Assert.True(temp.Allow && temp.Enabled);
+
+        FirewallRules.Choose(config, App(@"C:\Games\a.exe"), allow: null); // removing the permanent rule leaves the one until restart
+        Assert.Same(temp, Assert.Single(config.Rules));
+    }
 
     [Fact]
     public void ChooseKeepsOneRulePerTargetAndDirection()

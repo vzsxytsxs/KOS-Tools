@@ -15,7 +15,7 @@ public sealed record FirewallPlan(IReadOnlyList<WfpFilter> Filters, IReadOnlyLis
 /// </summary>
 public static class FirewallPolicy
 {
-    public const byte WeightBuiltIn = 15, WeightBlock = 12, WeightAllow = 10, WeightDefault = 0;
+    public const byte WeightBuiltIn = 15, WeightUntilRestart = 13, WeightBlock = 12, WeightAllow = 10, WeightDefault = 0;
     public const string NamePrefix = "KOS Firewall: ", DefaultBlockName = NamePrefix + "block everything else";
     const byte Tcp = Wfp.ProtocolTcp, Udp = Wfp.ProtocolUdp;
     const int MaxEntries = 64;
@@ -35,12 +35,14 @@ public static class FirewallPolicy
     {
         var filters = new List<WfpFilter>();
         var skipped = new List<string>();
-        void Add(string name, Layers layers, WfpAction action, byte weight, List<WfpCondition> conditions)
+        void Add(string name, Layers layers, WfpAction action, byte weight, List<WfpCondition> conditions, bool untilRestart = false)
         {
             foreach (var (layer, key) in LayerKeys)
                 if ((layers & layer) != 0)
-                    foreach (var boot in new[] { false, true })
-                        filters.Add(new WfpFilter(NamePrefix + name, key, action, weight, conditions, boot));
+                    if (untilRestart) filters.Add(new WfpFilter(name, key, action, weight, conditions, UntilRestart: true)); // gone at a restart: no boot-time copy
+                    else
+                        foreach (var boot in new[] { false, true })
+                            filters.Add(new WfpFilter(NamePrefix + name, key, action, weight, conditions, boot));
         }
 
         // Built-in allows: the PC keeps its addresses, names and local traffic whatever the rules say.
@@ -81,18 +83,36 @@ public static class FirewallPolicy
             if (addresses.Count > 0 && v6.Count == 0) layers &= Layers.V4;
             if (layers == 0) { skipped.Add($"{Label(rule)}: the protocol and the addresses are of different IP versions."); continue; }
 
-            var action = rule.Allow ? WfpAction.Permit : WfpAction.Block;
-            var weight = rule.Allow ? WeightAllow : WeightBlock;
-            var name = (rule.Allow ? "allow " : "block ") + Label(rule);
+            // A rule until restart only allows, above the block rules.
+            var allow = rule.Allow || rule.UntilRestart;
+            var action = allow ? WfpAction.Permit : WfpAction.Block;
+            var weight = rule.UntilRestart ? WeightUntilRestart : allow ? WeightAllow : WeightBlock;
+            var name = rule.UntilRestart ? TemporaryName(rule) : (allow ? "allow " : "block ") + Label(rule);
             if ((layers & Layers.V4) != 0)
-                Add(name, layers & Layers.V4, action, weight, [.. identity, .. v4.Select(a => WfpCondition.RemoteNetwork(a.Address, a.Prefix))]);
+                Add(name, layers & Layers.V4, action, weight, [.. identity, .. v4.Select(a => WfpCondition.RemoteNetwork(a.Address, a.Prefix))], rule.UntilRestart);
             if ((layers & Layers.V6) != 0)
-                Add(name, layers & Layers.V6, action, weight, [.. identity, .. v6.Select(a => WfpCondition.RemoteNetwork(a.Address, a.Prefix))]);
+                Add(name, layers & Layers.V6, action, weight, [.. identity, .. v6.Select(a => WfpCondition.RemoteNetwork(a.Address, a.Prefix))], rule.UntilRestart);
         }
 
         Add("block everything else", Layers.All, WfpAction.Block, WeightDefault, []);
         return new FirewallPlan(filters, skipped);
     }
+
+    /// <summary>The filter name of a rule until restart: its id in it, so the filters left in the engine tell which ones still hold.</summary>
+    public static string TemporaryName(FirewallRule rule) => $"{NamePrefix}allow {Label(rule)} until restart [{rule.Id}]";
+
+    /// <summary>
+    /// Whether a rule until restart still holds: one of its filters is in the filter engine (<paramref name="filterNames"/>, the KOS
+    /// filters there now). After a restart none is, whatever the clock says.
+    /// </summary>
+    public static bool Holds(FirewallRule rule, IReadOnlySet<string> filterNames) => rule.UntilRestart && filterNames.Contains(TemporaryName(rule));
+
+    /// <summary>
+    /// Drops the rules until restart that no longer hold, except <paramref name="added"/> (rule ids just added by the change, whose
+    /// filters don't exist yet). Returns how many were dropped.
+    /// </summary>
+    public static int DropExpired(FirewallConfig config, IReadOnlySet<string> filterNames, IReadOnlySet<string> added) =>
+        config.Rules.RemoveAll(r => r.UntilRestart && !added.Contains(r.Id) && !Holds(r, filterNames));
 
     public static string Label(FirewallRule rule) =>
         rule.Name is { Length: > 0 } n ? n : rule.Path is { Length: > 0 } p ? Path.GetFileName(p) : rule.Service ?? rule.Sid ?? "rule";

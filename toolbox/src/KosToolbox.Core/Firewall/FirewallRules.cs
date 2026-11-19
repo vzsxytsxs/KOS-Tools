@@ -13,7 +13,7 @@ public static class FirewallRules
     /// keeps one such rule per target, so choosing again changes it instead of adding another.
     /// </summary>
     public static bool Same(FirewallRule a, FirewallRule b) =>
-        a.Kind == b.Kind && a.Kind != FirewallRuleKind.Custom && a.Direction == b.Direction && a.Kind switch
+        a.Kind == b.Kind && a.Kind != FirewallRuleKind.Custom && a.Direction == b.Direction && a.UntilRestart == b.UntilRestart && a.Kind switch
         {
             FirewallRuleKind.App => string.Equals(a.Path, b.Path, StringComparison.OrdinalIgnoreCase),
             FirewallRuleKind.Service => string.Equals(a.Service, b.Service, StringComparison.OrdinalIgnoreCase),
@@ -27,6 +27,16 @@ public static class FirewallRules
         var existing = config.Rules.Where(r => Same(r, target)).ToList();
         foreach (var r in existing) (r.Allow, r.Enabled) = (a, true);
         if (existing.Count == 0) { target.Allow = a; target.Enabled = true; config.Rules.Add(target); }
+    }
+
+    /// <summary>
+    /// Allows the target until Windows restarts: a rule of its own beside the permanent one (which applies again after the restart).
+    /// Choosing it again keeps one such rule.
+    /// </summary>
+    public static void AllowUntilRestart(FirewallConfig config, FirewallRule target)
+    {
+        target.UntilRestart = true;
+        Choose(config, target, true);
     }
 
     /// <summary>What the target's rule is now: allow, block, or null with none.</summary>

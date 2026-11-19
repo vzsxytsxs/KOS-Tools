@@ -84,12 +84,15 @@ public static class KosFirewall
         return ServiceControl.State("BFE") == ServiceControl.StateRunning ? null : "The Base Filtering Engine service isn't running.";
     }
 
-    /// <summary>KOS's filters currently in the filter engine (persistent and boot-time).</summary>
+    /// <summary>KOS's filters currently in the filter engine (persistent, boot-time and until restart).</summary>
     public static List<WfpFilterInfo> Filters()
     {
         using var s = WfpSession.Open(dynamic: false);
         return s.Filters();
     }
+
+    /// <summary>The names of KOS's filters in the filter engine (which rules until restart still hold: <see cref="FirewallPolicy.Holds"/>).</summary>
+    public static HashSet<string> FilterNames() => Filters().Select(f => f.Name).ToHashSet(StringComparer.Ordinal);
 
     /// <summary>Turns KOS Firewall on: filters from the config, then the Windows Firewall profiles off (remembered, to turn them on again).</summary>
     public static FirewallApplyResult TurnOn()
@@ -103,6 +106,7 @@ public static class KosFirewall
             config.RestoreProfiles = WindowsFirewall.Profiles.Where((_, i) => state[i]).ToList();
         }
         config.Enabled = true;
+        FirewallPolicy.DropExpired(config, FilterNames(), new HashSet<string>()); // KOS Firewall was off, or is being redone: only what still holds
         FirewallApplyResult result;
         try
         {
@@ -159,8 +163,10 @@ public static class KosFirewall
         using var hold = Hold();
         var config = Load();
         var enabled = config.Enabled;
+        var before = config.Rules.Select(r => r.Id).ToHashSet();
         change(config);
         config.Enabled = enabled; // only TurnOn/TurnOff switch it
+        FirewallPolicy.DropExpired(config, enabled ? FilterNames() : [], config.Rules.Select(r => r.Id).Where(id => !before.Contains(id)).ToHashSet());
         var result = enabled ? Apply(config) : null;
         Save(config);
         return result;

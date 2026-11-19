@@ -28,6 +28,11 @@ public sealed class FirewallRule
     /// <summary>"1.1.1.1, 10.0.0.0/8, fe80::/10"; null or empty = any.</summary>
     public string? RemoteAddresses { get; set; }
     public DateTime Added { get; set; } = DateTime.UtcNow;
+    /// <summary>
+    /// An allow until Windows restarts: its filters aren't persistent, so a restart removes them, and the rule is dropped at the
+    /// next change once none of them is left (see <see cref="FirewallPolicy.DropExpired"/>). It outranks a block rule meanwhile.
+    /// </summary>
+    public bool UntilRestart { get; set; }
 }
 
 /// <summary>KOS Firewall's settings, in %ProgramData%\TheKOS\Firewall\config.json (admin-only); the toolbox and KOS Engine both write it.</summary>

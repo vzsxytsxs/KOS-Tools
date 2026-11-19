@@ -54,6 +54,9 @@ public static partial class Txt
     public static string FwLeftOut(string reason) => $"Left out: {reason}";
     public static string FwNoServiceSid(string service) => $"{service} has no service SID, so it can't have a rule.";
     public static string FwRuleSet(string name, bool? allow) => allow switch { true => $"{name}: allowed.", false => $"{name}: blocked.", _ => $"{name}: rule removed." };
+    public const string FwUntilRestart = "Until restart",
+        FwUntilRestartTip = "Allowed until Windows restarts. Then the program's other rule applies again, or KOS Engine asks again.";
+    public static string FwAllowedUntilRestart(string name) => $"{name}: allowed until Windows restarts.";
 
     // Custom rules
     public const string FwRuleName = "Name", FwRuleProgram = "Program (optional)", FwBrowse = "Browse…", FwRuleDirection = "Direction",

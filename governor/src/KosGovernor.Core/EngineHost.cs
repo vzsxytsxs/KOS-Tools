@@ -221,7 +221,7 @@ internal sealed class Tray : IDisposable
     IntPtr _hwnd, _icon;
     bool _hotkey;
 
-    public Tray(Engine engine, EventWaitHandle stop, Func<TaskMeter.Sample, StatusView> status, Action<FirewallAsk, bool?> firewallAnswer)
+    public Tray(Engine engine, EventWaitHandle stop, Func<TaskMeter.Sample, StatusView> status, Action<FirewallAsk, FirewallAnswer?> firewallAnswer)
     {
         _popup = new FirewallPopup(firewallAnswer);
         _engine = engine;

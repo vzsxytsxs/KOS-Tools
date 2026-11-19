@@ -6,17 +6,17 @@ using static KosGovernor.Core.NativeUi;
 namespace KosGovernor.Core;
 
 /// <summary>
-/// KOS Firewall's question in the corner above the tray: a blocked program, Allow or Block; closing it leaves the program
-/// blocked and it's asked again later. Plain Windows API like the status window, on the tray's thread. One question at a time,
-/// the others wait in line. It never takes the focus, so a game in the foreground keeps it.
+/// KOS Firewall's question in the corner above the tray: a blocked program, Allow, Until restart or Block; closing it leaves the
+/// program blocked and it's asked again later. Plain Windows API like the status window, on the tray's thread. One question at a
+/// time, the others wait in line. It never takes the focus, so a game in the foreground keeps it.
 /// </summary>
-internal sealed class FirewallPopup(Action<FirewallAsk, bool?> answer)
+internal sealed class FirewallPopup(Action<FirewallAsk, FirewallAnswer?> answer)
 {
     // Logical pixels at 96 DPI
-    const int Width = 420, Height = 172, Pad = 18, ButtonWidth = 104, ButtonHeight = 32, IconSize = 32;
+    const int Width = 420, Height = 188, Pad = 18, ButtonWidth = 96, WideButtonWidth = 124, ButtonHeight = 32, Gap = 8, IconSize = 32;
     const uint Background = 0x00141414, Text = 0x00F5F5F5, Secondary = 0x00A0A0A0, Border = 0x00333333, Hover = 0x00262626, Dark = 0x000D0D0D;
     const string ClassName = "KosFirewallPopup";
-    const int HitAllow = 0, HitBlock = 1, HitClose = 2;
+    const int HitAllow = 0, HitBlock = 1, HitClose = 2, HitUntilRestart = 3;
     /// <summary>A click counts only when pressed this long after the question appeared: a quick second click can't answer the next one unseen.</summary>
     internal const long ClickGuardMs = 1000;
     /// <summary>Questions beyond this many waiting are closed unanswered (asked again later), so a flood can't pile up on the desktop.</summary>
@@ -102,7 +102,7 @@ internal sealed class FirewallPopup(Action<FirewallAsk, bool?> answer)
     void Choose(int hit)
     {
         if (_current is not { } ask) return;
-        answer(ask, hit == HitAllow ? true : hit == HitBlock ? false : null);
+        answer(ask, hit switch { HitAllow => FirewallAnswer.Allow, HitUntilRestart => FirewallAnswer.AllowUntilRestart, HitBlock => FirewallAnswer.Block, _ => null });
         if (_waiting.TryDequeue(out var next)) Show(next);
         else
         {
@@ -111,10 +111,12 @@ internal sealed class FirewallPopup(Action<FirewallAsk, bool?> answer)
         }
     }
 
+    // Buttons right-aligned: Allow, Until restart, Block.
     static (int Left, int Top, int Right, int Bottom) HitRect(int hit) => hit switch
     {
-        HitAllow => (Width - Pad - 2 * ButtonWidth - 8, Height - Pad - ButtonHeight, Width - Pad - ButtonWidth - 8, Height - Pad),
         HitBlock => (Width - Pad - ButtonWidth, Height - Pad - ButtonHeight, Width - Pad, Height - Pad),
+        HitUntilRestart => (Width - Pad - ButtonWidth - Gap - WideButtonWidth, Height - Pad - ButtonHeight, Width - Pad - ButtonWidth - Gap, Height - Pad),
+        HitAllow => (Width - Pad - 2 * ButtonWidth - WideButtonWidth - 2 * Gap, Height - Pad - ButtonHeight, Width - Pad - ButtonWidth - WideButtonWidth - 2 * Gap, Height - Pad),
         _ => (Width - 40, 8, Width - 8, 40),
     };
 
@@ -122,7 +124,7 @@ internal sealed class FirewallPopup(Action<FirewallAsk, bool?> answer)
     {
         var dpi = (int)GetDpiForWindow(_hwnd);
         int x = (short)(l.ToInt64() & 0xFFFF) * 96 / dpi, y = (short)((l.ToInt64() >> 16) & 0xFFFF) * 96 / dpi;
-        foreach (var hit in new[] { HitAllow, HitBlock, HitClose })
+        foreach (var hit in new[] { HitAllow, HitUntilRestart, HitBlock, HitClose })
         {
             var r = HitRect(hit);
             if (x >= r.Left && x < r.Right && y >= r.Top && y < r.Bottom) return hit;
@@ -275,15 +277,18 @@ internal sealed class FirewallPopup(Action<FirewallAsk, bool?> answer)
         }
         Draw(ask.Name, title, Text, textLeft, 40, Width - Pad - textLeft, 24);
         Draw(ask.Path, small, Secondary, textLeft, 64, Width - Pad - textLeft, 20, 0x0020 | 0x0004 | 0x4000); // PATH_ELLIPSIS
-        Draw("Blocked a connection to " + Target(ask), body, Secondary, Pad, 92, Width - 2 * Pad, 24);
+        Draw("Blocked a connection to " + Target(ask), body, Secondary, Pad, 90, Width - 2 * Pad, 24);
+        Draw("Until restart allows it until Windows restarts. Closing keeps it blocked.", small, Secondary, Pad, 114, Width - 2 * Pad, 18);
 
         var allow = HitRect(HitAllow);
         Box(allow, hover == HitAllow ? 0x00FFFFFF : Text, Text);
         Draw("Allow", strong, Dark, allow.Left, allow.Top, allow.Right - allow.Left, allow.Bottom - allow.Top, 0x0020 | 0x0004 | 0x0001); // centered
-        var block = HitRect(HitBlock);
-        Box(block, hover == HitBlock ? Hover : Background, Border);
-        Draw("Block", strong, Text, block.Left, block.Top, block.Right - block.Left, block.Bottom - block.Top, 0x0020 | 0x0004 | 0x0001);
-        Draw("Closing keeps it blocked.", small, Secondary, Pad, allow.Top, allow.Left - Pad - 8, ButtonHeight);
+        foreach (var (hit, caption) in new[] { (HitUntilRestart, "Until restart"), (HitBlock, "Block") })
+        {
+            var r = HitRect(hit);
+            Box(r, hover == hit ? Hover : Background, Border);
+            Draw(caption, strong, Text, r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top, 0x0020 | 0x0004 | 0x0001);
+        }
         foreach (var f in new[] { title, body, strong, small, label }) DeleteObject(f);
     }
 
