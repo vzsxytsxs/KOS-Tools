@@ -11,7 +11,8 @@ public static class ServiceControl
 {
     public const uint TypeWin32 = 0x30, TypeDriver = 0x0B;
     const uint ScManagerConnect = 0x0001, ScManagerEnumerate = 0x0004;
-    const uint ServiceQueryConfig = 0x0001, ServiceChangeConfig = 0x0002, ServiceQueryStatus = 0x0004;
+    const uint ServiceQueryConfig = 0x0001, ServiceChangeConfig = 0x0002, ServiceQueryStatus = 0x0004, ServiceStart = 0x0010, ServiceStop = 0x0020;
+    const int ErrorServiceNotActive = 1062, ErrorServiceAlreadyRunning = 1056;
     public const uint StateStopped = 1, StateRunning = 4;
     const uint ServiceNoChange = 0xFFFFFFFF;
     const int ErrorMoreData = 234;
@@ -54,6 +55,53 @@ public static class ServiceControl
 
     [DllImport("advapi32.dll", SetLastError = true)]
     static extern bool QueryServiceStatusEx(IntPtr service, int infoLevel, out ServiceStatusProcess status, int size, out int needed);
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct ServiceStatus { public uint ServiceType, CurrentState, ControlsAccepted, Win32ExitCode, ServiceSpecificExitCode, CheckPoint, WaitHint; }
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    static extern bool ControlService(IntPtr service, uint control, out ServiceStatus status);
+
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode, EntryPoint = "StartServiceW")]
+    static extern bool StartService(IntPtr service, int argc, IntPtr argv);
+
+    /// <summary>
+    /// Stops the service (if running) and starts it again, waiting up to <paramref name="timeout"/> for each; throws
+    /// <see cref="Win32Exception"/> or <see cref="TimeoutException"/>. A service with running dependents refuses to stop (1051).
+    /// </summary>
+    public static void Restart(string name, TimeSpan timeout)
+    {
+        var scm = OpenSCManager(null, null, ScManagerConnect);
+        if (scm == IntPtr.Zero) throw new Win32Exception();
+        try
+        {
+            var svc = OpenService(scm, name, ServiceStart | ServiceStop | ServiceQueryStatus);
+            if (svc == IntPtr.Zero) throw new Win32Exception();
+            try
+            {
+                if (!ControlService(svc, 1 /*SERVICE_CONTROL_STOP*/, out _) && Marshal.GetLastWin32Error() is var stop && stop != ErrorServiceNotActive)
+                    throw new Win32Exception(stop);
+                Wait(svc, name, StateStopped, timeout);
+                if (!StartService(svc, 0, IntPtr.Zero) && Marshal.GetLastWin32Error() is var start && start != ErrorServiceAlreadyRunning)
+                    throw new Win32Exception(start);
+                Wait(svc, name, StateRunning, timeout);
+            }
+            finally { CloseServiceHandle(svc); }
+        }
+        finally { CloseServiceHandle(scm); }
+    }
+
+    static void Wait(IntPtr svc, string name, uint state, TimeSpan timeout)
+    {
+        var until = DateTime.UtcNow + timeout;
+        while (true)
+        {
+            if (!QueryServiceStatusEx(svc, 0, out var st, Marshal.SizeOf<ServiceStatusProcess>(), out _)) throw new Win32Exception();
+            if (st.CurrentState == state) return;
+            if (DateTime.UtcNow > until) throw new TimeoutException($"{name} didn't reach state {state} in {timeout.TotalSeconds:0} s (it's {st.CurrentState}).");
+            Thread.Sleep(150);
+        }
+    }
 
     /// <summary>The service's current state (<see cref="StateRunning"/>, ...); null if there is no such service or it can't be queried.</summary>
     public static uint? State(string name)

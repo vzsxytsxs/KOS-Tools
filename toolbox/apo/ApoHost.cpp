@@ -1,9 +1,11 @@
 // Test host: drives KosEqApo.dll the way the audio engine does (class factory, Initialize with a device collection naming the
 // endpoint, LockForProcess with float stereo at 48 kHz, APOProcess on buffers) and checks what comes out. Nothing is
 // registered: the DLL is loaded from its folder. The settings file for the fake endpoint is created and deleted again.
+// Run it elevated: files the DLL accepts must be owned by Administrators (an elevated process's default owner).
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <aclapi.h>
 #include <initguid.h>
 #include <mmdeviceapi.h>
 #include <audioenginebaseapo.h>
@@ -80,11 +82,42 @@ static std::wstring SettingsPath()
     return std::wstring(data) + L"\\TheKOS\\Audio\\Eq\\6b05e7a1-0000-4c6f-9a11-000000000042.eq";
 }
 
-static void WriteSettings(const char* text)
+static void WriteSettings(const char* text, const wchar_t* path = nullptr)
 {
     FILE* f = nullptr;
-    _wfopen_s(&f, SettingsPath().c_str(), L"wb");
+    _wfopen_s(&f, path ? path : SettingsPath().c_str(), L"wb");
     if (f) { fputs(text, f); fclose(f); }
+}
+
+// The DLL's status line for the fake endpoint (in this process's TEMP, as audiodg's is in its own).
+static std::string Status()
+{
+    wchar_t temp[MAX_PATH];
+    GetTempPathW(MAX_PATH, temp);
+    FILE* f = nullptr;
+    std::string text;
+    if (_wfopen_s(&f, (std::wstring(temp) + L"KosEqApo-6b05e7a1-0000-4c6f-9a11-000000000042.txt").c_str(), L"rb") == 0 && f)
+    {
+        char line[200] = {};
+        if (fgets(line, sizeof line, f)) text = line;
+        fclose(f);
+    }
+    return text;
+}
+
+// Replaces the settings with a file this user owns (not Administrators): what a standard user could plant if a folder let them.
+static bool PlantUserOwned(const char* text)
+{
+    std::wstring tmp = SettingsPath() + L".tmp";
+    WriteSettings(text, tmp.c_str());
+    HANDLE token = nullptr;
+    BYTE buffer[256];
+    DWORD size = 0;
+    bool ok = OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token) && GetTokenInformation(token, TokenUser, buffer, sizeof buffer, &size);
+    if (token) CloseHandle(token);
+    ok = ok && SetNamedSecurityInfoW(const_cast<wchar_t*>(tmp.c_str()), SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION,
+        reinterpret_cast<TOKEN_USER*>(buffer)->User.Sid, nullptr, nullptr, nullptr) == ERROR_SUCCESS;
+    return ok && MoveFileExW(tmp.c_str(), SettingsPath().c_str(), MOVEFILE_REPLACE_EXISTING);
 }
 
 int main()
@@ -194,6 +227,32 @@ int main()
     WriteSettings("");
     Sleep(1200);
     Check(std::fabs(Gain(1000)) < 0.01, "an empty file is flat");
+    Check(Status().rfind("applied:", 0) == 0, "the status file says what was applied");
+
+    // Refusals keep what was running.
+    WriteSettings("preamp 10\npeak 1000 20 1\n");
+    Sleep(1200);
+    printf("     status: %s", Status().c_str());
+    Check(std::fabs(Gain(1000)) < 0.01 && Status().find("+24 dB") != std::string::npos, "a curve boosting over +24 dB is refused");
+    if (PlantUserOwned("peak 1000 -6 1\n"))
+    {
+        Sleep(1200);
+        printf("     status: %s", Status().c_str());
+        Check(std::fabs(Gain(1000)) < 0.01 && Status().find("owned") != std::string::npos, "a file Administrators don't own is refused");
+    }
+    else Check(false, "planting a user-owned file (run elevated)");
+    DeleteFileW(SettingsPath().c_str());
+    std::wstring target = SettingsPath() + L".target";
+    WriteSettings("peak 1000 -6 1\n", target.c_str());
+    if (CreateSymbolicLinkW(SettingsPath().c_str(), target.c_str(), 0))
+    {
+        Sleep(1200);
+        printf("     status: %s", Status().c_str());
+        Check(std::fabs(Gain(1000)) < 0.01 && Status().find("link") != std::string::npos, "a link in place of the file is refused");
+        DeleteFileW(SettingsPath().c_str());
+    }
+    else printf("SKIP a link in place of the file (no symbolic link privilege)\n");
+    DeleteFileW(target.c_str());
 
     pin.u32BufferFlags = BUFFER_SILENT;
     rt->APOProcess(1, pins, 1, pouts);
@@ -210,6 +269,19 @@ int main()
     bool finite = true;
     for (float v : buffer) finite &= std::isfinite(v) != 0;
     Check(finite && us < 1000, "ten bands cost well under the buffer's time, output finite");
+
+    // A NaN in the input: that buffer goes silent and the filters start over instead of carrying it forever.
+    double before = Gain(1000);
+    for (auto& v : buffer) v = 0.1f;
+    buffer[7] = NAN;
+    pin.u32ValidFrameCount = Frames; pin.u32BufferFlags = BUFFER_VALID;
+    rt->APOProcess(1, pins, 1, pouts);
+    bool silent = true;
+    for (float v : buffer) silent &= v == 0;
+    Check(silent, "a NaN in the input silences that buffer");
+    double after = Gain(1000);
+    printf("     before the NaN %.2f dB, after %.2f dB at 1 kHz\n", before, after);
+    Check(std::isfinite(after) && std::fabs(after - before) < 0.05, "and the next buffers play as before");
 
     Check(SUCCEEDED(config->UnlockForProcess()), "UnlockForProcess");
     rt->Release();
