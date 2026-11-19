@@ -222,6 +222,18 @@ public class EqualizerTests
     }
 
     [Fact]
+    public void GraphicEqSlopeIsInterpolatedInLogFrequency()
+    {
+        // A tilt of -3 dB per decade from 0 dB at 20 Hz, given at 20, 200, 2000 and 20000 Hz only.
+        var r = EqImport.Parse("GraphicEQ: 20 0; 200 -3; 2000 -6; 20000 -9");
+        double Gain(double f) => r.Profile.Bands.Single(b => b.Frequency == f).Gain;
+        Assert.Equal(0, Gain(20), 6);
+        Assert.Equal(-3 * Math.Log10(1000 / 20.0), Gain(1000), 6); // between two points, on the log axis
+        Assert.Equal(-3 * Math.Log10(63 / 20.0), Gain(63), 6);
+        Assert.Equal(-9, Gain(20000), 6);
+    }
+
+    [Fact]
     public void ExportThenParseRoundTrips()
     {
         var p = new EqProfile { Preamp = -3.5 };
