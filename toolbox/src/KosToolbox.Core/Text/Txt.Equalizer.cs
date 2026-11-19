@@ -66,11 +66,11 @@ public static partial class Txt
         EqSuggestedTip = "A preamp that keeps the curve at or below 0 dB, so loud passages don't clip.",
         EqFlatEditor = "Flat: the device plays unchanged. Choose a profile above or create one.",
         EqAddBand = "Add band", EqRemoveBand = "Remove band", EqBandOn = "On", EqType = "Type",
-        EqFrequencyHeader = "Frequency (Hz)", EqGainHeader = "Gain (dB)", EqFrequency = "Frequency", EqGain = "Gain",
+        EqFrequencyHeader = "Frequency (Hz)", EqGainHeader = "Gain (dB)", EqFrequency = "frequency", EqGain = "gain", EqQ = "Q",
         EqNoBands = "No bands yet: Add band puts a peak filter at 1 kHz.", EqResponse = "Frequency response";
     public static string EqGraphicBands(int bands) => $"{bands} bands";
     public static string EqSuggested(double preamp) => $"Suggested ({EqDb(preamp)})";
-    public static string EqNotANumber(int band, string field) => $"Band {band}: the {field.ToLowerInvariant()} isn't a number.";
+    public static string EqNotANumber(int band, string field) => $"Band {band}: the {field} isn't a number.";
     public static string EqFilterName(EqFilterType type) => type switch
     {
         EqFilterType.LowShelf => "Low shelf", EqFilterType.HighShelf => "High shelf", EqFilterType.LowPass => "Low pass",

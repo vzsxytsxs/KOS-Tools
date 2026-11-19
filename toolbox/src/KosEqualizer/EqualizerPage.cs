@@ -55,7 +55,7 @@ public sealed class EqBandRow : ObservableObject
     public string? TextProblem =>
         Parse(_frequency) is null ? Txt.EqNotANumber(Number, Txt.EqFrequency)
         : HasGain && Parse(_gain) is null ? Txt.EqNotANumber(Number, Txt.EqGain)
-        : Parse(_q) is null ? Txt.EqNotANumber(Number, "Q") : null;
+        : Parse(_q) is null ? Txt.EqNotANumber(Number, Txt.EqQ) : null;
 
     void Edit(ref string field, string? value, Action<double> apply, [CallerMemberName] string? name = null)
     {
@@ -616,7 +616,8 @@ public sealed class EqualizerPageViewModel : PageViewModel
             (Config, ConfigError) = (null, Txt.EqConfigFailed(ex.Message));
         }
         finally { _gate.Release(); }
-        await ListAsync(readSelected: true, profiles: true);
+        foreach (var d in _devices) d.ShowProfiles(); // the new read's profiles now, before an edit could land on the old ones
+        await ListAsync(readSelected: true, profiles: false);
     }
 
     sealed record DeviceRead(string Id, string Name, AudioDevice? Device, EqStatus? Status, string? StatusError);

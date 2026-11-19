@@ -43,6 +43,7 @@ public partial class App : Application
             _settling = true;
             if (page.IsBusy) Toasts.Show(Txt.EqClosingAfterChange, ToastKind.Warning);
             await page.SettleAsync();
+            _settling = false; // this close runs the check again: an edit made meanwhile is waited for too
             window.Close();
         };
         MainWindow = window;
