@@ -254,4 +254,13 @@ public class EqualizerTests
             Assert.Equal(p.Bands[i].Enabled, r.Profile.Bands[i].Enabled);
         }
     }
+
+    [Fact]
+    public void ImportRefusesABandwidthWithNoQAndKeeps64Bands()
+    {
+        Assert.Empty(EqImport.Parse("Filter: ON PK Fc 1000 Hz Gain 3 dB BW Oct 2000").Profile.Bands);
+        var many = EqImport.Parse(string.Join('\n', Enumerable.Range(0, 70).Select(_ => "Filter: ON PK Fc 1000 Hz Gain 1 dB Q 1")));
+        Assert.Equal(64, many.Profile.Bands.Count);
+        Assert.Equal(6, many.Ignored.Count(l => l.Contains("more than 64")));
+    }
 }

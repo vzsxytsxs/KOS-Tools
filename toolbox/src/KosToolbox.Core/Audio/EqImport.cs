@@ -38,6 +38,7 @@ public static class EqImport
             {
                 var band = ParseFilter(rest);
                 if (band is null) ignored.Add($"Line {n}: not understood: {line}");
+                else if (profile.Bands.Count >= 64) ignored.Add($"Line {n}: more than 64 bands: {line}");
                 else profile.Bands.Add(band);
             }
             else if (key == "graphiceq")
@@ -146,6 +147,7 @@ public static class EqImport
                     i++;
                     if (!ReadNum(t, ref i, "", out v) || v <= 0) return null;
                     q = Equalizer.QFromOctaves(v);
+                    if (!double.IsFinite(q.Value)) return null; // a bandwidth too wide or too narrow for a Q (NaN can't be saved)
                     break;
                 default: return null;
             }

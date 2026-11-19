@@ -371,8 +371,14 @@ public static class EqRegistration
         }
         SaveJournal(journal);
         // Its settings file goes too: KOS Equalizer and KOS Engine take "the file exists" for "on" and write only then.
-        if ((GpuTuner.FolderProblem(AppPaths.TheKosRoot, EqSettingsFile.AudioDirectory) ?? GpuTuner.FolderProblem(AppPaths.TheKosRoot, EqSettingsFile.Directory)) is null)
-            File.Delete(EqSettingsFile.PathFor(endpointId));
+        // Never in the way of the restart below: a failure here only leaves the file (logged).
+        try
+        {
+            if ((GpuTuner.FolderProblem(AppPaths.TheKosRoot, EqSettingsFile.AudioDirectory) ?? GpuTuner.FolderProblem(AppPaths.TheKosRoot, EqSettingsFile.Directory)) is { } folder)
+                Log.Warn($"KOS Equalizer: {EqSettingsFile.PathFor(endpointId)} was left in place ({folder})");
+            else if (File.Exists(EqSettingsFile.PathFor(endpointId))) File.Delete(EqSettingsFile.PathFor(endpointId));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Log.Warn($"KOS Equalizer: deleting {EqSettingsFile.PathFor(endpointId)} failed: {ex.Message}"); }
         Log.Info($"KOS Equalizer off for {record.Name} ({endpointId}); left as found: {(changedSince.Count == 0 ? "none" : string.Join(", ", changedSince))}");
         RestartAudio($"KOS Equalizer is off for {record.Name}");
         return changedSince;
