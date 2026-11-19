@@ -64,6 +64,17 @@ public sealed class EqConfig
     }
 
     /// <summary>
+    /// KOS Equalizer after a change to a device's profiles (save the config first): what the device should play now goes to its
+    /// settings file, the gamemode profile while KOS Engine has gamemode on. Nothing when KOS Equalizer isn't on for the device.
+    /// Throws when the profile can't be played (<see cref="EqSettingsFile.Problem"/>) or the file can't be written.
+    /// </summary>
+    public static void Play(EqDevice device)
+    {
+        if (EqSettingsFile.Read(device.EndpointId) is null) return;
+        EqSettingsFile.Write(device.EndpointId, device.Playing(GamemodeOn));
+    }
+
+    /// <summary>
     /// KOS Engine at a gamemode switch (and at its start, with off: a gamemode it didn't end): every device KOS Equalizer is on for
     /// (it has a settings file) gets what it should play now; only a file whose text differs is written. Returns the devices written;
     /// one that fails is logged and skipped.
