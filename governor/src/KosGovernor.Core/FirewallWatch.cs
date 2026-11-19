@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Net;
 using KosToolbox.Core.Firewall;
 
@@ -51,6 +50,7 @@ internal sealed class FirewallWatch(Action<FirewallAsk> ask, Action<string, stri
     DateTime _stamp, _checked, _filtersRead;
     bool[]? _windows;
     bool _failed; // subscribing failed: not retried until the config changes
+    bool _unreadable; // the config couldn't be read: the last one read is kept, logged once
     int _blocked;
 
     public bool On => _config.Enabled;
@@ -81,9 +81,17 @@ internal sealed class FirewallWatch(Action<FirewallAsk> ask, Action<string, stri
         var changed = stamp != _stamp;
         if (changed)
         {
-            _stamp = stamp;
-            _config = KosFirewall.Load();
-            _failed = false;
+            try
+            {
+                _config = KosFirewall.Load();
+                _stamp = stamp; // only after a good read: an unreadable file is read again next time
+                _failed = _unreadable = false;
+            }
+            catch (Exception ex)
+            {
+                if (!_unreadable) Log.Error("KOS Firewall: reading the config failed; keeping the last one read", ex);
+                _unreadable = true;
+            }
         }
         if (!_config.Enabled) { Filters = 0; _catchAll = []; _blocks = []; return; }
         if (!changed && now - _filtersRead < TimeSpan.FromMinutes(1)) return;
@@ -130,10 +138,8 @@ internal sealed class FirewallWatch(Action<FirewallAsk> ask, Action<string, stri
         if (!_config.Popups || !_catchAll.Contains(e.FilterId)) return;
         if (FirewallIdentity.DosPath(e.AppDevicePath) is not { } path || !File.Exists(path)) return;
         if (!_asks.ShouldAsk(path, now)) return;
-        string name;
-        try { name = FileVersionInfo.GetVersionInfo(path).FileDescription is { Length: > 0 } d ? d.Trim() : Path.GetFileNameWithoutExtension(path); }
-        catch { name = Path.GetFileNameWithoutExtension(path); }
-        ask(new FirewallAsk(path, name, e.Remote, e.RemotePort, e.Protocol));
+        // The file name, never its own description: a program could call itself anything (and the elevated engine reads no more of it).
+        ask(new FirewallAsk(path, Path.GetFileName(path), e.Remote, e.RemotePort, e.Protocol));
     }
 
     /// <summary>The popup's answer (tray thread): true allow, false block, null closed (asked again later).</summary>
@@ -144,11 +150,9 @@ internal sealed class FirewallWatch(Action<FirewallAsk> ask, Action<string, stri
         {
             try
             {
-                var result = KosFirewall.Change(c =>
-                {
-                    c.Rules.RemoveAll(r => r.Kind == FirewallRuleKind.App && string.Equals(r.Path, a.Path, StringComparison.OrdinalIgnoreCase));
-                    c.Rules.Add(new FirewallRule { Kind = FirewallRuleKind.App, Path = a.Path, Name = a.Name, Allow = yes });
-                });
+                // Its outbound rule only, as the page sets it: an inbound rule for the same program stays.
+                var result = KosFirewall.Change(c => FirewallRules.Choose(c,
+                    new FirewallRule { Kind = FirewallRuleKind.App, Path = a.Path, Name = a.Name, Direction = FirewallDirection.Out }, yes));
                 Log.Info($"KOS Firewall: {(yes ? "allowed" : "blocked")} {a.Path} from a popup ({result?.Filters ?? 0} filters).");
                 _asks.Answered(a.Path);
                 _stamp = default; // read the new filter ids now

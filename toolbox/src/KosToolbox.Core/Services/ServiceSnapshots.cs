@@ -375,6 +375,7 @@ public static class ServiceSnapshots
             var item = map[n];
             try
             {
+                if (Firewall.KosFirewall.ServiceStartRefused(n, item.Start) is { } refused) throw new InvalidOperationException(refused);
                 try { RestoreDirect(root, n, item); }
                 catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException)
                 {

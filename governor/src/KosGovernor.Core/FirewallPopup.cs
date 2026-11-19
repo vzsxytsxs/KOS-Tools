@@ -17,19 +17,25 @@ internal sealed class FirewallPopup(Action<FirewallAsk, bool?> answer)
     const uint Background = 0x00141414, Text = 0x00F5F5F5, Secondary = 0x00A0A0A0, Border = 0x00333333, Hover = 0x00262626, Dark = 0x000D0D0D;
     const string ClassName = "KosFirewallPopup";
     const int HitAllow = 0, HitBlock = 1, HitClose = 2;
+    /// <summary>A click counts only when pressed this long after the question appeared: a quick second click can't answer the next one unseen.</summary>
+    internal const long ClickGuardMs = 1000;
+    /// <summary>Questions beyond this many waiting are closed unanswered (asked again later), so a flood can't pile up on the desktop.</summary>
+    internal const int MaxWaiting = 20;
 
     readonly Queue<FirewallAsk> _waiting = new();
     WndProc? _proc;
     bool _registered, _tracking;
     IntPtr _hwnd, _icon;
     FirewallAsk? _current;
-    int _hover = -1;
+    int _hover = -1, _pressed = -1;
+    long _shownAt;
 
     /// <summary>Shows the question now, or after the ones before it (tray thread).</summary>
     public void Add(FirewallAsk ask)
     {
         if (_current is not null)
         {
+            if (_waiting.Count >= MaxWaiting) { answer(ask, null); return; }
             _waiting.Enqueue(ask);
             InvalidateRect(_hwnd, IntPtr.Zero, false);
             return;
@@ -70,7 +76,8 @@ internal sealed class FirewallPopup(Action<FirewallAsk, bool?> answer)
     void Show(FirewallAsk ask)
     {
         _current = ask;
-        _hover = -1;
+        _hover = _pressed = -1;
+        _shownAt = Environment.TickCount64;
         if (_icon != IntPtr.Zero) { DestroyIcon(_icon); _icon = IntPtr.Zero; }
         try { if (ExtractIconEx(ask.Path, 0, out var large, IntPtr.Zero, 1) > 0) _icon = large; }
         catch { _icon = IntPtr.Zero; }
@@ -85,6 +92,12 @@ internal sealed class FirewallPopup(Action<FirewallAsk, bool?> answer)
         int w = Width * dpi / 96, h = Height * dpi / 96, margin = 12 * dpi / 96;
         SetWindowPos(_hwnd, (IntPtr)(-1), work.Right - w - margin, work.Bottom - h - margin, w, h, 0x0010 | 0x0040); // HWND_TOPMOST; NOACTIVATE | SHOWWINDOW
     }
+
+    /// <summary>The button a press lands on, or -1 when it comes before <see cref="ClickGuardMs"/>.</summary>
+    internal static int Pressed(int hit, long sinceShownMs) => sinceShownMs >= ClickGuardMs ? hit : -1;
+
+    /// <summary>The button a release chooses: the one the press started on, released on it; otherwise none (-1).</summary>
+    internal static int Released(int pressed, int hit) => pressed >= 0 && pressed == hit ? hit : -1;
 
     void Choose(int hit)
     {
@@ -158,8 +171,15 @@ internal sealed class FirewallPopup(Action<FirewallAsk, bool?> answer)
             case 0x0020 when (l.ToInt64() & 0xFFFF) == 1: // WM_SETCURSOR over the client area
                 SetCursor(LoadCursor(IntPtr.Zero, (IntPtr)(_hover >= 0 ? 32649 : 32512))); // IDC_HAND / IDC_ARROW
                 return (IntPtr)1;
+            case 0x0201: // WM_LBUTTONDOWN
+                _pressed = Pressed(Hit(l), Environment.TickCount64 - _shownAt);
+                return IntPtr.Zero;
             case 0x0202: // WM_LBUTTONUP
-                if (Hit(l) is var chosen and >= 0) Choose(chosen);
+                {
+                    var chosen = Released(_pressed, Hit(l));
+                    _pressed = -1;
+                    if (chosen >= 0) Choose(chosen);
+                }
                 return IntPtr.Zero;
             case 0x02E0: // WM_DPICHANGED
                 Place();

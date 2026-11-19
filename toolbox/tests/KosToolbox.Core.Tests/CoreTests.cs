@@ -217,9 +217,14 @@ public class EngineTests : IDisposable
             var ex = Assert.Throws<InvalidOperationException>(() => new ElevatedJob { TweakId = "firewall", Option = Tweak.Off }.Validate());
             Assert.Equal(Txt.FirewallToggleRefused, ex.Message);
             new ElevatedJob { TweakId = "firewall", Option = Tweak.On }.Validate();
+            // The Startup page and a service snapshot restore ask the same: BFE disabled, nothing else.
+            Assert.Equal(Txt.FirewallToggleRefused, KosToolbox.Core.Firewall.KosFirewall.ServiceStartRefused("bfe", 4));
+            Assert.Null(KosToolbox.Core.Firewall.KosFirewall.ServiceStartRefused("BFE", 2));
+            Assert.Null(KosToolbox.Core.Firewall.KosFirewall.ServiceStartRefused("mpssvc", 4));
 
             KosToolbox.Core.Firewall.KosFirewall.IsOn = () => false;
             new ElevatedJob { TweakId = "firewall", Option = Tweak.Off }.Validate();
+            Assert.Null(KosToolbox.Core.Firewall.KosFirewall.ServiceStartRefused("BFE", 4));
         }
         finally { KosToolbox.Core.Firewall.KosFirewall.IsOn = saved; }
     }

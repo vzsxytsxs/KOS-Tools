@@ -185,6 +185,7 @@ public sealed class ServiceStartupProvider(bool drivers) : IStartupProvider
     /// </summary>
     internal static void Apply(ServiceStartChange c)
     {
+        if (Firewall.KosFirewall.ServiceStartRefused(c.Name, c.Start) is { } refused) throw new InvalidOperationException(refused);
         try
         {
             ServiceControl.SetStartType(c.Name, c.Start, c.Delayed is null ? null : c.Delayed == 1);

@@ -163,6 +163,59 @@ public class FirewallPolicyTests
     public void SidsAreChecked(string sid, string prefix, bool ok) => Assert.Equal(ok, FirewallPolicy.IsSid(sid, prefix));
 }
 
+/// <summary>Reading the config: a decision is never taken on a default made up from a file that's there but can't be read.</summary>
+public class KosFirewallConfigTests : IDisposable
+{
+    readonly string dir = Directory.CreateTempSubdirectory("kos-fw-").FullName;
+    string Config => Path.Combine(dir, "config.json");
+    public void Dispose() => Directory.Delete(dir, true);
+
+    [Fact]
+    public void NoFileIsOffWithNoRules()
+    {
+        var c = KosFirewall.Read(Config, () => null);
+        Assert.False(c.Enabled);
+        Assert.Empty(c.Rules);
+    }
+
+    [Fact]
+    public void AGoodFileIsRead()
+    {
+        File.WriteAllText(Config, """{"Enabled":true,"Popups":false,"RestoreProfiles":["Public"],"Rules":[{"Kind":0,"Path":"C:\\a.exe","Allow":true}]}""");
+        var c = KosFirewall.Read(Config, () => null);
+        Assert.True(c.Enabled);
+        Assert.Equal(["Public"], c.RestoreProfiles);
+        Assert.Equal(@"C:\a.exe", Assert.Single(c.Rules).Path);
+    }
+
+    [Theory]
+    [InlineData("not json")]
+    [InlineData("null")]
+    [InlineData("")]
+    public void ABrokenFileThrows(string text)
+    {
+        File.WriteAllText(Config, text);
+        Assert.Throws<InvalidOperationException>(() => KosFirewall.Read(Config, () => null));
+    }
+
+    [Fact]
+    public void AFileHeldOpenByAnotherProcessThrows()
+    {
+        File.WriteAllText(Config, """{"Enabled":true}""");
+        using var held = new FileStream(Config, FileMode.Open, FileAccess.Read, FileShare.None);
+        var ex = Assert.Throws<InvalidOperationException>(() => KosFirewall.Read(Config, () => null));
+        Assert.IsAssignableFrom<IOException>(ex.InnerException);
+    }
+
+    [Fact]
+    public void ARefusedFolderOrFileThrows()
+    {
+        File.WriteAllText(Config, """{"Enabled":false}""");
+        var ex = Assert.Throws<InvalidOperationException>(() => KosFirewall.Read(Config, () => "not owned by Administrators"));
+        Assert.Equal("not owned by Administrators", ex.Message);
+    }
+}
+
 public class FirewallIdentityTests
 {
     [Fact]

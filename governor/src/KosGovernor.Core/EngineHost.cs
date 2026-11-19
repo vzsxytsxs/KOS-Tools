@@ -119,7 +119,8 @@ public static class EngineHost
         {
             var removed = KosToolbox.Core.Firewall.KosFirewall.TurnOff(restoreWindows: true);
             Log.Info($"KOS Firewall turned off from the command line: {removed} filter(s) removed.");
-            NativeUi.MessageBox(IntPtr.Zero, $"KOS Firewall is off: {removed} filter{(removed == 1 ? "" : "s")} removed. Windows Firewall is back as it was before KOS Firewall was turned on.", Caption, 0x40); // MB_ICONINFORMATION
+            var (windows, allOn) = WindowsFirewallNow();
+            NativeUi.MessageBox(IntPtr.Zero, $"KOS Firewall is off: {removed} filter{(removed == 1 ? "" : "s")} removed. {windows}", Caption, allOn ? 0x40u : 0x30u); // MB_ICONINFORMATION / MB_ICONWARNING
             return 0;
         }
         catch (Exception ex)
@@ -128,6 +129,21 @@ public static class EngineHost
             NativeUi.MessageBox(IntPtr.Zero, $"KOS Firewall couldn't be turned off: {ex.Message}", Caption, 0x10); // MB_ICONERROR
             return 1;
         }
+    }
+
+    /// <summary>Windows Firewall as read now, in a sentence, and whether every profile is on.</summary>
+    static (string Text, bool AllOn) WindowsFirewallNow()
+    {
+        try
+        {
+            if (!KosToolbox.Core.Firewall.WindowsFirewall.ServiceRunning) return ("The Windows Firewall service isn't running: this PC has no firewall now.", false);
+            var state = KosToolbox.Core.Firewall.WindowsFirewall.State();
+            var off = KosToolbox.Core.Firewall.WindowsFirewall.Profiles.Where((_, i) => !state[i]).ToList();
+            return off.Count == 0
+                ? ("Windows Firewall is on.", true)
+                : ($"Windows Firewall is off for {string.Join(", ", off)} networks: there is no firewall on them. Turn it on in Windows Security or on the toolbox's Firewall page.", false);
+        }
+        catch (Exception ex) { return ($"Windows Firewall's state couldn't be read: {ex.Message}", false); }
     }
 
     /// <summary>What the status window's lines are built from; the files are read only while it is open.</summary>

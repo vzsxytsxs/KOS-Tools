@@ -416,7 +416,7 @@ public sealed class FirewallPageViewModel : PageViewModel
     // ---------- changes (each one a click; the result is what was read back) ----------
 
     /// <summary>Runs a change, reads everything back and reports it; rules the filters left out become a warning.</summary>
-    async Task RunAsync(Func<Task<IReadOnlyList<string>?>> change, Func<string> done)
+    async Task RunAsync(Func<Task<IReadOnlyList<string>?>> change, Func<string> done, Func<bool>? warn = null)
     {
         if (!CanEdit) return;
         IsBusy = true;
@@ -424,7 +424,7 @@ public sealed class FirewallPageViewModel : PageViewModel
         {
             var skipped = await change();
             await ReadAsync();
-            Toasts.Show(done(), StatusWarning ? ToastKind.Warning : ToastKind.Success);
+            Toasts.Show(done(), StatusWarning || warn?.Invoke() == true ? ToastKind.Warning : ToastKind.Success);
             if (skipped is { Count: > 0 }) Toasts.Show(Txt.FwSkipped(skipped), ToastKind.Warning);
         }
         catch (Exception ex)
@@ -446,7 +446,7 @@ public sealed class FirewallPageViewModel : PageViewModel
         RunAsync(async () => (await Task.Run(() => KosFirewall.Change(change)))?.Skipped, () => done() + " " + Txt.FwSaved(_config.Enabled ? Status : null));
 
     Task ToggleKosAsync() => _config.Enabled
-        ? RunAsync(async () => { await Task.Run(() => KosFirewall.TurnOff(restoreWindows: true)); return null; }, () => Txt.FwTurnedOff(WindowsState))
+        ? RunAsync(async () => { await Task.Run(() => KosFirewall.TurnOff(restoreWindows: true)); return null; }, () => Txt.FwTurnedOff(WindowsState), () => _anyWindowsOff)
         : RunAsync(async () => (await Task.Run(KosFirewall.TurnOn)).Skipped, () => Txt.FwTurnedOn(Status));
 
     Task TogglePopupsAsync()
@@ -461,7 +461,7 @@ public sealed class FirewallPageViewModel : PageViewModel
         await Task.Run(() =>
         {
             WindowsFirewall.Set(on: true);
-            if (KosFirewall.Load().Enabled) KosFirewall.TurnOff(restoreWindows: false);
+            if (KosFirewall.IsOn()) KosFirewall.TurnOff(restoreWindows: false); // an unreadable config counts as on: turning off is safe twice
         });
         return null;
     }, () => Txt.FwWindowsTurnedOn(WindowsState, _config.Enabled));

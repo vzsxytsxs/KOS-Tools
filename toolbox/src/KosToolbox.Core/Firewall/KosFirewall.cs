@@ -1,6 +1,8 @@
+using System.Text.Json;
 using KosToolbox.Core.Gpu;
 using KosToolbox.Core.Interop;
 using KosToolbox.Core.Persistence;
+using KosToolbox.Core.Text;
 using KosToolbox.Core.Tools;
 
 namespace KosToolbox.Core.Firewall;
@@ -20,12 +22,36 @@ public static class KosFirewall
     public static string ConfigPath => Path.Combine(Directory, "config.json");
     const string MutexName = @"Global\KosFirewall.Apply";
 
-    /// <summary>The saved config; a default (off, no rules) with no file or with the folder/file refused.</summary>
-    public static FirewallConfig Load() =>
-        File.Exists(ConfigPath) && Problem() is null ? JsonFile.Load(ConfigPath, KosJson.Default.FirewallConfig) : new FirewallConfig();
+    /// <summary>
+    /// The saved config; a default (off, no rules) when there's no file. Throws when the file is there but refused, unreadable (a
+    /// user can hold it open: users can read it) or not a config: a decision taken on a default could leave neither firewall on.
+    /// </summary>
+    public static FirewallConfig Load() => Read(ConfigPath, Problem);
 
-    /// <summary>Whether KOS Firewall is on, as saved (users can read the config); replaceable in tests.</summary>
-    public static Func<bool> IsOn { get; set; } = () => Load().Enabled;
+    internal static FirewallConfig Read(string path, Func<string?> problem)
+    {
+        if (!File.Exists(path)) return new FirewallConfig();
+        if (problem() is { } refused) throw new InvalidOperationException(refused);
+        try
+        {
+            return JsonSerializer.Deserialize(File.ReadAllText(path), KosJson.Default.FirewallConfig)
+                ?? throw new InvalidDataException("The file holds no config.");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidDataException)
+        {
+            throw new InvalidOperationException($"KOS Firewall's config ({path}) can't be read: {ex.Message}", ex);
+        }
+    }
+
+    /// <summary>Whether KOS Firewall is on, as saved; an unreadable config counts as on (refuse rather than guess). Replaceable in tests.</summary>
+    public static Func<bool> IsOn { get; set; } = () => { try { return Load().Enabled; } catch { return true; } };
+
+    /// <summary>
+    /// Why a service start change is refused: the Base Filtering Engine disabled while KOS Firewall is on (its boot-time filters
+    /// would stay with nothing to remove them). Null otherwise. Every page that changes a service's start type asks this.
+    /// </summary>
+    public static string? ServiceStartRefused(string service, int start) =>
+        start == 4 && string.Equals(service, "BFE", StringComparison.OrdinalIgnoreCase) && IsOn() ? Txt.FirewallToggleRefused : null;
 
     /// <summary>Null if the folder and file are trustworthy (not links, owned by SYSTEM/Administrators).</summary>
     public static string? Problem() =>
@@ -38,14 +64,16 @@ public static class KosFirewall
         JsonFile.Save(ConfigPath, config, KosJson.Default.FirewallConfig);
     }
 
-    /// <summary>The installed KOS programs (always allowed out), plus the one running this code.</summary>
+    /// <summary>
+    /// The installed KOS programs (always allowed out). Only the Program Files copies: a copy running from a folder its user can
+    /// write would make that path an allow above every block rule, for whatever is put there later.
+    /// </summary>
     public static IEnumerable<string> KosPrograms()
     {
         var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "KOS");
         yield return Path.Combine(root, "toolbox", "KosToolbox.exe");
         yield return Path.Combine(root, "governor", "KosGovernor.exe");
         yield return Path.Combine(root, "engine", "KosEngine.exe");
-        if (Environment.ProcessPath is { } self) yield return self;
     }
 
     /// <summary>Why KOS Firewall can't run here (the Base Filtering Engine is disabled or stopped), or null.</summary>
@@ -96,18 +124,23 @@ public static class KosFirewall
 
     /// <summary>
     /// Turns KOS Firewall off: the Windows Firewall profiles it turned off go back on first (when <paramref name="restoreWindows"/>),
-    /// then every KOS filter, the sublayer and the provider are deleted. Returns how many filters there were.
+    /// then every KOS filter, the sublayer and the provider are deleted. Returns how many filters there were. It's the way back, so
+    /// it needs neither the lock nor a readable config: with the config unreadable every profile goes back on and the config is
+    /// left as it is (saving would drop its rules). Callers read Windows Firewall back to say what is on.
     /// </summary>
     public static int TurnOff(bool restoreWindows)
     {
-        using var hold = Hold();
-        var config = Load();
-        if (restoreWindows && config.RestoreProfiles.Count > 0)
-            try { WindowsFirewall.Set(on: true, config.RestoreProfiles); }
+        using var hold = Hold(required: false);
+        FirewallConfig? config;
+        try { config = Load(); }
+        catch (Exception ex) { Log.Error("KOS Firewall: turning off with the config unreadable; every Windows Firewall profile goes back on", ex); config = null; }
+        var restore = config?.RestoreProfiles ?? [.. WindowsFirewall.Profiles];
+        if (restoreWindows && restore.Count > 0)
+            try { WindowsFirewall.Set(on: true, restore); }
             catch (Exception ex) { Log.Error("Turning Windows Firewall back on", ex); }
         int removed;
         using (var s = WfpSession.Open(dynamic: false)) removed = s.RemoveEverything();
-        if (config.Enabled || config.RestoreProfiles.Count > 0)
+        if (config is not null && (config.Enabled || config.RestoreProfiles.Count > 0))
         {
             config.Enabled = false;
             config.RestoreProfiles = new();
@@ -151,14 +184,31 @@ public static class KosFirewall
         return new FirewallApplyResult(count, plan.Skipped);
     }
 
-    /// <summary>The machine-wide lock every change takes (an abandoned one, from a process that died, is taken over).</summary>
-    static IDisposable Hold()
+    /// <summary>
+    /// The machine-wide lock every change takes (an abandoned one, from a process that died, is taken over). Any user can create or
+    /// hold a Global\ mutex, so turning off (<paramref name="required"/> false) goes ahead without it after a short wait: removing
+    /// the filters and turning Windows Firewall on is safe to do twice. Shortcut: a user holding it still blocks every other change
+    /// (never the way out); an admin-only lock would close that.
+    /// </summary>
+    static IDisposable? Hold(bool required = true)
     {
-        var mutex = new Mutex(false, MutexName);
-        try { if (!mutex.WaitOne(TimeSpan.FromSeconds(30))) throw new TimeoutException("Another KOS Firewall change is still running."); }
-        catch (AbandonedMutexException) { }
-        catch { mutex.Dispose(); throw; }
-        return new Release(mutex);
+        Mutex? mutex = null;
+        try
+        {
+            mutex = new Mutex(false, MutexName);
+            bool taken;
+            try { taken = mutex.WaitOne(TimeSpan.FromSeconds(required ? 30 : 5)); }
+            catch (AbandonedMutexException) { taken = true; }
+            if (taken) return new Release(mutex);
+            throw new TimeoutException("Another KOS Firewall change is still running.");
+        }
+        catch (Exception ex) when (!required)
+        {
+            mutex?.Dispose();
+            Log.Warn($"KOS Firewall: turning off without the change lock ({ex.Message}).");
+            return null;
+        }
+        catch { mutex?.Dispose(); throw; }
     }
 
     sealed class Release(Mutex mutex) : IDisposable

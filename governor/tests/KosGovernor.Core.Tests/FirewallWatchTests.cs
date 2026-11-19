@@ -25,6 +25,19 @@ public class FirewallWatchTests
     }
 
     [Fact]
+    public void PopupClicksCountOnlyWhenPressedAndReleasedOnTheSameButtonAfterTheGuard()
+    {
+        const int Allow = 0, Block = 1;
+        Assert.Equal(-1, FirewallPopup.Pressed(Allow, 0)); // the question just changed: a click already on its way doesn't answer it
+        Assert.Equal(-1, FirewallPopup.Pressed(Allow, FirewallPopup.ClickGuardMs - 1));
+        Assert.Equal(Allow, FirewallPopup.Pressed(Allow, FirewallPopup.ClickGuardMs));
+        Assert.Equal(Allow, FirewallPopup.Released(Allow, Allow));
+        Assert.Equal(-1, FirewallPopup.Released(Allow, Block)); // pressed on one, released on the other
+        Assert.Equal(-1, FirewallPopup.Released(-1, Allow)); // a release with no press (or one inside the guard)
+        Assert.Equal(-1, FirewallPopup.Released(Allow, -1)); // dragged off the button
+    }
+
+    [Fact]
     public void PopupNamesTheTarget()
     {
         Assert.Equal("1.1.1.1:443 (TCP)", FirewallPopup.Target(new FirewallAsk(@"C:\a.exe", "A", IPAddress.Parse("1.1.1.1"), 443, 6)));
