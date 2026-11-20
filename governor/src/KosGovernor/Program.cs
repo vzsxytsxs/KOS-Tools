@@ -29,6 +29,7 @@ public static class Program
         using var single = new Mutex(true, Names.UiMutex, out var created);
         if (!created)
         {
+            AllowSetForegroundWindow(-1); // this start is in front: the open window may take the focus
             Names.Signal(Names.ShowUi);
             return 0;
         }
@@ -38,4 +39,6 @@ public static class Program
         app.InitializeComponent();
         return app.Run();
     }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool AllowSetForegroundWindow(int processId);
 }

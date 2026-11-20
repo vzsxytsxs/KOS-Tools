@@ -16,6 +16,7 @@ public static class Program
         // As in the toolbox: loaded now from inside the .exe, so closing doesn't crash if the .exe was replaced meanwhile.
         System.Reflection.Assembly.Load("System.Diagnostics.Tracing");
         Log.Initialize();
+        if (!SingleInstance.Claim("KosEqualizer")) return 0; // already open: its window comes to the front
         var app = new App();
         app.InitializeComponent();
         return app.Run();
@@ -33,7 +34,7 @@ public partial class App : Application
         Log.Info($"KOS Equalizer {typeof(App).Assembly.GetName().Version} started (administrator: {Elevation.IsAdmin}).");
         Motion.Install();
         var page = new EqualizerPageViewModel();
-        var window = new AppWindow(new AppWindowViewModel(Txt.AppEqualizer, page), "pack://application:,,,/Assets/kos.ico");
+        var window = new AppWindow(new AppWindowViewModel(Txt.AppEqualizer, page), "pack://application:,,,/Assets/kos-equalizer.ico");
         // Edits waiting for their pause are saved, and a turn on or off finishes, before the window closes.
         window.Closing += async (_, args) =>
         {
@@ -47,6 +48,7 @@ public partial class App : Application
             window.Close();
         };
         MainWindow = window;
+        SingleInstance.ShowOnRequest(window);
         window.Show(); // the window tells the page it's shown
         MainViewModel.Fire(page.RefreshAsync());
     }

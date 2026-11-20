@@ -16,6 +16,7 @@ public static class Program
         // As in the toolbox: loaded now from inside the .exe, so closing doesn't crash if the .exe was replaced meanwhile.
         System.Reflection.Assembly.Load("System.Diagnostics.Tracing");
         Log.Initialize();
+        if (!SingleInstance.Claim("KosFirewall")) return 0; // already open: its window comes to the front
         var app = new App();
         app.InitializeComponent();
         return app.Run();
@@ -31,8 +32,9 @@ public partial class App : Application
         Log.Info($"KOS Firewall {typeof(App).Assembly.GetName().Version} started (administrator: {Elevation.IsAdmin}).");
         Motion.Install();
         var page = new FirewallPageViewModel();
-        var window = new AppWindow(new AppWindowViewModel(Txt.AppFirewall, page), "pack://application:,,,/Assets/kos.ico");
+        var window = new AppWindow(new AppWindowViewModel(Txt.AppFirewall, page), "pack://application:,,,/Assets/kos-firewall.ico");
         MainWindow = window;
+        SingleInstance.ShowOnRequest(window);
         window.Show(); // the window tells the page it's shown
         MainViewModel.Fire(page.RefreshAsync());
     }

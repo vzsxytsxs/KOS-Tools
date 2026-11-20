@@ -71,7 +71,40 @@
                                         </Border.Style>
                                     </Border>
                                     <ListBox Style="{StaticResource NavList}" ItemsSource="{Binding Pages}" SelectedItem="{Binding Selected, Mode=TwoWay}"
-                                             AutomationProperties.Name="{Binding Title}" />
+                                             AutomationProperties.Name="{Binding Title}" Visibility="{Binding IsLinks, Converter={StaticResource InverseBoolToVis}}" />
+                                    <!-- KOS Apps: buttons that open the other apps (or bring them to the front); never selected, the page stays. -->
+                                    <ItemsControl ItemsSource="{Binding Pages}" Focusable="False" Visibility="{Binding IsLinks, Converter={StaticResource BoolToVis}}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Button Style="{StaticResource NavButton}" Margin="8,0,8,1" Command="{Binding OpenCommand}"
+                                                        ToolTip="{Binding Subtitle}" AutomationProperties.Name="{Binding Title}">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions><ColumnDefinition Width="44" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                        <TextBlock x:Name="glyph" Style="{StaticResource Icon}" Text="{Binding Glyph}" FontSize="16" HorizontalAlignment="Center"
+                                                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                                                        <Path x:Name="drawn" Data="{Binding IconPath}" Stretch="Uniform" Width="16" Height="16" StrokeThickness="1.4"
+                                                              StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Visibility="Collapsed"
+                                                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                              HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                        <TextBlock x:Name="label" Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                                                        <TextBlock x:Name="open" Grid.Column="2" Style="{StaticResource Icon}" Text="&#xE8A7;" FontSize="11" Margin="6,0,10,0"
+                                                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" ToolTip="{x:Static t:Txt.OpenApp}" />
+                                                    </Grid>
+                                                </Button>
+                                                <DataTemplate.Triggers>
+                                                    <DataTrigger Binding="{Binding IconPath, Converter={StaticResource NotEmptyToVis}}" Value="Visible">
+                                                        <Setter TargetName="glyph" Property="Visibility" Value="Collapsed" />
+                                                        <Setter TargetName="drawn" Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding DataContext.NavCollapsed, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                                        <Setter TargetName="label" Property="Visibility" Value="Collapsed" />
+                                                        <Setter TargetName="open" Property="Visibility" Value="Collapsed" />
+                                                    </DataTrigger>
+                                                </DataTemplate.Triggers>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
                                 </StackPanel>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>

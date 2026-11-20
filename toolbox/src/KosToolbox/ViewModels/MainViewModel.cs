@@ -20,6 +20,8 @@ public sealed class NavListViewModel(Action<PageViewModel> select, string title,
     public string Header { get; } = title.ToUpperInvariant();
     public bool HasHeader => Title.Length > 0;
     public IReadOnlyList<PageViewModel> Pages { get; } = pages;
+    /// <summary>The KOS Apps group: buttons that open the other apps, shown without a selection.</summary>
+    public bool IsLinks { get; } = pages.All(p => p is AppLinkViewModel);
     public PageViewModel? Selected { get => _selected; set { if (value is not null) select(value); } }
 
     public void Show(PageViewModel current) => Set(ref _selected, Pages.Contains(current) ? current : null, nameof(Selected));
@@ -56,13 +58,9 @@ public sealed class MainViewModel : ObservableObject
                 gpu, // includes the former Display page as a tab, the NVIDIA tool tweaks and the Driver tab
                 new NetworkPageViewModel(),
                 new PeripheralsPageViewModel(), // HID mice, keyboards and other devices: the list and each one's collections
-                new AudioPageViewModel(), // playback and recording devices: default, volume, format, exclusive mode, enhancements
-                // KOS Equalizer is an app of its own: this entry opens it.
-                new AppLinkViewModel("app-equalizer", Txt.AppEqualizerLink, "", Txt.AppEqualizerSubtitle, "equalizer", "KosEqualizer.exe")),
+                new AudioPageViewModel()), // playback and recording devices: default, volume, format, exclusive mode, enhancements
             new NavListViewModel(select, Txt.NavSystem, new StartupPageViewModel(), new ServicesPageViewModel(), new DevicesPageViewModel(),
-                new BiosPageViewModel(), // BIOS settings through SCEWIN, with a backup on every write
-                // KOS Firewall is an app of its own: this entry opens it.
-                new AppLinkViewModel("app-firewall", Txt.AppFirewallLink, "\uEA18", Txt.AppFirewallSubtitle, "firewall", "KosFirewall.exe")),
+                new BiosPageViewModel()), // BIOS settings through SCEWIN, with a backup on every write
             new NavListViewModel(select, Txt.NavSoftware, setup,
                 new WindowsUpdatePageViewModel(), // search, install and hide updates while Windows Update stays off
                 new DebloatPageViewModel(),
@@ -71,9 +69,15 @@ public sealed class MainViewModel : ObservableObject
             new NavListViewModel(select, Txt.NavDiagnose,
                 new LatencyPageViewModel(), // DPC/ISR per driver, mouse report rate and Sleep(1) precision
                 new StabilityPageViewModel()), // crashes, driver resets and hardware errors from the System log
+            // The other KOS apps: each entry opens the app (or brings it to the front); the page that's open stays.
+            new NavListViewModel(select, Txt.NavKosApps,
+                new AppLinkViewModel("app-governor", Txt.AppGovernorLink, "", Txt.AppGovernorSubtitle, "governor", "KosGovernor.exe",
+                    "M2,9 V14 M5,5 V14 M8,7 V14 M11,2 V14 M14,6 V14"), // its logo's bars
+                new AppLinkViewModel("app-firewall", Txt.AppFirewallLink, "", Txt.AppFirewallSubtitle, "firewall", "KosFirewall.exe"),
+                new AppLinkViewModel("app-equalizer", Txt.AppEqualizerLink, "", Txt.AppEqualizerSubtitle, "equalizer", "KosEqualizer.exe")),
             new NavListViewModel(select, "", new SettingsViewModel()),
         };
-        Pages = NavGroups.SelectMany(g => g.Pages).ToList();
+        Pages = NavGroups.SelectMany(g => g.Pages).Where(p => p is not AppLinkViewModel).ToList();
         _selected = _current = Pages[0]; // always opens on Home (system dashboard)
         NavGroups[0].Show(_selected);
         RefreshCommand = new AsyncCommand(() => Current.RefreshAsync());
@@ -114,13 +118,6 @@ public sealed class MainViewModel : ObservableObject
         get => _selected;
         set
         {
-            if (value is AppLinkViewModel link)
-            {
-                link.Open();
-                // The list already shows the link selected: put the page that's open back, once the click is done.
-                System.Windows.Application.Current?.Dispatcher.BeginInvoke(() => { foreach (var group in NavGroups) group.Show(_selected); });
-                return;
-            }
             if (value is null || !Set(ref _selected, value)) return;
             foreach (var group in NavGroups) group.Show(value);
             if (_search.Length > 0) { _search = ""; Raise(nameof(SearchText)); }

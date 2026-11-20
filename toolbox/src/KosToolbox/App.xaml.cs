@@ -19,6 +19,7 @@ public partial class App : Application
         var vm = new MainViewModel();
         var window = new MainWindow { DataContext = vm };
         MainWindow = window;
+        SingleInstance.ShowOnRequest(window);
         window.Show();
         GpuSettingsViewModel.ApplySaved(); // brightness/contrast/gamma/vibrance/hue adjusted in the Settings tab
         // Here and not in MainViewModel: the /ui-shot probe creates the MainViewModel and must not touch the graphics card.

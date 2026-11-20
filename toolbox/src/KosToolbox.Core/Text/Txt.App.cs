@@ -16,6 +16,9 @@ public static partial class Txt
     public const string NavCollapse = "Collapse", NavCollapseTooltip = "Collapse the menu", NavExpandTooltip = "Expand the menu";
 
     // The other KOS apps, opened from the sidebar
+    public const string NavKosApps = "KOS Apps", OpenApp = "Open";
+    public const string AppGovernorLink = "Governor",
+        AppGovernorSubtitle = "Opens KOS Governor: process rules, gamemode and the GPU fan curve.";
     public const string AppFirewall = "KOS Firewall", AppFirewallLink = "Firewall",
         AppFirewallSubtitle = "Opens KOS Firewall: the allow-list firewall, Windows Firewall and the hosts file.";
     public const string AppEqualizer = "KOS Equalizer", AppEqualizerLink = "Equalizer",

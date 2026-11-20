@@ -6,7 +6,7 @@
     <RootNamespace>KosFirewallApp</RootNamespace>
     <AssemblyName>KosFirewall</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <ApplicationIcon>..\KosToolbox\Assets\kos.ico</ApplicationIcon>
+    <ApplicationIcon>..\KosToolbox\Assets\kos-firewall.ico</ApplicationIcon>
     <Title>KOS Firewall</Title>
     <Product>KOS Firewall</Product>
     <StartupObject>KosFirewallApp.Program</StartupObject>

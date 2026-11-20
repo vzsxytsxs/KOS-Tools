@@ -36,6 +36,7 @@ public static class Program
         if (args.Length is 2 or 3 && args[0] == Core.Debloat.DiscordDebloat.LogonArgument)
             return Core.Debloat.DiscordDebloat.RunAtLogonAsync(args[1], args.Length == 3 ? args[2] : "").GetAwaiter().GetResult();
 
+        if (!Views.SingleInstance.Claim("KosToolbox")) return 0; // already open: its window comes to the front
         var app = new App();
         app.InitializeComponent();
         return app.Run();
