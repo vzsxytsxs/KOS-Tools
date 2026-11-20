@@ -190,10 +190,16 @@ public static partial class KosCatalog
             .With(t => { t.KosDefault = Off; t.WindowsDefault = Off; t.Source = "KOS Engine (KOS Shell)"; }),
 
         Choice("taskbar-tint", "Taskbar tint (KOS Shell)",
-                "A color over the taskbar style (not over Windows' own look): black at three strengths, or Windows' accent color at half strength. Acrylic with no tint is dark gray.",
+                "A color over the taskbar style (not over Windows' own look): black at three strengths, or Windows' accent color at half strength. Acrylic with no tint is dark gray. With Transparent, the Windows 11 hidden icons flyout (^) gets the same: transparent with this tint.",
                 Pages.Windows, Pages.Visuals, "Interface", ("none", "None"), ("light", "Black, light"), ("medium", "Black, medium"), ("dark", "Black, dark"), ("accent", "Accent color"))
             .Add(Sz(CurrentUser, @"Software\TheKOS\Shell", "TaskbarColor"), ("none", Del), ("light", S("#40000000")), ("medium", S("#80000000")), ("dark", S("#C0000000")), ("accent", S("accent")))
             .With(t => { t.KosDefault = "none"; t.WindowsDefault = "none"; t.Source = "KOS Engine (KOS Shell)"; }),
+
+        Choice("taskbar-buttons", "Taskbar buttons and indicators (KOS Shell)",
+                "With a taskbar style on, the Windows 11 taskbar's hover and active button backgrounds (apps, Start and the tray) and the line under open apps in white or Windows' accent color, at Windows' own strength. The Windows 10 taskbar keeps its own.",
+                Pages.Windows, Pages.Visuals, "Interface", ("windows", "Windows"), ("white", "White"), ("accent", "Accent color"))
+            .Add(R(CurrentUser, @"Software\TheKOS\Shell", "TaskbarButtons"), ("windows", Del), ("white", S("1")), ("accent", S("2")))
+            .With(t => { t.KosDefault = "windows"; t.WindowsDefault = "windows"; t.Source = "KOS Engine (KOS Shell)"; }),
 
         Toggle("dark-regedit", "Dark Registry Editor (KOS Shell)",
                 "Registry Editor in dark mode: title bar, menus, tree, list, status bar and its dialogs. When its window opens, KOS Engine loads KOS Shell (KosShell.dll, beside the engine) into regedit only, never into other programs. Turning it off applies the next time it's opened; an open window stays dark until it's closed.",

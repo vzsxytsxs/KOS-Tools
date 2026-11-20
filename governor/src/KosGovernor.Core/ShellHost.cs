@@ -31,6 +31,7 @@ internal sealed class ShellHost
     /// <summary>The accent wanted, as last read (by the tray's re-apply too).</summary>
     static volatile Look _look = new(2, 2, 0, "Transparent");
     bool? _transparency; // Windows' Transparency effects, as last seen while on
+    uint[]? _parts; // the DLL's Look, as last read
     /// <summary>The status window's line: null when off.</summary>
     public static volatile string? State;
 
@@ -63,26 +64,44 @@ internal sealed class ShellHost
     static uint? Argb(string text) =>
         text.Length == 9 && text[0] == '#' && uint.TryParse(text.AsSpan(1), System.Globalization.NumberStyles.AllowHexSpecifier, null, out var v) ? v : null;
 
+    /// <summary>Swaps red and blue: ARGB to ABGR and back.</summary>
     static uint Abgr(uint argb) => (argb & 0xFF00FF00) | ((argb >> 16) & 0xFF) | ((argb & 0xFF) << 16);
 
-    static (Look? Look, bool Transparency) Wanted()
+    /// <summary>
+    /// What KosShell.dll is told besides on/off (its Look mapping, 4 x 32 bits): version 1; the color of the Windows 11 taskbar's
+    /// button backgrounds and running-app indicators, 0xFFRRGGBB (TaskbarButtons 1 white, 2 Windows' accent; else 0: Windows' own);
+    /// with the transparent accent, 1 and the tint (ARGB) for the hidden icons flyout's background, else 0 0 (Windows' own acrylic,
+    /// which goes with blur and acrylic).
+    /// </summary>
+    internal static uint[] PartsFor(Look look, object? buttons, uint accent) =>
+    [
+        1,
+        buttons is 1 ? 0xFFFFFFFF : buttons is 2 ? 0xFF000000 | (Abgr(accent) & 0xFFFFFF) : 0,
+        look.State == 2 ? 1u : 0,
+        look.State == 2 ? Abgr(look.Color) : 0,
+    ];
+
+    static (Look? Look, bool Transparency, uint[]? Parts) Wanted()
     {
         try
         {
             using var personalize = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
             var transparency = personalize?.GetValue("EnableTransparency") is int t && t == 1;
             using var key = Registry.CurrentUser.OpenSubKey(KeyPath);
-            if (key?.GetValue("TransparentTaskbar") is not { } style) return (null, transparency);
+            if (key?.GetValue("TransparentTaskbar") is not { } style) return (null, transparency, null);
             using var dwm = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\DWM");
-            return (LookFor(style, key.GetValue("TaskbarColor"), dwm?.GetValue("AccentColor") is int a ? unchecked((uint)a) : 0xFFD47800, transparency), transparency);
+            var accent = dwm?.GetValue("AccentColor") is int a ? unchecked((uint)a) : 0xFFD47800;
+            var look = LookFor(style, key.GetValue("TaskbarColor"), accent, transparency);
+            return (look, transparency, look is null ? null : PartsFor(look, key.GetValue("TaskbarButtons"), accent));
         }
-        catch { return (null, false); }
+        catch { return (null, false, null); }
     }
 
     /// <summary>Every engine tick.</summary>
     public void Sync()
     {
-        var (look, transparency) = Wanted();
+        var (look, transparency, parts) = Wanted();
+        _parts = parts;
         if (look is null)
         {
             TurnOff();
@@ -140,7 +159,7 @@ internal sealed class ShellHost
     /// <summary>KosShell.dll in this Explorer, switched on (loaded once per Explorer; not tried again in one it didn't load into).</summary>
     void Load(uint pid)
     {
-        if (Switch((int)pid, true)) // its events are there
+        if (Switch((int)pid, true, _parts)) // its events are there
         {
             if (_loadedInto != pid)
             {
@@ -168,7 +187,7 @@ internal sealed class ShellHost
             File.WriteAllText(GuardPath, $"{pid} {DateTime.UtcNow.Ticks}");
             var rundll = Path.Combine(Environment.SystemDirectory, "rundll32.exe");
             var code = UserLaunch.Run(rundll, $"\"{rundll}\" \"{DllPath}\",Inject {pid}", 15000);
-            if (code == 0 && Switch((int)pid, true) && HasModule((int)pid, "KosShell.dll")) { (_loadedInto, _dllOn) = ((int)pid, true); Log.Info($"KOS Shell loaded into Explorer (pid {pid}): taskbar background clear."); }
+            if (code == 0 && Switch((int)pid, true, _parts) && HasModule((int)pid, "KosShell.dll")) { (_loadedInto, _dllOn) = ((int)pid, true); Log.Info($"KOS Shell loaded into Explorer (pid {pid}): taskbar background clear."); }
             else { Log.Warn($"Taskbar style: KOS Shell didn't load into Explorer (pid {pid}, {(code is { } c ? $"0x{c:X8}" : "no answer")}); not tried again in this Explorer."); _failedInto = (int)pid; }
         }
         catch (Exception ex) { Log.Warn($"Taskbar style: loading KOS Shell failed: {ex.Message}; not tried again in this Explorer."); _failedInto = (int)pid; }
@@ -186,8 +205,11 @@ internal sealed class ShellHost
         return false;
     }
 
-    /// <summary>Sets the DLL's switch in that Explorer; false when the DLL isn't there. Opened as Explorer's user (see <see cref="UserLaunch.AsShellUser"/>).</summary>
-    static bool Switch(int pid, bool on)
+    /// <summary>
+    /// Sets the DLL's switch in that Explorer, and its Look when given and different (Changed is set for either); false when the
+    /// DLL isn't there. Opened as Explorer's user (see <see cref="UserLaunch.AsShellUser"/>).
+    /// </summary>
+    static bool Switch(int pid, bool on, uint[]? parts = null)
     {
         try
         {
@@ -199,7 +221,8 @@ internal sealed class ShellHost
                     if (!EventWaitHandle.TryOpenExisting($@"Local\KosShell.{pid}.Changed", out var changed)) return false;
                     using (changed)
                     {
-                        if (onEvent.WaitOne(0) == on) return true;
+                        var wrote = parts is not null && WriteParts(pid, parts);
+                        if (onEvent.WaitOne(0) == on && !wrote) return true;
                         if (on) onEvent.Set(); else onEvent.Reset();
                         changed.Set();
                         return true;
@@ -208,6 +231,22 @@ internal sealed class ShellHost
             });
         }
         catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException or System.ComponentModel.Win32Exception or IOException) { return false; }
+    }
+
+    /// <summary>The DLL's Look, written when it differs (true). A DLL without one (an older build in this Explorer) keeps only the clear background.</summary>
+    static bool WriteParts(int pid, uint[] parts)
+    {
+        try
+        {
+            using var map = System.IO.MemoryMappedFiles.MemoryMappedFile.OpenExisting($@"Local\KosShell.{pid}.Look", System.IO.MemoryMappedFiles.MemoryMappedFileRights.ReadWrite);
+            using var view = map.CreateViewAccessor(0, parts.Length * 4);
+            var same = true;
+            for (var i = 0; i < parts.Length; i++) same &= view.ReadUInt32(i * 4) == parts[i];
+            if (same) return false;
+            for (var i = 0; i < parts.Length; i++) view.Write(i * 4, parts[i]);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return false; }
     }
 
     internal sealed record GuardState(int Pid, DateTime Loaded, bool Crashed);

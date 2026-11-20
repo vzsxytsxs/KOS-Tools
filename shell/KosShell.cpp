@@ -1,11 +1,14 @@
-// KOS Shell: makes the Windows 11 taskbar transparent. KOS Engine runs "rundll32 KosShell.dll,Inject <explorer pid>" with Explorer's
-// own token; Inject asks Explorer's XAML diagnostics (InitializeXamlDiagnosticsEx) to load this DLL and create the Tap below, which
+// KOS Shell: the Windows 11 taskbar's style. KOS Engine runs "rundll32 KosShell.dll,Inject <explorer pid>" with Explorer's own
+// token; Inject asks Explorer's XAML diagnostics (InitializeXamlDiagnosticsEx) to load this DLL and create the Tap below, which
 // watches the taskbar's visual tree. The taskbar's background rectangles (BackgroundFill and BackgroundStroke inside
-// Taskbar.TaskbarBackground) get a transparent brush; their own brushes go back when KOS Engine turns it off. Nothing else is touched.
+// Taskbar.TaskbarBackground) get a transparent brush, so KOS Engine's accent on the taskbar window shows through. When KOS Engine
+// asks (the Look below), the buttons' and tray buttons' hover/active backgrounds and the running-app indicators get another color
+// at Windows' own strength, and the hidden icons flyout another background. Their own brushes go back when KOS Engine turns it
+// off. Nothing else is touched: each element is matched by its name, type and the taskbar classes just above it.
 //
-// KOS Engine talks to it through two events this DLL creates in Explorer's session: Local\KosShell.<pid>.On (manual reset: set while
-// the taskbar should be transparent) and Local\KosShell.<pid>.Changed (KOS Engine sets it after changing On). The DLL stays loaded
-// until Explorer exits; turned off, it only keeps watching.
+// KOS Engine talks to it through what this DLL creates in Explorer's session: the events Local\KosShell.<pid>.On (manual reset: set
+// while a style is on) and Local\KosShell.<pid>.Changed (KOS Engine sets it after changing On or the Look), and the 16-byte mapping
+// Local\KosShell.<pid>.Look. The DLL stays loaded until Explorer exits; turned off, it only keeps watching.
 #include <windows.h>
 #include <ocidl.h>
 #include <xamlom.h>
@@ -16,6 +19,10 @@
 #include <winrt/Windows.UI.Xaml.h>
 #include <winrt/Windows.UI.Xaml.Media.h>
 #include <winrt/Windows.UI.Xaml.Shapes.h>
+#include <winrt/Windows.UI.Xaml.Controls.h>
+#include <winrt/Windows.UI.ViewManagement.h>
+#include <optional>
+#include <cstring>
 #include <string>
 #include <vector>
 #include <mutex>
@@ -33,18 +40,29 @@ static HMODULE g_module;
 
 namespace
 {
+    enum class Kind { Background, Button, Overflow };
+
     struct Part
     {
-        winrt::weak_ref<Shapes::Rectangle> Rect;
-        Media::Brush Original{ nullptr }; // touched on the element's thread only, like Saved and Watching
+        winrt::weak_ref<FrameworkElement> Element; // a Rectangle (its Fill) or a Border (its Background)
+        Kind What;
         DWORD Thread;
-        bool Saved = false, Watching = false;
+        // Windows' latest brush and the one set here: touched on the element's thread only, like the flags.
+        Media::Brush Own{ nullptr }, Mine{ nullptr };
+        bool Saved = false, OwnLocal = true, Watching = false;
+        bool Setting = false; // inside its own SetValue/ClearValue: the callback it raises (or another writer's) isn't answered
     };
+
+    /// What KOS Engine wants besides the clear background. Buttons: 0xFFRRGGBB recolors the button backgrounds and indicators
+    /// keeping their alpha (0: Windows' own). Overflow 1: the hidden icons flyout's background is OverflowColor (ARGB).
+    struct Look { UINT32 Version, Buttons, Overflow, OverflowColor; };
 
     std::mutex g_lock;
     std::vector<std::shared_ptr<Part>> g_parts;
     std::atomic<bool> g_on = true; // injected only while it's wanted
+    std::atomic<Look> g_look{}; // all zero (only the clear background) until KOS Engine writes one
     HANDLE g_onEvent, g_changedEvent;
+    const volatile Look* g_lookView;
 
     void Log(const std::wstring& line)
     {
@@ -103,40 +121,85 @@ namespace
         return sent;
     }
 
-    Media::SolidColorBrush Clear() { return Media::SolidColorBrush(winrt::Windows::UI::Color{ 0, 0, 0, 0 }); }
+    Media::SolidColorBrush Solid(UINT32 argb) { return Media::SolidColorBrush(winrt::Windows::UI::Color{ BYTE(argb >> 24), BYTE(argb >> 16), BYTE(argb >> 8), BYTE(argb) }); }
 
-    bool IsClear(const Media::Brush& brush)
+    DependencyProperty BrushProperty(const FrameworkElement& element)
     {
-        auto solid = brush.try_as<Media::SolidColorBrush>();
-        return solid && solid.Color().A == 0;
+        return element.try_as<Shapes::Rectangle>() ? Shapes::Shape::FillProperty() : Controls::Border::BackgroundProperty();
     }
 
-    /// On the element's thread: transparent, or its own brush back. While on, a brush the taskbar sets again (theme change, visual
-    /// state) becomes the one to restore and the rectangle stays transparent.
-    void Apply(const std::shared_ptr<Part>& part, bool on)
+    /// Windows' brush as it is now, and whether it's the element's own local value (else a style or template gives it: cleared back).
+    /// While the local value is still the one set here, Windows' brush came from below it and that answer stays as it was.
+    void Remember(Part& part, const FrameworkElement& element, const DependencyProperty& property)
     {
-        auto rect = part->Rect.get();
-        if (!rect) return;
-        if (on)
+        part.Own = element.GetValue(property).try_as<Media::Brush>();
+        const auto local = element.ReadLocalValue(property);
+        if (!part.Mine || local.try_as<Media::Brush>() != part.Mine) part.OwnLocal = local != DependencyProperty::UnsetValue();
+    }
+
+    /// Windows' neutral (gray) and accent brushes take the chosen color; any other hue (a button asking for attention) stays as it is.
+    bool Recolorable(winrt::Windows::UI::Color color)
+    {
+        if (color.R == color.G && color.G == color.B) return true;
+        using winrt::Windows::UI::ViewManagement::UIColorType;
+        static const winrt::Windows::UI::ViewManagement::UISettings settings; // agile
+        for (auto type : { UIColorType::Accent, UIColorType::AccentDark1, UIColorType::AccentDark2, UIColorType::AccentDark3,
+                           UIColorType::AccentLight1, UIColorType::AccentLight2, UIColorType::AccentLight3 })
+            if (const auto accent = settings.GetColorValue(type); accent.R == color.R && accent.G == color.G && accent.B == color.B) return true;
+        return false;
+    }
+
+    /// The brush this part shows instead of Windows' own, or null for Windows' own. Always a new brush: Windows' are shared.
+    Media::Brush Wanted(const Part& part)
+    {
+        if (!g_on) return nullptr;
+        const auto look = g_look.load();
+        switch (part.What)
         {
-            auto fill = rect.Fill();
-            if (!part->Saved || !IsClear(fill)) part->Original = fill; // the first time even an empty one, so off puts back exactly that
-            part->Saved = true;
-            rect.Fill(Clear());
-            if (!part->Watching)
-            {
-                part->Watching = true;
-                std::weak_ptr<Part> weak = part;
-                rect.RegisterPropertyChangedCallback(Shapes::Shape::FillProperty(), [weak](const DependencyObject& sender, const DependencyProperty&)
-                {
-                    auto p = weak.lock();
-                    if (!p || !g_on) return;
-                    auto r = sender.as<Shapes::Rectangle>();
-                    if (auto fill = r.Fill(); !IsClear(fill)) { p->Original = fill; r.Fill(Clear()); }
-                });
-            }
+        case Kind::Background: return Solid(0);
+        case Kind::Overflow: return look.Overflow ? Solid(look.OverflowColor) : nullptr;
+        default:
+            // Hover, pressed and active differ in alpha only: the same strength in the chosen color; a clear one stays clear.
+            if (auto own = part.Own ? part.Own.try_as<Media::SolidColorBrush>() : nullptr; look.Buttons && own && own.Color().A && Recolorable(own.Color()))
+                return Solid((UINT32(own.Color().A) << 24) | (look.Buttons & 0xFFFFFF));
+            return nullptr;
         }
-        else if (part->Saved) rect.Fill(part->Original);
+    }
+
+    /// Sets (or, with no brush, clears) the part's value with its Setting flag up, put down again even when XAML throws.
+    void Put(Part& part, const FrameworkElement& element, const DependencyProperty& property, const Media::Brush& brush, bool clear)
+    {
+        struct Down { bool& flag; ~Down() { flag = false; } } down{ part.Setting };
+        part.Setting = true;
+        if (clear) element.ClearValue(property); else element.SetValue(property, brush);
+    }
+
+    /// On the element's thread: the wanted brush, or Windows' own back. A brush Windows sets again (a theme change; a visual state:
+    /// hover, pressed, active) becomes the own one and the wanted brush follows it.
+    void Apply(const std::shared_ptr<Part>& part)
+    {
+        auto element = part->Element.get();
+        if (!element) return;
+        const auto property = BrushProperty(element);
+        if (!part->Saved) { Remember(*part, element, property); part->Saved = true; }
+        if (auto want = Wanted(*part)) { part->Mine = want; Put(*part, element, property, want, false); }
+        else if (part->Mine) { part->Mine = nullptr; Put(*part, element, property, part->Own, !part->OwnLocal); }
+        if (part->Watching) return;
+        part->Watching = true;
+        std::weak_ptr<Part> weak = part;
+        element.RegisterPropertyChangedCallback(property, [weak](const DependencyObject& sender, const DependencyProperty& changed)
+        {
+            try // Explorer's UI thread, at hover time
+            {
+                auto p = weak.lock();
+                if (!p || p->Setting) return; // no answer to a change made while setting: two writers never recurse
+                auto e = sender.as<FrameworkElement>();
+                if (p->Mine && e.GetValue(changed).try_as<Media::Brush>() == p->Mine) return; // the one set here
+                Remember(*p, e, changed);
+                Apply(p);
+            }
+            catch (...) { }
+        });
     }
 
 #ifndef KOS_SHELL_PROBE
@@ -148,7 +211,33 @@ namespace
             if (winrt::get_class_name(parent) == L"Taskbar.TaskbarBackground") return true;
         return false;
     }
+
+    std::wstring ClassOf(const DependencyObject& o) { return o ? std::wstring(winrt::get_class_name(o)) : std::wstring(); }
+
+    /// Which part this named element is, by its name, its type and the taskbar classes just above it (BackgroundElement and
+    /// BackgroundBorder are common names: Explorer has other XAML); anything else isn't touched.
+    std::optional<Kind> KindOf(const std::wstring& name, const FrameworkElement& element)
+    {
+        const bool rect = element.try_as<Shapes::Rectangle>() != nullptr, border = element.try_as<Controls::Border>() != nullptr;
+        if (rect && (name == L"BackgroundFill" || name == L"BackgroundStroke")) return IsTaskbarBackground(element) ? std::optional(Kind::Background) : std::nullopt;
+        const auto parent = Media::VisualTreeHelper::GetParent(element);
+        const auto p = ClassOf(parent), g = ClassOf(parent ? Media::VisualTreeHelper::GetParent(parent) : nullptr);
+        if (rect && name == L"RunningIndicator" && p == L"Taskbar.TaskListLabeledButtonPanel") return Kind::Button;
+        if (border && name == L"BackgroundElement" && (p == L"Taskbar.TaskListLabeledButtonPanel" || p == L"Taskbar.TaskListButtonPanel")) return Kind::Button;
+        if (border && name == L"BackgroundBorder" && (g == L"SystemTray.OmniButton" || g == L"SystemTray.ChevronIconView" || g == L"SystemTray.NotifyIconView")) return Kind::Button;
+        if (border && name == L"OverflowFlyoutBackgroundBorder" && g == L"SystemTray.NotificationAreaOverflow") return Kind::Overflow;
+        return std::nullopt;
+    }
 #endif
+
+    /// KOS Engine's Look, checked (a same-user process could write it too: only these values are taken, and only colors follow).
+    Look ReadLook()
+    {
+        Look look{};
+        if (g_lookView) std::memcpy(&look, const_cast<const Look*>(g_lookView), sizeof look);
+        if (look.Version != 1 || look.Overflow > 1 || (look.Buttons && look.Buttons >> 24 != 0xFF)) return {};
+        return look;
+    }
 
     void ControlLoop()
     {
@@ -159,20 +248,21 @@ namespace
             {
                 std::lock_guard guard(g_lock);
                 g_on = on;
+                g_look = ReadLook();
                 for (auto& p : g_parts)
                     if (std::find(threads.begin(), threads.end(), p->Thread) == threads.end()) threads.push_back(p->Thread);
             }
             for (auto thread : threads)
-                RunOnThread(thread, [on, thread]
+                RunOnThread(thread, [thread]
                 {
                     std::lock_guard guard(g_lock);
                     for (auto& p : g_parts)
                         if (p->Thread == thread)
                             try
                             {
-                                Apply(p, on);
+                                Apply(p);
 #ifdef KOS_SHELL_PROBE
-                                if (auto r = p->Rect.get()) Log(std::wstring(on ? L"on" : L"off") + L": fill " + (IsClear(r.Fill()) ? L"clear" : r.Fill() ? L"own" : L"none"));
+                                if (auto e = p->Element.get()) Log(std::wstring(g_on ? L"on" : L"off") + L": fill " + (p->Mine ? L"set here" : L"own"));
 #endif
                             }
                             catch (...) { }
@@ -218,28 +308,34 @@ namespace
             if (name.size() < 9 || name.compare(name.size() - 9, 9, L"TrackRect") != 0 || type != L"Windows.UI.Xaml.Shapes.Rectangle") return S_OK; // theme brushes
             { std::lock_guard guard(g_lock); if (g_parts.size() >= 3) return S_OK; }
 #else
-            if ((name != L"BackgroundFill" && name != L"BackgroundStroke") || type != L"Windows.UI.Xaml.Shapes.Rectangle") return S_OK;
+            if (name != L"BackgroundFill" && name != L"BackgroundStroke" && name != L"RunningIndicator" && name != L"BackgroundElement"
+                && name != L"BackgroundBorder" && name != L"OverflowFlyoutBackgroundBorder") return S_OK;
 #endif
             winrt::Windows::Foundation::IInspectable object;
             winrt::check_hresult(m_diagnostics->GetIInspectableFromHandle(element.Handle, reinterpret_cast<::IInspectable**>(winrt::put_abi(object))));
-            auto rect = object.try_as<Shapes::Rectangle>();
+            auto found = object.try_as<FrameworkElement>();
+            if (!found) return S_OK;
 #ifdef KOS_SHELL_PROBE
             std::wstring chain;
-            for (auto parent = rect ? Media::VisualTreeHelper::GetParent(rect) : nullptr; parent; parent = Media::VisualTreeHelper::GetParent(parent))
+            for (auto parent = Media::VisualTreeHelper::GetParent(found); parent; parent = Media::VisualTreeHelper::GetParent(parent))
                 chain += L" < " + std::wstring(winrt::get_class_name(parent));
             Log(L"part " + name + chain);
-            if (!rect) return S_OK;
+            const auto kind = Kind::Background;
 #else
-            if (!rect || !IsTaskbarBackground(rect)) return S_OK;
+            const auto which = KindOf(name, found);
+            if (!which) return S_OK;
+            const auto kind = *which;
 #endif
             std::lock_guard guard(g_lock);
+            // Only this thread's parts are resolved here (another island, such as the hidden icons flyout, may have its own thread).
+            const auto self = GetCurrentThreadId();
             for (auto& p : g_parts)
-                if (p->Rect.get() == rect) return S_OK;
-            g_parts.erase(std::remove_if(g_parts.begin(), g_parts.end(), [](const std::shared_ptr<Part>& p) { return !p->Rect.get(); }), g_parts.end());
-            auto part = std::make_shared<Part>(Part{ winrt::make_weak(rect), nullptr, GetCurrentThreadId() });
-            if (g_on) Apply(part, true);
+                if (p->Thread == self && p->Element.get() == found) return S_OK;
+            g_parts.erase(std::remove_if(g_parts.begin(), g_parts.end(), [self](const std::shared_ptr<Part>& p) { return p->Thread == self && !p->Element.get(); }), g_parts.end());
+            auto part = std::make_shared<Part>(Part{ winrt::make_weak(found), kind, GetCurrentThreadId() });
+            Apply(part);
             g_parts.push_back(part);
-            Log(L"found " + name + (g_on ? L": transparent" : L""));
+            if (kind == Kind::Background) Log(L"found " + name + (g_on ? L": transparent" : L""));
             return S_OK;
         }
         catch (...) { return winrt::to_hresult(); }
@@ -258,16 +354,23 @@ namespace
             if (!g_tap)
             {
                 const auto pid = std::to_wstring(GetCurrentProcessId());
-                // Only this DLL creates them, once per Explorer: names that already exist are someone else's, and aren't used.
+                // Only this DLL creates them, once per Explorer: names that already exist are someone else's, and aren't used. On a
+                // refusal the ones made here are closed again, so a later load into this Explorer can still create them.
+                const auto lookName = L"Local\\KosShell." + pid + L".Look";
+                HANDLE look = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, sizeof(Look), lookName.c_str());
+                const auto refuse = [&](const std::wstring& name, HRESULT hr)
+                {
+                    Log(name + L" already exists: not loading");
+                    for (auto h : { &look, &g_onEvent, &g_changedEvent }) if (*h) { CloseHandle(*h); *h = nullptr; }
+                    return hr;
+                };
+                if (!look || GetLastError() == ERROR_ALREADY_EXISTS) return refuse(lookName, look ? E_ACCESSDENIED : HRESULT_FROM_WIN32(GetLastError()));
                 for (auto [handle, manual, name] : { std::tuple{ &g_onEvent, TRUE, L".On" }, std::tuple{ &g_changedEvent, FALSE, L".Changed" } })
                 {
                     *handle = CreateEventW(nullptr, manual, manual, (L"Local\\KosShell." + pid + name).c_str());
-                    if (!*handle || GetLastError() == ERROR_ALREADY_EXISTS)
-                    {
-                        Log(std::wstring(L"Local\\KosShell.") + pid + name + L" already exists: not loading");
-                        return *handle ? E_ACCESSDENIED : HRESULT_FROM_WIN32(GetLastError());
-                    }
+                    if (!*handle || GetLastError() == ERROR_ALREADY_EXISTS) return refuse(L"Local\\KosShell." + pid + name, *handle ? E_ACCESSDENIED : HRESULT_FROM_WIN32(GetLastError()));
                 }
+                g_lookView = static_cast<const volatile Look*>(MapViewOfFile(look, FILE_MAP_READ, 0, 0, sizeof(Look))); // kept for Explorer's life
                 // Its threads run for Explorer's life: the module is never unloaded under them.
                 HMODULE pinned;
                 GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN, reinterpret_cast<LPCWSTR>(&g_module), &pinned);

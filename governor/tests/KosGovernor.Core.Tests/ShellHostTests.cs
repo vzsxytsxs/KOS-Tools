@@ -41,6 +41,19 @@ public class ShellHostTests
     }
 
     [Fact]
+    public void TheDllsLookCarriesTheButtonColorAndTheOverflowTintAsArgb()
+    {
+        const uint blue = 0xFFD47800; // ABGR: RGB 00 78 D4
+        var transparent = LookFor(1, "#80FF0000", blue, true)!;
+        Assert.Equal([1u, 0, 1, 0x80FF0000], PartsFor(transparent, null, blue)); // the flyout gets the tint back as ARGB
+        Assert.Equal([1u, 0xFFFFFFFF, 1, 0], PartsFor(LookFor(1, null, blue, true)!, 1, blue));
+        Assert.Equal([1u, 0xFF0078D4, 0, 0], PartsFor(LookFor(2, "#80000000", blue, true)!, 2, blue)); // blur: Windows' own flyout
+        Assert.Equal(0u, PartsFor(transparent, 3, blue)[1]);
+        Assert.Equal(0u, PartsFor(transparent, "1", blue)[1]); // a string isn't the setting
+        Assert.Equal(1u, PartsFor(LookFor(3, null, blue, false)!, null, blue)[2]); // acrylic without Transparency effects is transparent
+    }
+
+    [Fact]
     public void DarkModeWantsOnlyTheAppsWhoseSwitchIsADwordOne()
     {
         var values = new Dictionary<string, object?> { ["DarkRegedit"] = 1, ["DarkConsoles"] = 0 };
