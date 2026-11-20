@@ -18,6 +18,8 @@ public static class UserLaunch
     static extern bool CreateProcessWithTokenW(SafeAccessTokenHandle token, uint logonFlags, string? application, string commandLine, uint flags,
         IntPtr environment, string? directory, ref StartupInfo startup, out ProcessInformation info);
     [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
+    [DllImport("kernel32.dll")] static extern uint WaitForSingleObject(IntPtr h, uint ms);
+    [DllImport("kernel32.dll")] static extern bool GetExitCodeProcess(IntPtr h, out uint code);
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     struct StartupInfo
@@ -36,6 +38,24 @@ public static class UserLaunch
     {
         if (Validation.StartProblem(entry) is { } problem) throw new InvalidOperationException(problem);
         if (!File.Exists(entry.Path)) throw new FileNotFoundException($"{entry.Path} doesn't exist.");
+        var commandLine = $"\"{entry.Path}\"{(string.IsNullOrWhiteSpace(entry.Arguments) ? "" : " " + entry.Arguments)}";
+        var pi = Create(entry.Path, commandLine);
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+        Log.Info($"Gamemode: started {commandLine} (pid {pi.dwProcessId})");
+    }
+
+    /// <summary>Runs a program as the normal user and waits for it: its exit code, or null when it didn't end in time.</summary>
+    internal static uint? Run(string path, string commandLine, int timeoutMs)
+    {
+        var pi = Create(path, commandLine);
+        CloseHandle(pi.hThread);
+        try { return WaitForSingleObject(pi.hProcess, (uint)timeoutMs) == 0 && GetExitCodeProcess(pi.hProcess, out var code) ? code : null; }
+        finally { CloseHandle(pi.hProcess); }
+    }
+
+    static ProcessInformation Create(string path, string commandLine)
+    {
         if (GetWindowThreadProcessId(GetShellWindow(), out var shellPid) == 0 || shellPid == 0)
             throw new InvalidOperationException("Explorer isn't running, so the program can't be opened as the normal user.");
         using var shell = ProcessControl.Open(shellPid, Native.ProcessQueryLimited) ?? throw Error("opening Explorer");
@@ -47,12 +67,9 @@ public static class UserLaunch
             using (primary)
             {
                 var si = new StartupInfo { cb = Marshal.SizeOf<StartupInfo>() };
-                var commandLine = $"\"{entry.Path}\"{(string.IsNullOrWhiteSpace(entry.Arguments) ? "" : " " + entry.Arguments)}";
-                if (!CreateProcessWithTokenW(primary, 0, entry.Path, commandLine, 0, IntPtr.Zero, Path.GetDirectoryName(entry.Path), ref si, out var pi))
-                    throw Error($"starting {entry.Path}");
-                CloseHandle(pi.hThread);
-                CloseHandle(pi.hProcess);
-                Log.Info($"Gamemode: started {commandLine} (pid {pi.dwProcessId})");
+                if (!CreateProcessWithTokenW(primary, 0, path, commandLine, 0, IntPtr.Zero, Path.GetDirectoryName(path), ref si, out var pi))
+                    throw Error($"starting {path}");
+                return pi;
             }
         }
     }

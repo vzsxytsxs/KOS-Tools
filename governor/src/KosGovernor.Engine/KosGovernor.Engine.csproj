@@ -16,5 +16,8 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\KosGovernor.Core\KosGovernor.Core.csproj" />
+    <!-- KOS Shell (shell/, built by build.cmd) goes beside the exe: the engine loads it into Explorer from there. -->
+    <None Include="..\..\..\shell\bin\KosShell.dll" Condition="Exists('..\..\..\shell\bin\KosShell.dll')" Link="KosShell.dll"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

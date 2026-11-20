@@ -181,6 +181,12 @@ public static partial class KosCatalog
             .Reg(CurrentUser, @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "EnableTransparency", RegistryValueKind.DWord, "1", "0")
             .With(t => { t.RestartExplorer = true; t.KosDefault = Off; t.WindowsDefault = On; t.Source = "EnableTransparency; RunOnce.cmd"; }),
 
+        Toggle("transparent-taskbar", "Transparent taskbar (KOS Shell)",
+                "A fully transparent taskbar, Windows 10 or Windows 11 style. KOS Engine applies it and keeps it while it runs; for the Windows 11 taskbar it loads KOS Shell (KosShell.dll, beside the engine) into Explorer. Off gives the taskbar its own look back. If Explorer closes right after KOS Shell loads, it isn't loaded again until this is turned off and on.",
+                Pages.Windows, Pages.Visuals, "Interface")
+            .Reg(CurrentUser, @"Software\TheKOS\Shell", "TransparentTaskbar", RegistryValueKind.DWord, "1", null)
+            .With(t => { t.KosDefault = Off; t.WindowsDefault = Off; t.Source = "KOS Engine (KOS Shell)"; }),
+
         Choice("context-menu", "Context menu style",
                 "Windows 11 menu or the classic full menu without \"Show more options\". Classic blocks the Windows 11 menu's COM class for this user.",
                 Pages.Windows, Pages.Visuals, "Interface", ("modern", "Windows 11"), ("classic", "Classic"))

@@ -1,0 +1,5 @@
+LIBRARY KosShell
+EXPORTS
+    DllGetClassObject PRIVATE
+    DllCanUnloadNow PRIVATE
+    InjectW

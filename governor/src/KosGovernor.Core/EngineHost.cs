@@ -56,6 +56,7 @@ public static class EngineHost
         engine.ConfigChanged += tray.Refresh;
         engine.SessionEnded += report => tray.Balloon("Gamemode session", $"{report.Summary}. Report on the toolbox's Stability page.",
             report.Sections.Any(s => s.Lines.Any(l => l.Warning)));
+        var shell = new ShellHost(text => tray.Balloon("Transparent taskbar", text, warning: true));
         var batteries = new PeripheralBatteryMonitor((title, text) => tray.Balloon(title, text, warning: true), tray.Refresh); // peripherals: tray batteries
         batteries.Start();
         engine.GamemodeSwitched += on => { batteries.Gamemode = on; batteries.Poke(); }; // after mice.Switch: the dock's gamemode battery choice
@@ -73,6 +74,8 @@ public static class EngineHost
                 try { using (TaskMeter.Measure(EngineTask.GpuProfile)) recovery.Tick(fans); }
                 catch (Exception ex) { Log.Error("Checking for a display driver reset failed", ex); }
                 SyncFirewall();
+                try { using (TaskMeter.Measure(EngineTask.Shell)) shell.Sync(); }
+                catch (Exception ex) { Log.Error("Transparent taskbar check failed", ex); }
                 tray.Refresh();
                 // Once, after the first cycle: the pages used only at startup (config, game list, the ~12 MB that
                 // NVML zeroes on init) leave the working set; the ones used again come back on their own.
@@ -184,6 +187,7 @@ public static class EngineHost
             EqualizerDevices = eq?.Count ?? 0, EqualizerGamemode = eq?.Count(d => d.Gamemode is not null) ?? 0,
             EqualizerBypassed = KosToolbox.Core.Audio.EqConfig.Bypassed,
             Killswitch = tray?.KillswitchOn == true, KillswitchBlocksLan = tray?.KillswitchBlocksLan == true,
+            TransparentTaskbar = ShellHost.State,
         };
     }
 
@@ -226,7 +230,10 @@ internal sealed class Tray : IDisposable
 {
     const uint WmNull = 0, WmDestroy = 0x2, WmClose = 0x10, WmContextMenu = 0x7B, WmHotkey = 0x312, WmApp = 0x8000;
     const uint WmTray = WmApp + 1, WmRefresh = WmApp + 2, WmStatus = WmApp + 3, WmFirewall = WmApp + 4;
-    const uint WmLButtonUp = 0x202, WmLButtonDblClk = 0x203, WmRButtonUp = 0x205;
+    const uint WmLButtonUp = 0x202, WmLButtonDblClk = 0x203, WmRButtonUp = 0x205, WmTimer = 0x113;
+    /// <summary>WM_SETTINGCHANGE, WM_THEMECHANGED, WM_DWMCOLORIZATIONCOLORCHANGED, WM_DISPLAYCHANGE.</summary>
+    static readonly uint[] ShellChanges = { 0x1A, 0x31A, 0x320, 0x7E };
+    static readonly IntPtr TimerShellSoon = 3, TimerShellLater = 4;
     const uint NimAdd = 0, NimModify = 1, NimDelete = 2, NifMessage = 1, NifIcon = 2, NifTip = 4, NifInfo = 0x10, NiifInfo = 1, NiifWarning = 2;
     const uint MfString = 0, MfChecked = 8, MfPopup = 0x10, MfSeparator = 0x800;
     const int CmdOpen = 1, CmdGamemode = 2, CmdExit = 3, CmdToolbox = 4, CmdStatus = 5, CmdFirewall = 6, CmdEqualizer = 7, CmdKillswitch = 8, CmdProfile = 100;
@@ -256,6 +263,8 @@ internal sealed class Tray : IDisposable
         // The engine is elevated and Explorer isn't: without this, UIPI blocks clicks on the icon and the taskbar-recreated notice.
         ChangeWindowMessageFilterEx(_hwnd, WmTray, 1, IntPtr.Zero);
         ChangeWindowMessageFilterEx(_hwnd, _taskbarCreated, 1, IntPtr.Zero);
+        // Color, theme and display changes: the transparent taskbar is put back after Explorer redoes its own look.
+        foreach (var m in ShellChanges) ChangeWindowMessageFilterEx(_hwnd, m, 1, IntPtr.Zero);
         DarkMenus(_hwnd);
         var size = GetSystemMetrics(49); // SM_CXSMICON, already at the monitor's scale
         _icon = LoadImage(hInstance, (IntPtr)32512, 1, size, size, 0); // the .exe's icon (IDI_APPLICATION), at tray size
@@ -335,9 +344,18 @@ internal sealed class Tray : IDisposable
 
     IntPtr Proc(IntPtr hwnd, uint msg, IntPtr w, IntPtr l)
     {
+        if (Array.IndexOf(ShellChanges, msg) >= 0 || (msg == _taskbarCreated && msg != 0))
+        {
+            SetTimer(hwnd, TimerShellSoon, 250, IntPtr.Zero);
+            SetTimer(hwnd, TimerShellLater, 1500, IntPtr.Zero);
+        }
         if (msg == _taskbarCreated && msg != 0) { AddIcon(); ReAddDevices(); if (_killswitchOn) KillswitchIcon(true); return IntPtr.Zero; }
         switch (msg)
         {
+            case WmTimer when w == TimerShellSoon || w == TimerShellLater:
+                KillTimer(hwnd, w);
+                ShellHost.Reapply();
+                return IntPtr.Zero;
             case WmTray:
                 var e = (uint)(l.ToInt64() & 0xFFFF);
                 if (e is WmLButtonDblClk or WmLButtonUp) _status.Show();
@@ -636,6 +654,8 @@ internal sealed class Tray : IDisposable
     [DllImport("user32.dll")] static extern bool TranslateMessage(ref Msg msg);
     [DllImport("user32.dll")] static extern IntPtr DispatchMessage(ref Msg msg);
     [DllImport("user32.dll")] static extern bool PostMessage(IntPtr hwnd, uint msg, IntPtr w, IntPtr l);
+    [DllImport("user32.dll")] static extern IntPtr SetTimer(IntPtr hwnd, IntPtr id, uint ms, IntPtr proc);
+    [DllImport("user32.dll")] static extern bool KillTimer(IntPtr hwnd, IntPtr id);
     [DllImport("user32.dll")] static extern void PostQuitMessage(int code);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern uint RegisterWindowMessage(string name);
     [DllImport("user32.dll")] static extern bool ChangeWindowMessageFilterEx(IntPtr hwnd, uint msg, uint action, IntPtr changeInfo);

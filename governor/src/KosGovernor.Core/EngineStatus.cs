@@ -41,6 +41,8 @@ public sealed record EngineFacts
     /// <summary>The killswitch has the network cut (and whether the local network too).</summary>
     public bool Killswitch { get; init; }
     public bool KillswitchBlocksLan { get; init; }
+    /// <summary>KOS Shell's transparent taskbar: off, or what it's doing.</summary>
+    public string? TransparentTaskbar { get; init; }
 }
 
 public static class EngineStatus
@@ -66,6 +68,7 @@ public static class EngineStatus
             new("Killswitch", !f.Killswitch ? "Off" : f.KillswitchBlocksLan ? "On · every connection cut, local network too" : "On · the internet is cut", f.Killswitch),
             Line("KOS Firewall", Firewall(f), f.FirewallOn && f.FirewallFilters > 0, EngineTask.Firewall),
             Line("KOS Equalizer", Equalizer(f), f.EqualizerGamemode > 0 && !f.EqualizerBypassed, EngineTask.Equalizer),
+            Line("Transparent taskbar", f.TransparentTaskbar ?? "Off", f.TransparentTaskbar is not null, EngineTask.Shell),
             Line("Tray and this window", "Open", true, EngineTask.Tray),
         };
         // What no task accounts for: the runtime, the configuration in memory, threads waiting.
