@@ -15,6 +15,8 @@ public partial class App : Application
         Log.Info($"Interface {typeof(App).Assembly.GetName().Version} opened.");
         var window = new MainWindow(new MainViewModel());
         MainWindow = window;
+        window.ContentRendered += (_, _) =>
+            Log.Info($"Window ready {(DateTime.Now - System.Diagnostics.Process.GetCurrentProcess().StartTime).TotalMilliseconds:0} ms after the start.");
         window.Show();
 
         // Second launch (hotkey, tray): brings this window to the front instead of opening another one.

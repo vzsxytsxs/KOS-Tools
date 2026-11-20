@@ -114,7 +114,7 @@ dotnet build toolbox/KosToolbox.sln
 dotnet build governor/KosGovernor.sln
 ```
 
-Self-contained single-file releases (output in each project's `publish/win-x64`):
+Self-contained single-file releases (output in each project's `publish/win-x64`), uncompressed and ReadyToRun for a faster start (each exe is about 240 MB):
 
 ```bash
 dotnet publish toolbox/src/KosToolbox/KosToolbox.csproj -c Release -p:PublishProfile=win-x64
