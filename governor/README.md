@@ -147,7 +147,7 @@ Process rules in the style of Process Lasso. It used to be the toolbox's Process
     - A process too busy to answer within 1 s is tried again at its next window, once. The wait runs on the tray thread, where the killswitch hotkey also arrives, so an unelevated app that never answers costs at most two seconds there.
   - In the app the DLL checks its own exe (and rundll32's command line) against the same list, then:
     - turns on the app's dark mode (dark popup menus, dark title bars), except in File Explorer;
-    - darkens each window by class as it's created (trees, lists, headers, tabs, status bars, edits, buttons, dialogs, the menu bar); in File Explorer only dialogs and what's inside them; task dialogs keep their light body;
+    - darkens each window by class as it's created (trees, lists, headers, tabs, status bars, edits, buttons, dialogs, the menu bar); in File Explorer only dialogs, each when it's shown, and what's inside them, but not the Run box (it paints its own light body); task dialogs keep their light body;
     - never hooks an API, and touches no other process: games never get it.
   - Turning a switch off applies to apps opened afterwards; an open window stays dark until it's closed.
 - **Settings**: visible columns of the two lists, list and engine intervals, start with Windows, start/stop the engine, and *Import*/*Export* of a profile.

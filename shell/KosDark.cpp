@@ -1,11 +1,12 @@
 // KOS Shell's dark mode for classic Windows tools: Registry Editor, management consoles, classic Notepad, Control Panel applets
-// (rundll32 shell32.dll,Control_RunDLL; System Properties) and File Explorer's classic dialogs (Properties, Folder Options, Run).
+// (rundll32 shell32.dll,Control_RunDLL; System Properties) and File Explorer's classic dialogs (Properties, Folder Options; not the
+// Run box, which paints its own light body).
 // KOS Engine loads this DLL into such an app when its window opens and the toolbox switch for it is on: a WH_CALLWNDPROC hook on
 // that window's thread only (DarkHook), removed right after one message. In the app the DLL checks its exe against its own fixed
 // list, then:
 // - in an app: the process's app mode (uxtheme's undocumented ordinals: dark popup and context menus) and every window;
-// - in File Explorer: only dialogs (#32770) and the windows inside them; Explorer's own windows, its app mode and the taskbar are
-//   left alone;
+// - in File Explorer: only dialogs (#32770), each when it's shown, and the windows inside them; Explorer's own windows, its app mode
+//   and the taskbar are left alone;
 // - each window by its class, as it's created (a WinEvent hook inside this process only): title bar (DWM attribute 20), tree and
 //   list views, headers, tabs, status bars, edits, combo and list boxes, buttons, scroll bars, rebars, toolbars, the MDI client,
 //   dialogs (WM_CTLCOLOR*) and the menu bar (the undocumented UAH messages).
@@ -68,13 +69,24 @@ namespace
             && SamePath(exe + total - 4, L".exe") ? Scope::App : Scope::None;
     }
 
-    /// In File Explorer only dialogs and what's inside them.
+    /// The Run box, by shell32's fixed control ids (the command combo box, "Run in separate memory space"): it paints its own white
+    /// body and keeps a light title bar, so dark controls would sit on white. Left as it is.
+    bool IsRunBox(HWND dialog)
+    {
+        wchar_t cls[16] = {};
+        const auto command = GetDlgItem(dialog, 12298), separate = GetDlgItem(dialog, 12306);
+        return command && separate && GetClassNameW(command, cls, 16) && Is(cls, WC_COMBOBOXW) && GetClassNameW(separate, cls, 16) && Is(cls, WC_BUTTONW);
+    }
+
+    /// In File Explorer only dialogs and what's inside them: a dialog once it's shown (before its first paint; its controls exist by
+    /// then, so the Run box can be told apart), then whatever is inside a dialog that's dark.
     bool InScope(HWND h)
     {
         if (g_scope != Scope::Dialogs) return true;
         wchar_t cls[16] = {};
         const auto root = GetAncestor(h, GA_ROOT);
-        return root && GetClassNameW(root, cls, 16) && Is(cls, L"#32770");
+        if (!root || !GetClassNameW(root, cls, 16) || !Is(cls, L"#32770")) return false;
+        return root == h ? IsWindowVisible(h) && !IsRunBox(h) : GetPropW(root, Mark) != nullptr;
     }
 
     bool IsToolbar(HWND h)
@@ -302,10 +314,14 @@ namespace
         if (auto parent = GetParent(h)) SetWindowSubclass(parent, FrameProc, FrameId, 0);
     }
 
+    BOOL CALLBACK DarkenChild(HWND h, LPARAM);
+
     /// Once per window, on its own thread (subclassing works only there).
     void Darken(HWND h)
     {
-        if (!IsWindow(h) || GetPropW(h, Mark) || !InScope(h)) return;
+        // A window shown by another thread (EVENT_OBJECT_SHOW runs there) or a child of another thread's: not marked, so its own
+        // thread can still take it.
+        if (!IsWindow(h) || GetWindowThreadProcessId(h, nullptr) != GetCurrentThreadId() || GetPropW(h, Mark) || !InScope(h)) return;
         SetPropW(h, Mark, reinterpret_cast<HANDLE>(1));
         wchar_t cls[64] = {};
         // A task dialog's buttons and links sit in DirectUI, which draws the dialog's body light whatever its theme (text colors are
@@ -322,6 +338,8 @@ namespace
                 BOOL dark = TRUE;
                 DwmSetWindowAttribute(h, 20, &dark, sizeof dark); // DWMWA_USE_IMMERSIVE_DARK_MODE: the title bar
                 SetWindowPos(h, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+                // In File Explorer a dialog is taken when it's shown: the controls it created before are done now.
+                if (g_scope == Scope::Dialogs) EnumChildWindows(h, DarkenChild, 0);
             }
         }
         else if (Is(cls, WC_TREEVIEWW))
