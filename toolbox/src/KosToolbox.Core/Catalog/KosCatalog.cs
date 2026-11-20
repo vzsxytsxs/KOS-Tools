@@ -187,6 +187,18 @@ public static partial class KosCatalog
             .Reg(CurrentUser, @"Software\TheKOS\Shell", "TransparentTaskbar", RegistryValueKind.DWord, "1", null)
             .With(t => { t.KosDefault = Off; t.WindowsDefault = Off; t.Source = "KOS Engine (KOS Shell)"; }),
 
+        Toggle("dark-regedit", "Dark Registry Editor (KOS Shell)",
+                "Registry Editor in dark mode: title bar, menus, tree, list, status bar and its dialogs. When its window opens, KOS Engine loads KOS Shell (KosShell.dll, beside the engine) into regedit only, never into other programs. Turning it off applies the next time it's opened; an open window stays dark until it's closed.",
+                Pages.Windows, Pages.Visuals, "Interface")
+            .Reg(CurrentUser, @"Software\TheKOS\Shell", "DarkRegedit", RegistryValueKind.DWord, "1", null)
+            .With(t => { t.KosDefault = Off; t.WindowsDefault = Off; t.Source = "KOS Engine (KOS Shell)"; }),
+
+        Toggle("dark-consoles", "Dark management consoles (KOS Shell)",
+                "Services, Device Manager, Computer Management and the other consoles (mmc) in dark mode: title bar, menus, trees, lists and dialogs. Parts a snap-in draws itself (Event Viewer's panes, tabs) can stay light. KOS Engine loads KOS Shell (KosShell.dll) into mmc only, when its window opens. Turning it off applies the next time a console is opened.",
+                Pages.Windows, Pages.Visuals, "Interface")
+            .Reg(CurrentUser, @"Software\TheKOS\Shell", "DarkConsoles", RegistryValueKind.DWord, "1", null)
+            .With(t => { t.KosDefault = Off; t.WindowsDefault = Off; t.Source = "KOS Engine (KOS Shell)"; }),
+
         Choice("context-menu", "Context menu style",
                 "Windows 11 menu or the classic full menu without \"Show more options\". Classic blocks the Windows 11 menu's COM class for this user.",
                 Pages.Windows, Pages.Visuals, "Interface", ("modern", "Windows 11"), ("classic", "Classic"))

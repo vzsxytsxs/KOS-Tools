@@ -18,4 +18,16 @@ public class ShellHostTests
         Assert.Equal(GuardVerdict.Clear, Judge(g, alive: false, Loaded.AddMinutes(1)));  // ended later: not KOS Shell's doing
         Assert.Equal(GuardVerdict.Tripped, Judge(g with { Crashed = true }, alive: true, Loaded.AddDays(3))); // until turned off and on
     }
+
+    [Fact]
+    public void DarkModeWantsOnlyTheAppsWhoseSwitchIsADwordOne()
+    {
+        var values = new Dictionary<string, object?> { ["DarkRegedit"] = 1, ["DarkConsoles"] = 0 };
+        Assert.Equal([@"C:\Windows\regedit.exe"], DarkApps.Paths(n => values.GetValueOrDefault(n), @"C:\Windows"));
+        values["DarkConsoles"] = 1;
+        Assert.Equal([@"C:\Windows\regedit.exe", @"C:\Windows\System32\mmc.exe"], DarkApps.Paths(n => values.GetValueOrDefault(n), @"C:\Windows"));
+        values["DarkRegedit"] = "1"; // a string isn't the switch
+        Assert.Equal([@"C:\Windows\System32\mmc.exe"], DarkApps.Paths(n => values.GetValueOrDefault(n), @"C:\Windows"));
+        Assert.Empty(DarkApps.Paths(_ => null, @"C:\Windows"));
+    }
 }

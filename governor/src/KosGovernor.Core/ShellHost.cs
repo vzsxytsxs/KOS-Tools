@@ -23,7 +23,7 @@ internal sealed class ShellHost
     const string KeyPath = @"Software\TheKOS\Shell";
     static readonly TimeSpan GuardWindow = TimeSpan.FromSeconds(30);
     static string GuardPath => Path.Combine(ConfigStore.Directory, "shell-guard.txt");
-    static string DllPath => Path.Combine(AppContext.BaseDirectory, "KosShell.dll");
+    internal static string DllPath => Path.Combine(AppContext.BaseDirectory, "KosShell.dll");
     /// <summary>The accent is on the taskbars (read by the tray's re-apply).</summary>
     static volatile bool _applied;
     /// <summary>The status window's line: null when off.</summary>
@@ -119,7 +119,7 @@ internal sealed class ShellHost
         catch (Exception ex) { Log.Warn($"Transparent taskbar: loading KOS Shell failed: {ex.Message}; not tried again in this Explorer."); _failedInto = (int)pid; }
     }
 
-    static bool HasModule(int pid, string name)
+    internal static bool HasModule(int pid, string name)
     {
         try
         {
@@ -127,7 +127,7 @@ internal sealed class ShellHost
             foreach (System.Diagnostics.ProcessModule m in p.Modules)
                 using (m) if (string.Equals(m.ModuleName, name, StringComparison.OrdinalIgnoreCase)) return true;
         }
-        catch (Exception ex) { Log.Warn($"Transparent taskbar: Explorer's modules can't be read: {ex.Message}"); }
+        catch (Exception ex) { Log.Warn($"KOS Shell: the modules of pid {pid} can't be read: {ex.Message}"); }
         return false;
     }
 

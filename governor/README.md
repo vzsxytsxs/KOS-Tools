@@ -134,7 +134,21 @@ Process rules in the style of Process Lasso. It used to be the toolbox's Process
   - While it's on (`HKCU\Software\TheKOS\Shell`, `TransparentTaskbar` = 1), `ShellHost` gives every taskbar window a transparent accent at each tick and 250 ms and 1.5 s after a color, theme or display change or a new taskbar (the tray window lets those messages through UIPI). Turning it off sends the taskbars a `WM_SETTINGCHANGE` for `ImmersiveColorSet`, so they redo their own look. This works for the Windows 10 taskbar.
   - The Windows 11 taskbar is XAML: the engine loads `KosShell.dll` (built from `shell\`, beside the engine) into Explorer through XAML diagnostics, with `rundll32 KosShell.dll,Inject <pid>` run with Explorer's token and only from a DLL owned by SYSTEM/Administrators. The DLL keeps `BackgroundFill` and `BackgroundStroke` under `Taskbar.TaskbarBackground` transparent (also when the taskbar sets its brush again) and puts the taskbar's own brushes back when switched off.
   - Crash guard: the Explorer the DLL goes into is journaled first; if it ends within 30 s, the DLL isn't loaded again until the switch is turned off and on (a balloon and the log say so).
-  - The Windows 10 path was checked on a Windows 10 taskbar; the Windows 11 path has not run on a Windows 11 taskbar yet.
+  - The Windows 10 path was checked on a Windows 10 taskbar. The Windows 11 path was checked on the development PC's Windows 11 taskbar (loaded within a second; background transparent and back, twice; no Explorer crash), not yet on a stock Windows 11 install (toolbox README, VM checklist item 24).
+- **Dark classic apps** (KOS Shell; the toolbox's Windows › Visuals › *Dark Registry Editor* and *Dark management consoles*)
+  - While one is on (`HKCU\Software\TheKOS\Shell`, `DarkRegedit` / `DarkConsoles` = 1), the tray thread has an out-of-context window event hook (`EVENT_OBJECT_SHOW`; it loads nothing anywhere). The first top-level window of a process whose full path is `%windir%\regedit.exe` or `%windir%\System32\mmc.exe` gets `KosShell.dll` (`DarkApps`).
+  - How it gets there:
+    - A `WH_CALLWNDPROC` hook on that window's thread only, removed after one `WM_NULL`.
+    - The thread is held open and checked to belong to that process, so a reused thread id can't take the hook elsewhere.
+    - The engine loads the DLL into itself only from a file owned by SYSTEM/Administrators.
+  - When it isn't loaded:
+    - A process that already has the DLL isn't hooked again; that includes an older build an update renamed, because the new build's hook offset would run in the old code.
+    - A process too busy to answer within 1 s is tried again at its next window. The wait runs on the tray thread, where the killswitch hotkey also arrives.
+  - In the app the DLL checks its own exe against the same two paths, then:
+    - turns on the app's dark mode (dark popup menus, dark title bars);
+    - darkens each window by class as it's created (trees, lists, headers, status bars, edits, buttons, dialogs, the menu bar);
+    - never hooks an API, and touches no other process: games never get it.
+  - Turning a switch off applies to apps opened afterwards; an open window stays dark until it's closed.
 - **Settings**: visible columns of the two lists, list and engine intervals, start with Windows, start/stop the engine, and *Import*/*Export* of a profile.
 - **GPU fan curve**
   - Configured on the toolbox's GPU page. The engine runs the curve by reading `fan-curve.json` in the governor folder, with the same NVML controller as the toolbox (`KosGovernor.Core` references `KosToolbox.Core`).

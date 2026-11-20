@@ -74,8 +74,8 @@ public static class EngineHost
                 try { using (TaskMeter.Measure(EngineTask.GpuProfile)) recovery.Tick(fans); }
                 catch (Exception ex) { Log.Error("Checking for a display driver reset failed", ex); }
                 SyncFirewall();
-                try { using (TaskMeter.Measure(EngineTask.Shell)) shell.Sync(); }
-                catch (Exception ex) { Log.Error("Transparent taskbar check failed", ex); }
+                try { using (TaskMeter.Measure(EngineTask.Shell)) { tray.SetDarkApps(DarkApps.Wanted()); shell.Sync(); } } // the switches first: neither throws
+                catch (Exception ex) { Log.Error("KOS Shell check failed", ex); }
                 tray.Refresh();
                 // Once, after the first cycle: the pages used only at startup (config, game list, the ~12 MB that
                 // NVML zeroes on init) leave the working set; the ones used again come back on their own.
@@ -229,7 +229,7 @@ public static class EngineHost
 internal sealed class Tray : IDisposable
 {
     const uint WmNull = 0, WmDestroy = 0x2, WmClose = 0x10, WmContextMenu = 0x7B, WmHotkey = 0x312, WmApp = 0x8000;
-    const uint WmTray = WmApp + 1, WmRefresh = WmApp + 2, WmStatus = WmApp + 3, WmFirewall = WmApp + 4;
+    const uint WmTray = WmApp + 1, WmRefresh = WmApp + 2, WmStatus = WmApp + 3, WmFirewall = WmApp + 4, WmDark = WmApp + 5;
     const uint WmLButtonUp = 0x202, WmLButtonDblClk = 0x203, WmRButtonUp = 0x205, WmTimer = 0x113;
     /// <summary>WM_SETTINGCHANGE, WM_THEMECHANGED, WM_DWMCOLORIZATIONCOLORCHANGED, WM_DISPLAYCHANGE.</summary>
     static readonly uint[] ShellChanges = { 0x1A, 0x31A, 0x320, 0x7E };
@@ -246,6 +246,8 @@ internal sealed class Tray : IDisposable
     readonly StatusWindow _status;
     readonly FirewallPopup _popup;
     readonly System.Collections.Concurrent.ConcurrentQueue<FirewallAsk> _asks = new();
+    readonly DarkApps _dark = new();
+    volatile string[] _darkWanted = [];
     IntPtr _hwnd, _icon;
     bool _hotkey;
 
@@ -288,6 +290,14 @@ internal sealed class Tray : IDisposable
     public void Refresh() => PostMessage(_hwnd, WmRefresh, IntPtr.Zero, IntPtr.Zero);
     /// <summary>Opens the status window (any thread).</summary>
     public void ShowStatus() => PostMessage(_hwnd, WmStatus, IntPtr.Zero, IntPtr.Zero);
+
+    /// <summary>The dark-mode switches (the worker, every tick); the tray thread watches windows only while one is on.</summary>
+    public void SetDarkApps(string[] wanted)
+    {
+        if (wanted.SequenceEqual(_darkWanted)) return;
+        _darkWanted = wanted;
+        PostMessage(_hwnd, WmDark, IntPtr.Zero, IntPtr.Zero);
+    }
 
     /// <summary>A KOS Firewall question for the popup (any thread).</summary>
     public void Ask(FirewallAsk ask)
@@ -367,6 +377,9 @@ internal sealed class Tray : IDisposable
                 return IntPtr.Zero;
             case WmStatus:
                 _status.Show();
+                return IntPtr.Zero;
+            case WmDark:
+                _dark.Sync(_darkWanted);
                 return IntPtr.Zero;
             case WmFirewall:
                 while (_asks.TryDequeue(out var ask)) _popup.Add(ask);
