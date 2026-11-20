@@ -10,13 +10,17 @@
 // - each window by its class, as it's created (a WinEvent hook inside this process only): title bar (DWM attribute 20), tree and
 //   list views, headers, tabs, status bars, edits, combo and list boxes, buttons, scroll bars, rebars, toolbars, the MDI client,
 //   dialogs (WM_CTLCOLOR*) and the menu bar (the undocumented UAH messages).
-// Nothing else: no API is hooked and no other process is touched. The DLL stays loaded until the app exits (its windows use it).
+// Nothing else: no other process is touched, and no API is hooked except GetSysColor and GetSysColorBrush in the DarkTools apps
+// (import table pointers, no code patched). The DLL stays loaded until the app exits (its windows use it).
 #include <windows.h>
 #include <commctrl.h>
 #include <uxtheme.h>
 #include <dwmapi.h>
+#include <psapi.h>
+#include <richedit.h>
 #include <atomic>
 #include <cstdio>
+#include <initializer_list>
 
 namespace
 {
@@ -29,6 +33,122 @@ namespace
     Scope g_scope = Scope::None;
     using AllowDarkFn = BOOL(WINAPI*)(HWND, BOOL);
     AllowDarkFn g_allowDark;
+
+    // DarkTools: tools that paint parts of themselves with the system colors (Character Map's grid, a wizard's header band, a
+    // drive list) get dark ones: GetSysColor and GetSysColorBrush are replaced in the import tables of the modules loaded in that
+    // app (pointers only, no code patched; never put back, the app ends with them). Only in the apps of that list, never Explorer.
+    bool g_colors = false;
+    using SysColorFn = DWORD(WINAPI*)(int);
+    using SysBrushFn = HBRUSH(WINAPI*)(int);
+    SysColorFn g_sysColor;
+    SysBrushFn g_sysBrush;
+    HBRUSH g_brushes[COLOR_MENUBAR + 1]; // created once at the start, kept for the app's lifetime (callers never delete these)
+
+    bool DarkColor(int index, COLORREF& color)
+    {
+        switch (index)
+        {
+        case COLOR_WINDOW: color = Field; return true;
+        case COLOR_BTNFACE: case COLOR_APPWORKSPACE: case COLOR_INFOBK: color = Back; return true; // COLOR_3DFACE is BTNFACE
+        case COLOR_WINDOWTEXT: case COLOR_BTNTEXT: case COLOR_INFOTEXT: color = Text; return true;
+        case COLOR_GRAYTEXT: color = Dim; return true;
+        case COLOR_WINDOWFRAME: case COLOR_BTNSHADOW: case COLOR_BTNHIGHLIGHT: case COLOR_3DLIGHT: color = Lines; return true;
+        case COLOR_3DDKSHADOW: color = RGB(20, 20, 20); return true;
+        default: return false; // selection, captions, links: as Windows has them
+        }
+    }
+
+    DWORD WINAPI DarkSysColor(int index)
+    {
+        COLORREF color;
+        return DarkColor(index, color) ? color : g_sysColor(index);
+    }
+
+    HBRUSH WINAPI DarkSysColorBrush(int index)
+    {
+        // A caller may delete it (harmless for a real system brush): then Windows' own.
+        return index >= 0 && index <= COLOR_MENUBAR && g_brushes[index] && GetObjectType(g_brushes[index]) == OBJ_BRUSH ? g_brushes[index] : g_sysBrush(index);
+    }
+
+    void Patch(void** slot)
+    {
+        if (!*slot) return; // the null ending each DLL's slots
+        void* to = *slot == g_sysColor ? reinterpret_cast<void*>(&DarkSysColor) : *slot == g_sysBrush ? reinterpret_cast<void*>(&DarkSysColorBrush) : nullptr;
+        MEMORY_BASIC_INFORMATION page;
+        if (!to || !VirtualQuery(slot, &page, sizeof page)) return;
+        const DWORD writable = page.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY) ? PAGE_EXECUTE_READWRITE : PAGE_READWRITE;
+        DWORD old;
+        if (VirtualProtect(slot, sizeof *slot, writable, &old))
+        {
+            InterlockedExchangePointer(slot, to);
+            VirtualProtect(slot, sizeof *slot, old, &old);
+        }
+    }
+
+    /// One module's import address table and delay-load tables: a slot holding user32's function (by address, so API sets too).
+    void PatchModule(HMODULE module)
+    {
+        const auto base = reinterpret_cast<BYTE*>(module);
+        const auto dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
+        if (dos->e_magic != IMAGE_DOS_SIGNATURE) return;
+        const auto nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
+        if (nt->Signature != IMAGE_NT_SIGNATURE || nt->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR_MAGIC
+            || nt->OptionalHeader.NumberOfRvaAndSizes <= IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT) return;
+        const auto& iat = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IAT];
+        if (iat.VirtualAddress)
+            for (auto slot = reinterpret_cast<void**>(base + iat.VirtualAddress), end = slot + iat.Size / sizeof(void*); slot < end; slot++) Patch(slot);
+        // Delay-loaded imports: a slot is user32's function only once resolved, so later passes catch the ones resolved meanwhile.
+        const auto& delay = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT];
+        if (delay.VirtualAddress)
+            for (auto d = reinterpret_cast<const IMAGE_DELAYLOAD_DESCRIPTOR*>(base + delay.VirtualAddress); d->DllNameRVA; d++)
+            {
+                if (!d->Attributes.RvaBased) continue;
+                auto slot = reinterpret_cast<void**>(base + d->ImportAddressTableRVA);
+                for (auto name = reinterpret_cast<const IMAGE_THUNK_DATA*>(base + d->ImportNameTableRVA); name->u1.AddressOfData; name++, slot++) Patch(slot);
+            }
+    }
+
+    /// The loader can make a table read-only again between our protect and our write (a DLL loading or a delay-load resolving on
+    /// another thread): our write faults and the slot is taken at the next pass. A module with malformed headers ends here too.
+    void PatchHeld(HMODULE module)
+    {
+        __try { PatchModule(module); }
+        __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) { }
+    }
+
+    /// Every module loaded now (at the start, and again for each new top-level window: an app loads more as it goes), but this one.
+    /// One pass at a time (two threads switching a slot's protection could leave it read-only under the other's write); a pass
+    /// that finds one running is skipped (the next top-level window runs it again) rather than wait. Each module is held while it's
+    /// read, so one unloaded meanwhile is skipped rather than read freed.
+    void PatchColors()
+    {
+        static SRWLOCK lock = SRWLOCK_INIT;
+        HMODULE modules[1024], self;
+        DWORD bytes = 0;
+        if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, reinterpret_cast<LPCWSTR>(&PatchColors), &self)) return;
+        if (!TryAcquireSRWLockExclusive(&lock)) return;
+        if (K32EnumProcessModules(GetCurrentProcess(), modules, sizeof modules, &bytes))
+            for (DWORD i = 0; i < bytes / sizeof(HMODULE) && i < 1024; i++)
+                if (HMODULE held; modules[i] != self && GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, reinterpret_cast<LPCWSTR>(modules[i]), &held))
+                {
+                    if (held == modules[i]) PatchHeld(held);
+                    FreeLibrary(held);
+                }
+        ReleaseSRWLockExclusive(&lock);
+    }
+
+    /// Once, at the start: the originals and one dark brush per replaced color.
+    bool StartColors()
+    {
+        const auto user32 = GetModuleHandleW(L"user32.dll");
+        g_sysColor = user32 ? reinterpret_cast<SysColorFn>(GetProcAddress(user32, "GetSysColor")) : nullptr;
+        g_sysBrush = user32 ? reinterpret_cast<SysBrushFn>(GetProcAddress(user32, "GetSysColorBrush")) : nullptr;
+        if (!g_sysColor || !g_sysBrush) return false;
+        for (int i = 0; i <= COLOR_MENUBAR; i++)
+            if (COLORREF color; DarkColor(i, color)) g_brushes[i] = CreateSolidBrush(color);
+        PatchColors();
+        return true;
+    }
 
     // Sent to a window with a menu bar so it can draw the bar itself (undocumented; the layout used by every dark-menu-bar implementation).
     constexpr UINT WmUahDrawMenu = 0x91, WmUahDrawMenuItem = 0x92;
@@ -62,6 +182,10 @@ namespace
         if (is(L"\\regedit.exe") || is(L"\\System32\\mmc.exe") || is(L"\\System32\\notepad.exe")) return Scope::App;
         // DarkDialogs' tools: System Configuration, Color Management, ODBC Data Sources (KOS Engine's DarkApps.Apps has the same list).
         if (is(L"\\System32\\msconfig.exe") || is(L"\\System32\\colorcpl.exe") || is(L"\\System32\\odbcad32.exe")) return Scope::App;
+        // DarkTools, with the system colors replaced (KOS Engine's DarkApps.Apps has the same list).
+        for (const auto tool : { L"\\System32\\charmap.exe", L"\\System32\\msinfo32.exe", L"\\System32\\hdwwiz.exe", L"\\System32\\netplwiz.exe",
+                 L"\\System32\\cleanmgr.exe" })
+            if (is(tool)) { g_colors = true; return Scope::App; }
 #ifdef KOS_SHELL_PROBE // test build: one more System32 exe, named in the environment of the process it's loaded into
         wchar_t extra[MAX_PATH] = L"\\System32\\";
         if (GetEnvironmentVariableW(L"KOS_SHELL_PROBE_APP", extra + 10, MAX_PATH - 10) && is(extra)) return Scope::App;
@@ -127,11 +251,43 @@ namespace
         FillRect(dc, &rc, brush);
     }
 
+    /// A user32 message box, by its shape: only its text and icon (statics 0xFFFF and 20) and buttons with a result id.
+    bool IsMessageBox(HWND h)
+    {
+        wchar_t own[8] = {};
+        if (!GetDlgItem(h, 0xFFFF) || !GetClassNameW(h, own, 8) || !Is(own, L"#32770")) return false; // cheap, on every paint
+        bool shape = true;
+        EnumChildWindows(h, [](HWND child, LPARAM l) -> BOOL
+        {
+            wchar_t cls[16] = {};
+            const auto id = GetDlgCtrlID(child);
+            const bool fits = GetClassNameW(child, cls, 16)
+                && ((Is(cls, WC_STATICW) && (id == 0xFFFF || id == 20)) || (Is(cls, WC_BUTTONW) && id >= IDOK && id <= IDCONTINUE));
+            if (!fits) *reinterpret_cast<bool*>(l) = false;
+            return fits;
+        }, reinterpret_cast<LPARAM>(&shape));
+        return shape;
+    }
+
     /// Top-level windows, dialogs and the parents of plain controls: control colors, background, menu bar.
     LRESULT CALLBACK FrameProc(HWND h, UINT msg, WPARAM w, LPARAM l, UINT_PTR, DWORD_PTR)
     {
         switch (msg)
         {
+        case WM_PAINT:
+            // A message box's button band is painted by user32 itself in its light color (no import to replace): painted over
+            // after it, around the controls (its text and icon are controls too).
+            if (IsMessageBox(h))
+            {
+                const auto result = DefSubclassProc(h, msg, w, l);
+                if (const auto dc = GetDCEx(h, nullptr, DCX_CACHE | DCX_CLIPCHILDREN))
+                {
+                    Fill(dc, h, g_back);
+                    ReleaseDC(h, dc);
+                }
+                return result;
+            }
+            break;
         case WM_CTLCOLORDLG: case WM_CTLCOLORSTATIC: case WM_CTLCOLORBTN:
             SetTextColor(reinterpret_cast<HDC>(w), IsWindowEnabled(reinterpret_cast<HWND>(l)) ? Text : Dim);
             SetBkColor(reinterpret_cast<HDC>(w), Back);
@@ -419,6 +575,17 @@ namespace
                 if (GetWindowThreadProcessId(target, nullptr) == GetCurrentThreadId() && InScope(target)) SetWindowSubclass(target, FrameProc, FrameId, 0);
             }
         }
+        else if (g_colors && (Is(cls, L"RICHEDIT50W") || Is(cls, L"RichEdit20W")))
+        {
+            // A rich edit keeps its own colors (Character Map's "Characters to copy"): the background, and the text from now on.
+            SendMessageW(h, EM_SETBKGNDCOLOR, 0, Field);
+            CHARFORMAT2W format{};
+            format.cbSize = sizeof format;
+            format.dwMask = CFM_COLOR;
+            format.crTextColor = Text;
+            SendMessageW(h, EM_SETCHARFORMAT, SCF_DEFAULT, reinterpret_cast<LPARAM>(&format));
+            SendMessageW(h, EM_SETCHARFORMAT, SCF_ALL, reinterpret_cast<LPARAM>(&format));
+        }
         else if (Is(cls, WC_STATICW)) ParentColors(h);
         else if (Is(cls, WC_SCROLLBARW)) SetWindowTheme(h, L"DarkMode_Explorer", nullptr);
         else return;
@@ -429,7 +596,11 @@ namespace
     {
         if (object != OBJID_WINDOW || child != CHILDID_SELF || !h) return;
         if (event == EVENT_OBJECT_DESTROY) RemovePropW(h, Mark);
-        else Darken(h);
+        else
+        {
+            if (g_colors && event == EVENT_OBJECT_CREATE && GetAncestor(h, GA_ROOT) == h) PatchColors(); // modules loaded since
+            Darken(h);
+        }
     }
 
     BOOL CALLBACK DarkenChild(HWND h, LPARAM) { Darken(h); return TRUE; }
@@ -472,6 +643,10 @@ namespace
                 if (auto flush = reinterpret_cast<VoidFn>(GetProcAddress(ux, MAKEINTRESOURCEA(136)))) flush();
             }
         }
+        // The system colors before anything can call PatchColors (the window hook below does, for each new top-level window).
+        // Not with High Contrast on: classic apps follow it through the system colors.
+        HIGHCONTRASTW contrast{ sizeof contrast };
+        if (g_colors && ((SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof contrast, &contrast, 0) && (contrast.dwFlags & HCF_HIGHCONTRASTON)) || !StartColors())) g_colors = false;
         // New windows of this process, on whichever thread creates them (in context: the callback runs on that thread). Installed
         // from a thread of its own that never ends: Windows removes a hook when its thread exits, and in File Explorer the hooked
         // thread is the first dialog's, gone when that dialog closes.

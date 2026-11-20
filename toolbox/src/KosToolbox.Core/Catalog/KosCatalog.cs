@@ -211,6 +211,12 @@ public static partial class KosCatalog
             .Reg(CurrentUser, @"Software\TheKOS\Shell", "DarkDialogs", RegistryValueKind.DWord, "1", null)
             .With(t => { t.KosDefault = Off; t.WindowsDefault = Off; t.Source = "KOS Engine (KOS Shell)"; }),
 
+        Toggle("dark-tools", "Dark classic tools (KOS Shell, system colors)",
+                "Character Map, System Information, Add Hardware, User Accounts (netplwiz) and Disk Cleanup in dark mode. These paint parts of themselves with the system colors (Character Map's grid, a wizard's header band, a drive list), so in these apps only KOS Shell (KosShell.dll) also replaces GetSysColor and GetSysColorBrush in their import tables. Turning it off applies the next time the app is opened.",
+                Pages.Windows, Pages.Visuals, "Interface")
+            .Reg(CurrentUser, @"Software\TheKOS\Shell", "DarkTools", RegistryValueKind.DWord, "1", null)
+            .With(t => { t.KosDefault = Off; t.WindowsDefault = Off; t.Source = "KOS Engine (KOS Shell)"; }),
+
         Toggle("no-blank-folders", "No blank between folders in File Explorer (KOS Shell)",
                 "File Explorer keeps the folder you're leaving on screen until the next one is ready, instead of an empty view with \"Working on it...\" each time a folder opens: what pressing F11 twice does, for every window and tab. KOS Shell (KosShell.dll) is loaded into File Explorer once a folder window opens and only holds the tab's redraw while Explorer swaps the folder view. Turning it off works at once (the DLL stays in Explorer until it restarts).",
                 Pages.Windows, Pages.Visuals, "Interface")

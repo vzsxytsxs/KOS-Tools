@@ -61,7 +61,11 @@ public class ShellHostTests
         Assert.True(DarkApps.Wants(wanted, @"C:\Windows\System32\colorcpl.exe", "#32770", Never, @"C:\Windows"));
         Assert.False(DarkApps.Wants(wanted, @"C:\Windows\System32\cleanmgr.exe", "#32770", Never, @"C:\Windows")); // its drive list stays white
         Assert.True(DarkApps.Wants(wanted, @"C:\Windows\System32\odbcad32.exe", "#32770", Never, @"C:\Windows"));
-        Assert.False(DarkApps.Wants(wanted, @"C:\Windows\System32\charmap.exe", "#32770", Never, @"C:\Windows")); // its grid stays white
+        Assert.False(DarkApps.Wants(wanted, @"C:\Windows\System32\charmap.exe", "#32770", Never, @"C:\Windows")); // DarkTools' (color hooks)
+        var tools = DarkApps.Paths(n => n == "DarkTools" ? 1 : null, @"C:\Windows");
+        Assert.True(DarkApps.Wants(tools, @"C:\Windows\System32\charmap.exe", "#32770", Never, @"C:\Windows"));
+        Assert.False(DarkApps.Wants(tools, @"C:\Windows\System32\msconfig.exe", "#32770", Never, @"C:\Windows")); // dark without them
+        Assert.False(DarkApps.Wants(tools, @"C:\Windows\explorer.exe", "#32770", Never, @"C:\Windows"));
         Assert.False(DarkApps.Wants(wanted, @"C:\Windows\SysWOW64\msconfig.exe", "#32770", Never, @"C:\Windows"));
         Assert.False(DarkApps.Wants(wanted, @"C:\Windows\System32\notepad.exe", "Notepad", Never, @"C:\Windows")); // its own switch
         Assert.False(DarkApps.Wants(wanted, @"C:\Games\game.exe", "#32770", Never, @"C:\Windows"));

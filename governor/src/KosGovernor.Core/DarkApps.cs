@@ -7,7 +7,7 @@ namespace KosGovernor.Core;
 
 /// <summary>
 /// KOS Shell's dark mode for classic Windows tools, one switch per group on the toolbox's Windows › Visuals page
-/// (HKCU\Software\TheKOS\Shell: DarkRegedit, DarkConsoles, DarkNotepad, DarkDialogs = 1).
+/// (HKCU\Software\TheKOS\Shell: DarkRegedit, DarkConsoles, DarkNotepad, DarkDialogs, DarkTools = 1).
 /// <list type="bullet">
 /// <item>While a switch is on, an out-of-context window event hook (it loads nothing anywhere) tells the tray thread when a top-level
 /// window is shown. A window of an app whose switch is on, matched by its full path in the Windows folder, gets KosShell.dll through a
@@ -33,6 +33,9 @@ internal sealed class DarkApps
         // The tools only those that come out fully dark (checked in use): not charmap (white grid), msinfo32 (white pane), hdwwiz,
         // credwiz, cttune and dccw (white wizard bands), netplwiz (a white box), nor cleanmgr (its drive list stays white).
         ("DarkDialogs", ["explorer.exe", @"System32\rundll32.exe", @"System32\SystemProperties*.exe", @"System32\msconfig.exe", @"System32\colorcpl.exe", @"System32\odbcad32.exe"]),
+        // Tools that paint parts with the system colors: the DLL also replaces GetSysColor/GetSysColorBrush in them.
+        // Not credwiz, cttune nor dccw: DirectUI paints their white bands without the system colors.
+        ("DarkTools", [@"System32\charmap.exe", @"System32\msinfo32.exe", @"System32\hdwwiz.exe", @"System32\netplwiz.exe", @"System32\cleanmgr.exe"]),
     ];
 
     /// <summary>The folder fix's switch: File Explorer only.</summary>

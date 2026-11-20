@@ -148,8 +148,9 @@ Process rules in the style of Process Lasso. It used to be the toolbox's Process
   - In the app the DLL checks its own exe (and rundll32's command line) against the same list, then:
     - turns on the app's dark mode (dark popup menus, dark title bars), except in File Explorer;
     - darkens each window by class as it's created (trees, lists, headers, tabs, status bars, edits, buttons, dialogs, the menu bar); in File Explorer only dialogs, each when it's shown, and what's inside them, but not the Run box (it paints its own light body); task dialogs keep their light body;
-    - never hooks an API, and touches no other process: games never get it.
+    - hooks no API except the system colors in the *Dark classic tools* apps (below), and touches no other process: games never get it.
   - Turning a switch off applies to apps opened afterwards; an open window stays dark until it's closed.
+  - *Dark classic tools* (`DarkTools`): `charmap.exe`, `msinfo32.exe`, `hdwwiz.exe`, `netplwiz.exe` and `cleanmgr.exe` in System32 get the same, and in them only the DLL also replaces `GetSysColor`/`GetSysColorBrush` in the loaded modules' import tables (the toolbox README has the details).
 - **No blank between folders** (KOS Shell; the toolbox's Windows › Visuals › *No blank between folders in File Explorer*)
   - While it's on (`HKCU\Software\TheKOS\Shell`, `NoBlankFolders` = 1), a second `DarkApps` with its own hook loads `KosShell.dll` into `%windir%\explorer.exe` at its first folder window (`CabinetWClass`), the same way and with the same checks as the dark apps, through the DLL's `FolderHook` export.
   - In Explorer the DLL holds redraw on a tab while it swaps one folder's view for the next, as Explorer itself does after F11 (the toolbox README has the details), and reads the switch again before each hold, so off works at once.

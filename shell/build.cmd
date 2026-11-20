@@ -13,4 +13,4 @@ set OUT=%~dp0bin
 set DEFS=
 if /i "%~1"=="probe" (set OUT=%~dp0bin\probe& set DEFS=/DKOS_SHELL_PROBE)
 if not exist "%OUT%" mkdir "%OUT%"
-cl /nologo %DEFS% /O2 /MT /EHsc /W4 /std:c++17 /permissive- /LD "%~dp0KosShell.cpp" "%~dp0KosDark.cpp" "%~dp0KosFolders.cpp" /Fe"%OUT%\KosShell.dll" /Fo"%OUT%\\" /link /DEF:"%~dp0KosShell.def" windowsapp.lib user32.lib gdi32.lib ole32.lib oleaut32.lib uxtheme.lib dwmapi.lib comctl32.lib advapi32.lib || exit /b 1
+cl /nologo %DEFS% /O2 /MT /EHsc /W4 /std:c++17 /permissive- /LD "%~dp0KosShell.cpp" "%~dp0KosDark.cpp" "%~dp0KosFolders.cpp" /Fe"%OUT%\KosShell.dll" /Fo"%OUT%\\" /guard:cf /link /guard:cf /DEF:"%~dp0KosShell.def" windowsapp.lib user32.lib gdi32.lib ole32.lib oleaut32.lib uxtheme.lib dwmapi.lib comctl32.lib advapi32.lib || exit /b 1
