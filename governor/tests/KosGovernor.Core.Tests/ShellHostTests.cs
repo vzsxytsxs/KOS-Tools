@@ -62,6 +62,20 @@ public class ShellHostTests
     }
 
     [Fact]
+    public void TheFolderFixWaitsForAFolderWindowInExplorerOnly()
+    {
+        var wanted = DarkApps.Paths(DarkApps.FolderApps, n => n == "NoBlankFolders" ? 1 : null, @"C:\Windows");
+        Assert.Equal([@"C:\Windows\explorer.exe"], wanted);
+        Assert.Empty(DarkApps.Paths(DarkApps.FolderApps, n => n == "DarkDialogs" ? 1 : null, @"C:\Windows"));
+        string? Never() => throw new InvalidOperationException("command line read");
+        Assert.Null(DarkApps.Wants(wanted, @"C:\Windows\explorer.exe", "#32770", Never, @"C:\Windows", "CabinetWClass"));
+        Assert.Null(DarkApps.Wants(wanted, @"C:\Windows\explorer.exe", "Shell_TrayWnd", Never, @"C:\Windows", "CabinetWClass"));
+        Assert.True(DarkApps.Wants(wanted, @"C:\Windows\explorer.exe", "CabinetWClass", Never, @"C:\Windows", "CabinetWClass"));
+        Assert.False(DarkApps.Wants(wanted, @"C:\Windows\System32\rundll32.exe", "CabinetWClass", Never, @"C:\Windows", "CabinetWClass"));
+        Assert.False(DarkApps.Wants(wanted, @"C:\Tools\explorer.exe", "CabinetWClass", Never, @"C:\Windows", "CabinetWClass"));
+    }
+
+    [Fact]
     public void DarkModeReadsAPeHeadersLinkTimeAndSize()
     {
         var header = new byte[0x200];

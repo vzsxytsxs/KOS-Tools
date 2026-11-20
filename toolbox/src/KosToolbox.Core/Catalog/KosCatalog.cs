@@ -211,6 +211,12 @@ public static partial class KosCatalog
             .Reg(CurrentUser, @"Software\TheKOS\Shell", "DarkDialogs", RegistryValueKind.DWord, "1", null)
             .With(t => { t.KosDefault = Off; t.WindowsDefault = Off; t.Source = "KOS Engine (KOS Shell)"; }),
 
+        Toggle("no-blank-folders", "No blank between folders in File Explorer (KOS Shell)",
+                "File Explorer keeps the folder you're leaving on screen until the next one is ready, instead of an empty view with \"Working on it...\" each time a folder opens: what pressing F11 twice does, for every window and tab. KOS Shell (KosShell.dll) is loaded into File Explorer once a folder window opens and only holds the tab's redraw while Explorer swaps the folder view. Turning it off works at once (the DLL stays in Explorer until it restarts).",
+                Pages.Windows, Pages.Visuals, "Interface")
+            .Reg(CurrentUser, @"Software\TheKOS\Shell", "NoBlankFolders", RegistryValueKind.DWord, "1", null)
+            .With(t => { t.KosDefault = Off; t.WindowsDefault = Off; t.Source = "KOS Engine (KOS Shell)"; }),
+
         Choice("context-menu", "Context menu style",
                 "Windows 11 menu or the classic full menu without \"Show more options\". Classic blocks the Windows 11 menu's COM class for this user.",
                 Pages.Windows, Pages.Visuals, "Interface", ("modern", "Windows 11"), ("classic", "Classic"))

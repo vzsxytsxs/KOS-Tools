@@ -16,6 +16,8 @@ namespace KosGovernor.Core;
 /// <item>DarkDialogs: File Explorer only once it shows a dialog (#32770; the DLL then darkens only dialogs there), rundll32 only while it
 /// runs a Control Panel applet (shell32.dll,Control_RunDLL), and System Properties (System32\SystemProperties*.exe).</item>
 /// <item>No other process gets the DLL, games included. Off applies to apps started afterwards: an open window stays dark until it's closed.</item>
+/// <item>A second instance does the same for KOS Shell's folder fix (NoBlankFolders = 1, shell\KosFolders.cpp): File Explorer gets the DLL
+/// through FolderHook once it shows a folder window (CabinetWClass).</item>
 /// </list>
 /// Runs on the tray thread (the window events arrive there).
 /// </summary>
@@ -30,19 +32,24 @@ internal sealed class DarkApps
         ("DarkDialogs", ["explorer.exe", @"System32\rundll32.exe", @"System32\SystemProperties*.exe"]),
     ];
 
+    /// <summary>The folder fix's switch: File Explorer only.</summary>
+    internal static readonly (string Value, string[] Paths)[] FolderApps = [("NoBlankFolders", ["explorer.exe"])];
+
     /// <summary>The full paths whose switch is 1 (any thread).</summary>
-    public static string[] Wanted()
+    public static string[] Wanted((string Value, string[] Paths)[]? table = null)
     {
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(@"Software\TheKOS\Shell");
-            return Paths(name => key?.GetValue(name), Environment.GetFolderPath(Environment.SpecialFolder.Windows));
+            return Paths(table ?? Apps, name => key?.GetValue(name), Environment.GetFolderPath(Environment.SpecialFolder.Windows));
         }
         catch { return []; }
     }
 
-    internal static string[] Paths(Func<string, object?> value, string windows) =>
-        Apps.Where(a => value(a.Value) is int v && v == 1).SelectMany(a => a.Paths).Select(p => Path.Combine(windows, p)).ToArray();
+    internal static string[] Paths(Func<string, object?> value, string windows) => Paths(Apps, value, windows);
+
+    internal static string[] Paths((string Value, string[] Paths)[] table, Func<string, object?> value, string windows) =>
+        table.Where(a => value(a.Value) is int v && v == 1).SelectMany(a => a.Paths).Select(p => Path.Combine(windows, p)).ToArray();
 
     /// <summary>A wanted path matches the exe: the same file, or for "Name*.exe" one in that folder whose name starts so.</summary>
     internal static bool Matches(string wanted, string exe)
@@ -54,14 +61,15 @@ internal sealed class DarkApps
     }
 
     /// <summary>
-    /// Whether this window's process gets the DLL: true yes, false no; null not yet (File Explorer before a dialog: asked again at its
-    /// next window). The command line is read only for rundll32.
+    /// Whether this window's process gets the DLL: true yes, false no; null not yet (File Explorer before a window of the trigger class,
+    /// a dialog for dark mode, a folder window for the folder fix: asked again at its next window). The command line is read only for
+    /// rundll32.
     /// </summary>
-    internal static bool? Wants(string[] wanted, string exe, string windowClass, Func<string?> commandLine, string windows)
+    internal static bool? Wants(string[] wanted, string exe, string windowClass, Func<string?> commandLine, string windows, string explorerTrigger = "#32770")
     {
         if (!wanted.Any(w => Matches(w, exe))) return false;
         if (string.Equals(exe, Path.Combine(windows, "explorer.exe"), StringComparison.OrdinalIgnoreCase))
-            return windowClass == "#32770" ? true : null;
+            return windowClass == explorerTrigger ? true : null;
         if (string.Equals(exe, Path.Combine(windows, @"System32\rundll32.exe"), StringComparison.OrdinalIgnoreCase))
             return commandLine()?.Contains("shell32.dll,Control_RunDLL", StringComparison.OrdinalIgnoreCase) == true;
         return true;
@@ -76,7 +84,14 @@ internal sealed class DarkApps
     IntPtr _hook, _module, _proc;
     bool _refusalLogged;
 
-    public DarkApps() => _callback = OnEvent; // reference kept: Windows calls it while the hook exists
+    /// <summary>The DLL's hook export this instance loads with, its log prefix, and the window class that loads it into File Explorer.</summary>
+    readonly string _export, _label, _trigger;
+
+    public DarkApps(string export = "DarkHook", string label = "Dark mode", string explorerTrigger = "#32770")
+    {
+        (_export, _label, _trigger) = (export, label, explorerTrigger);
+        _callback = OnEvent; // reference kept: Windows calls it while the hook exists
+    }
 
     /// <summary>The switches changed (tray thread).</summary>
     public void Sync(string[] wanted)
@@ -100,7 +115,7 @@ internal sealed class DarkApps
     {
         if (idObject != 0 || idChild != 0 || hwnd == IntPtr.Zero || GetAncestor(hwnd, 2) != hwnd) return; // OBJID_WINDOW, CHILDID_SELF, GA_ROOT
         try { using (TaskMeter.Measure(EngineTask.Shell)) Consider(hwnd); }
-        catch (Exception ex) { Log.Error("Dark mode check failed", ex); }
+        catch (Exception ex) { Log.Error($"{_label} check failed", ex); }
     }
 
     /// <summary>Once per process (its id and start time): KosShell.dll into it when it's one of the wanted apps.</summary>
@@ -114,32 +129,35 @@ internal sealed class DarkApps
         using var process = ProcessControl.Open((int)pid, Native.ProcessQueryLimited);
         if (process is null || !Native.GetProcessTimes(process, out var created, out _, out _, out _)) return;
         var key = ((int)pid, created);
-        if (_seen.TryGetValue(key, out var waiting) && (!waiting || windowClass != "#32770")) return;
+        if (_seen.TryGetValue(key, out var waiting) && (!waiting || windowClass != _trigger)) return;
         if (_seen.Count > 4096) { _seen.Clear(); _retried.Clear(); } // shortcut: forgets exited processes in bulk; open apps are only checked again
         var name = new StringBuilder(1024);
         var size = name.Capacity;
         if (!Native.QueryFullProcessImageName(process, 0, name, ref size)) return;
         var exe = name.ToString();
-        var verdict = Wants(_wanted, exe, windowClass, () => CommandLine(process), _windows);
+        var verdict = Wants(_wanted, exe, windowClass, () => CommandLine(process), _windows, _trigger);
         _seen[key] = verdict is null;
         if (verdict != true) return;
         var app = Path.GetFileName(exe);
         // Already there: the same build gets the hook again (the DLL starts once); an older one renamed by an update would run this
         // build's offset in its old code, so that process waits for its restart.
-        if (LoadedBuild((int)pid) is false) { Log.Warn($"Dark mode: {app} (pid {pid}) has another KOS Shell build loaded (or its modules can't be read); dark from its next start."); return; }
+        var loaded = LoadedBuild((int)pid);
+        if (loaded is false) { Log.Warn($"{_label}: {app} (pid {pid}) has another KOS Shell build loaded (or its modules can't be read); loaded from its next start."); return; }
+        // Not there yet: the app loads the file at the DLL's path, which a copy made while the engine runs could have replaced.
+        if (loaded is null && !FileIsOwnBuild()) { Log.Warn($"{_label}: {ShellHost.DllPath} isn't the build KOS Engine loaded; {app} (pid {pid}) is left as it is until the engine restarts."); return; }
         // The thread is held open and checked to be that process's: a thread id reused by another process never gets the hook.
         using var owner = ThreadControl.Open((int)thread, Native.ThreadQueryLimited);
         if (owner is null || GetProcessIdOfThread(owner) != pid) return;
         var hook = SetWindowsHookEx(4, _proc, _module, thread); // WH_CALLWNDPROC on that one thread
-        if (hook == IntPtr.Zero) { Log.Warn($"Dark mode: {app} (pid {pid}) couldn't be hooked (error {Marshal.GetLastWin32Error()})."); return; }
+        if (hook == IntPtr.Zero) { Log.Warn($"{_label}: {app} (pid {pid}) couldn't be hooked (error {Marshal.GetLastWin32Error()})."); return; }
         bool answered;
         // WM_NULL, SMTO_ABORTIFHUNG: the hook runs in the app. Short: the tray thread waits (the killswitch hotkey arrives there too).
         try { answered = SendMessageTimeout(hwnd, 0, IntPtr.Zero, IntPtr.Zero, 2, 1000, out _) != IntPtr.Zero; }
         finally { UnhookWindowsHookEx(hook); }
-        if (answered && LoadedBuild((int)pid) is true) Log.Info($"Dark mode: KOS Shell in {app} (pid {pid}).");
+        if (answered && LoadedBuild((int)pid) is true) Log.Info($"{_label}: KOS Shell in {app} (pid {pid}).");
         // Busy: tried again at its next window, once (each try holds the tray thread up to a second).
-        else if (!answered) { if (_retried.Add(key)) _seen.Remove(key); else Log.Warn($"Dark mode: {app} (pid {pid}) didn't answer twice; left as it is."); }
-        else Log.Warn($"Dark mode: KOS Shell didn't load into {app} (pid {pid}).");
+        else if (!answered) { if (_retried.Add(key)) _seen.Remove(key); else Log.Warn($"{_label}: {app} (pid {pid}) didn't answer twice; left as it is."); }
+        else Log.Warn($"{_label}: KOS Shell didn't load into {app} (pid {pid}).");
     }
 
     /// <summary>KosShell.dll in that process: null when it isn't, true when it's the build the engine has (the same link time and size
@@ -162,8 +180,22 @@ internal sealed class DarkApps
                         return Stamp(header) is { } theirs && theirs == Stamp(own);
                     }
         }
-        catch (Exception ex) { Log.Warn($"Dark mode: the modules of pid {pid} can't be read: {ex.Message}"); return false; }
+        catch (Exception ex) { Log.Warn($"{_label}: the modules of pid {pid} can't be read: {ex.Message}"); return false; }
         return null;
+    }
+
+    /// <summary>The DLL file on disk is the build the engine has loaded (the same link time and size in its header).</summary>
+    bool FileIsOwnBuild()
+    {
+        try
+        {
+            var header = new byte[0x200];
+            using (var file = File.OpenRead(ShellHost.DllPath)) file.ReadExactly(header);
+            var own = new byte[header.Length];
+            Marshal.Copy(_module, own, 0, own.Length);
+            return Stamp(header) is { } onDisk && onDisk == Stamp(own);
+        }
+        catch (Exception) { return false; }
     }
 
     /// <summary>A PE header's link time and image size; null when it isn't one.</summary>
@@ -202,7 +234,7 @@ internal sealed class DarkApps
             try
             {
                 _module = NativeLibrary.Load(dll);
-                _proc = NativeLibrary.GetExport(_module, "DarkHook");
+                _proc = NativeLibrary.GetExport(_module, _export);
                 return true;
             }
             catch (Exception ex)
@@ -210,7 +242,7 @@ internal sealed class DarkApps
                 problem = ex.Message;
                 if (_module != IntPtr.Zero) { NativeLibrary.Free(_module); _module = IntPtr.Zero; }
             }
-        if (!_refusalLogged) { Log.Warn($"Dark mode: {problem}"); _refusalLogged = true; }
+        if (!_refusalLogged) { Log.Warn($"{_label}: {problem}"); _refusalLogged = true; }
         return false;
     }
 
