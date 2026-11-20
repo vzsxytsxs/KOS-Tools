@@ -22,6 +22,7 @@
 #include <functional>
 #include <memory>
 #include <atomic>
+#include <tuple>
 
 using namespace winrt::Windows::UI::Xaml;
 
@@ -66,29 +67,40 @@ namespace
 
     /// Runs fn on a thread that owns windows (the taskbar's UI thread): a WH_CALLWNDPROC hook on that thread and a message to one
     /// of its windows. XAML objects can only be touched on their own thread.
+    /// The job is the DLL's own: the message only carries its number, so a late message (after a timeout) or one from another sender
+    /// can't make the hook run anything else, and the shared pointer keeps the job alive while it runs.
+    struct Job { WPARAM Number; std::function<void()> Work; };
+    std::shared_ptr<Job> g_job;
+    WPARAM g_jobNumber;
+    std::mutex g_runLock; // one job at a time
     UINT g_runMessage = RegisterWindowMessageW(L"KosShell.Run");
+
     LRESULT CALLBACK RunHook(int code, WPARAM w, LPARAM l)
     {
         if (code == HC_ACTION)
         {
             auto msg = reinterpret_cast<CWPSTRUCT*>(l);
-            if (msg->message == g_runMessage && msg->wParam == 0x4B4F53) (*reinterpret_cast<std::function<void()>*>(msg->lParam))();
+            if (msg->message == g_runMessage)
+                if (auto job = std::atomic_load(&g_job); job && msg->wParam == job->Number) job->Work();
         }
         return CallNextHookEx(nullptr, code, w, l);
     }
 
-    bool RunOnThread(DWORD thread, const std::function<void()>& fn)
+    bool RunOnThread(DWORD thread, std::function<void()> work)
     {
-        if (thread == GetCurrentThreadId()) { fn(); return true; }
+        if (thread == GetCurrentThreadId()) { work(); return true; }
         HWND window = nullptr;
         EnumThreadWindows(thread, [](HWND h, LPARAM p) { *reinterpret_cast<HWND*>(p) = h; return FALSE; }, reinterpret_cast<LPARAM>(&window));
         if (!window) return false;
+        std::lock_guard guard(g_runLock);
+        auto job = std::make_shared<Job>(Job{ ++g_jobNumber, std::move(work) });
+        std::atomic_store(&g_job, job);
         auto hook = SetWindowsHookExW(WH_CALLWNDPROC, RunHook, g_module, thread);
-        if (!hook) return false;
         DWORD_PTR result;
-        auto sent = SendMessageTimeoutW(window, g_runMessage, 0x4B4F53, reinterpret_cast<LPARAM>(&fn), SMTO_NORMAL, 5000, &result);
-        UnhookWindowsHookEx(hook);
-        return sent != 0;
+        auto sent = hook && SendMessageTimeoutW(window, g_runMessage, job->Number, 0, SMTO_NORMAL, 5000, &result);
+        if (hook) UnhookWindowsHookEx(hook);
+        std::atomic_store(&g_job, std::shared_ptr<Job>());
+        return sent;
     }
 
     Media::SolidColorBrush Clear() { return Media::SolidColorBrush(winrt::Windows::UI::Color{ 0, 0, 0, 0 }); }
@@ -246,10 +258,19 @@ namespace
             if (!g_tap)
             {
                 const auto pid = std::to_wstring(GetCurrentProcessId());
-                g_onEvent = CreateEventW(nullptr, TRUE, TRUE, (L"Local\\KosShell." + pid + L".On").c_str());
-                g_changedEvent = CreateEventW(nullptr, FALSE, FALSE, (L"Local\\KosShell." + pid + L".Changed").c_str());
-                if (!g_onEvent || !g_changedEvent) return HRESULT_FROM_WIN32(GetLastError());
-                if (GetLastError() == ERROR_ALREADY_EXISTS) g_on = WaitForSingleObject(g_onEvent, 0) == WAIT_OBJECT_0;
+                // Only this DLL creates them, once per Explorer: names that already exist are someone else's, and aren't used.
+                for (auto [handle, manual, name] : { std::tuple{ &g_onEvent, TRUE, L".On" }, std::tuple{ &g_changedEvent, FALSE, L".Changed" } })
+                {
+                    *handle = CreateEventW(nullptr, manual, manual, (L"Local\\KosShell." + pid + name).c_str());
+                    if (!*handle || GetLastError() == ERROR_ALREADY_EXISTS)
+                    {
+                        Log(std::wstring(L"Local\\KosShell.") + pid + name + L" already exists: not loading");
+                        return *handle ? E_ACCESSDENIED : HRESULT_FROM_WIN32(GetLastError());
+                    }
+                }
+                // Its threads run for Explorer's life: the module is never unloaded under them.
+                HMODULE pinned;
+                GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN, reinterpret_cast<LPCWSTR>(&g_module), &pinned);
                 auto loop = CreateThread(nullptr, 0, [](void*) -> DWORD { ControlLoop(); return 0; }, nullptr, 0, nullptr);
                 if (loop) CloseHandle(loop);
                 g_tap = winrt::make_self<Tap>();

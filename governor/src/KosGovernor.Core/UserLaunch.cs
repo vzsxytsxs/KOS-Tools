@@ -20,6 +20,7 @@ public static class UserLaunch
     [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
     [DllImport("kernel32.dll")] static extern uint WaitForSingleObject(IntPtr h, uint ms);
     [DllImport("kernel32.dll")] static extern bool GetExitCodeProcess(IntPtr h, out uint code);
+    [DllImport("kernel32.dll")] static extern bool TerminateProcess(IntPtr h, uint code);
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     struct StartupInfo
@@ -45,16 +46,41 @@ public static class UserLaunch
         Log.Info($"Gamemode: started {commandLine} (pid {pi.dwProcessId})");
     }
 
-    /// <summary>Runs a program as the normal user and waits for it: its exit code, or null when it didn't end in time.</summary>
+    /// <summary>Runs a program as the normal user and waits for it: its exit code, or null when it didn't end in time (it's ended then).</summary>
     internal static uint? Run(string path, string commandLine, int timeoutMs)
     {
         var pi = Create(path, commandLine);
         CloseHandle(pi.hThread);
-        try { return WaitForSingleObject(pi.hProcess, (uint)timeoutMs) == 0 && GetExitCodeProcess(pi.hProcess, out var code) ? code : null; }
+        try
+        {
+            if (WaitForSingleObject(pi.hProcess, (uint)timeoutMs) == 0 && GetExitCodeProcess(pi.hProcess, out var code)) return code;
+            TerminateProcess(pi.hProcess, 1);
+            return null;
+        }
         finally { CloseHandle(pi.hProcess); }
     }
 
+    /// <summary>
+    /// Runs <paramref name="work"/> impersonating Explorer's user: named objects a normal process created are opened with the
+    /// rights that user has, so a link planted under such a name can't lead the elevated engine to its own objects.
+    /// </summary>
+    internal static T AsShellUser<T>(Func<T> work)
+    {
+        using var token = ShellToken(impersonation: true);
+        return System.Security.Principal.WindowsIdentity.RunImpersonated(token, work);
+    }
+
     static ProcessInformation Create(string path, string commandLine)
+    {
+        using var primary = ShellToken(impersonation: false);
+        var si = new StartupInfo { cb = Marshal.SizeOf<StartupInfo>() };
+        if (!CreateProcessWithTokenW(primary, 0, path, commandLine, 0, IntPtr.Zero, Path.GetDirectoryName(path), ref si, out var pi))
+            throw Error($"starting {path}");
+        return pi;
+    }
+
+    /// <summary>A copy of Explorer's token: primary, to start a process with it, or for impersonation.</summary>
+    static SafeAccessTokenHandle ShellToken(bool impersonation)
     {
         if (GetWindowThreadProcessId(GetShellWindow(), out var shellPid) == 0 || shellPid == 0)
             throw new InvalidOperationException("Explorer isn't running, so the program can't be opened as the normal user.");
@@ -62,15 +88,10 @@ public static class UserLaunch
         if (!OpenProcessToken(shell, 0x0002, out var token)) throw Error("reading Explorer's token"); // TOKEN_DUPLICATE
         using (token)
         {
-            // QUERY | ASSIGN_PRIMARY | DUPLICATE | ADJUST_DEFAULT | ADJUST_SESSIONID; SecurityImpersonation, TokenPrimary.
-            if (!DuplicateTokenEx(token, 0x0008 | 0x0001 | 0x0002 | 0x0080 | 0x0100, IntPtr.Zero, 2, 1, out var primary)) throw Error("copying Explorer's token");
-            using (primary)
-            {
-                var si = new StartupInfo { cb = Marshal.SizeOf<StartupInfo>() };
-                if (!CreateProcessWithTokenW(primary, 0, path, commandLine, 0, IntPtr.Zero, Path.GetDirectoryName(path), ref si, out var pi))
-                    throw Error($"starting {path}");
-                return pi;
-            }
+            // QUERY | ASSIGN_PRIMARY | DUPLICATE | IMPERSONATE | ADJUST_DEFAULT | ADJUST_SESSIONID; SecurityImpersonation, TokenPrimary or TokenImpersonation.
+            if (!DuplicateTokenEx(token, 0x0008 | 0x0001 | 0x0002 | 0x0004 | 0x0080 | 0x0100, IntPtr.Zero, 2, impersonation ? 2 : 1, out var copy))
+                throw Error("copying Explorer's token");
+            return copy;
         }
     }
 

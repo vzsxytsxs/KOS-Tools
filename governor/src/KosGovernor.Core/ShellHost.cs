@@ -30,7 +30,7 @@ internal sealed class ShellHost
     public static volatile string? State;
 
     readonly Action<string> _warn;
-    int _loadedInto; // the Explorer that has KosShell.dll, and its switch state as last set
+    int _loadedInto, _failedInto; // the Explorer that has KosShell.dll (its switch as last set), and one it didn't load into
     bool _dllOn, _refusalLogged;
 
     /// <param name="warn">A balloon for the user (the crash guard tripped).</param>
@@ -50,7 +50,7 @@ internal sealed class ShellHost
             TurnOff();
             State = null;
             if (File.Exists(GuardPath) && Guard() is { Crashed: true }) { File.Delete(GuardPath); Log.Info("Transparent taskbar turned off: KOS Shell may load into Explorer again."); }
-            _refusalLogged = false;
+            (_refusalLogged, _failedInto) = (false, 0);
             return;
         }
         var tray = FindWindow("Shell_TrayWnd", null);
@@ -65,8 +65,9 @@ internal sealed class ShellHost
     public static void Reapply(bool force = false)
     {
         if (!force && !_applied) return;
-        foreach (var bar in Taskbars()) SetAccent(bar, 2, 0); // ACCENT_ENABLE_TRANSPARENTGRADIENT, fully transparent
-        _applied = true;
+        var any = false;
+        foreach (var bar in Taskbars()) any |= SetAccent(bar, 2, 0); // ACCENT_ENABLE_TRANSPARENTGRADIENT, fully transparent
+        _applied = any;
     }
 
     /// <summary>Every tick while off: the DLL is switched off even when an earlier engine left it on.</summary>
@@ -81,16 +82,23 @@ internal sealed class ShellHost
         if (FindWindow("Shell_TrayWnd", null) is var tray && tray != IntPtr.Zero && GetWindowThreadProcessId(tray, out var pid) != 0 && Switch((int)pid, false)) _dllOn = false;
     }
 
-    /// <summary>KosShell.dll in this Explorer, switched on (loaded once per Explorer).</summary>
+    /// <summary>KosShell.dll in this Explorer, switched on (loaded once per Explorer; not tried again in one it didn't load into).</summary>
     void Load(uint pid)
     {
-        if (Switch((int)pid, true)) // already there
+        if (Switch((int)pid, true)) // its events are there
         {
-            if (_loadedInto != pid || !_dllOn) Log.Info($"KOS Shell in Explorer (pid {pid}): taskbar transparent.");
-            (_loadedInto, _dllOn) = ((int)pid, true);
+            if (_loadedInto != pid)
+            {
+                // Anyone can create the names: the status believes the module list
+                _dllOn = HasModule((int)pid, "KosShell.dll");
+                if (_dllOn) Log.Info($"KOS Shell in Explorer (pid {pid}): taskbar transparent.");
+                else Log.Warn($"Transparent taskbar: KOS Shell's switch exists in Explorer (pid {pid}) but the DLL isn't loaded there.");
+                _loadedInto = (int)pid;
+            }
             CheckGuard();
             return;
         }
+        if (pid == _failedInto) return;
         if (CheckGuard() is { } refused)
         {
             if (!_refusalLogged) { Log.Warn(refused); _refusalLogged = true; }
@@ -105,27 +113,46 @@ internal sealed class ShellHost
             File.WriteAllText(GuardPath, $"{pid} {DateTime.UtcNow.Ticks}");
             var rundll = Path.Combine(Environment.SystemDirectory, "rundll32.exe");
             var code = UserLaunch.Run(rundll, $"\"{rundll}\" \"{DllPath}\",Inject {pid}", 15000);
-            if (code == 0 && Switch((int)pid, true)) { (_loadedInto, _dllOn) = ((int)pid, true); Log.Info($"KOS Shell loaded into Explorer (pid {pid}): taskbar transparent."); }
-            else { Log.Warn($"Transparent taskbar: KOS Shell didn't load into Explorer (pid {pid}, {(code is { } c ? $"0x{c:X8}" : "no answer")})."); _refusalLogged = true; }
+            if (code == 0 && Switch((int)pid, true) && HasModule((int)pid, "KosShell.dll")) { (_loadedInto, _dllOn) = ((int)pid, true); Log.Info($"KOS Shell loaded into Explorer (pid {pid}): taskbar transparent."); }
+            else { Log.Warn($"Transparent taskbar: KOS Shell didn't load into Explorer (pid {pid}, {(code is { } c ? $"0x{c:X8}" : "no answer")}); not tried again in this Explorer."); _failedInto = (int)pid; }
         }
-        catch (Exception ex) { Log.Warn($"Transparent taskbar: loading KOS Shell failed: {ex.Message}"); _refusalLogged = true; }
+        catch (Exception ex) { Log.Warn($"Transparent taskbar: loading KOS Shell failed: {ex.Message}; not tried again in this Explorer."); _failedInto = (int)pid; }
     }
 
-    /// <summary>Sets the DLL's switch in that Explorer; false when the DLL isn't there.</summary>
+    static bool HasModule(int pid, string name)
+    {
+        try
+        {
+            using var p = System.Diagnostics.Process.GetProcessById(pid);
+            foreach (System.Diagnostics.ProcessModule m in p.Modules)
+                using (m) if (string.Equals(m.ModuleName, name, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        catch (Exception ex) { Log.Warn($"Transparent taskbar: Explorer's modules can't be read: {ex.Message}"); }
+        return false;
+    }
+
+    /// <summary>Sets the DLL's switch in that Explorer; false when the DLL isn't there. Opened as Explorer's user (see <see cref="UserLaunch.AsShellUser"/>).</summary>
     static bool Switch(int pid, bool on)
     {
-        if (!EventWaitHandle.TryOpenExisting($@"Local\KosShell.{pid}.On", out var onEvent)) return false;
-        using (onEvent)
+        try
         {
-            if (!EventWaitHandle.TryOpenExisting($@"Local\KosShell.{pid}.Changed", out var changed)) return false;
-            using (changed)
+            return UserLaunch.AsShellUser(() =>
             {
-                if (onEvent.WaitOne(0) == on) return true;
-                if (on) onEvent.Set(); else onEvent.Reset();
-                changed.Set();
-                return true;
-            }
+                if (!EventWaitHandle.TryOpenExisting($@"Local\KosShell.{pid}.On", out var onEvent)) return false;
+                using (onEvent)
+                {
+                    if (!EventWaitHandle.TryOpenExisting($@"Local\KosShell.{pid}.Changed", out var changed)) return false;
+                    using (changed)
+                    {
+                        if (onEvent.WaitOne(0) == on) return true;
+                        if (on) onEvent.Set(); else onEvent.Reset();
+                        changed.Set();
+                        return true;
+                    }
+                }
+            });
         }
+        catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException or System.ComponentModel.Win32Exception or IOException) { return false; }
     }
 
     internal sealed record GuardState(int Pid, DateTime Loaded, bool Crashed);
@@ -137,6 +164,8 @@ internal sealed class ShellHost
 
     static GuardState? Guard()
     {
+        // The elevated engine reads, rewrites and deletes it: the same folder and owner checks as the other state files here.
+        if ((ConfigStore.FolderProblem() ?? ConfigStore.OwnerProblem(GuardPath)) is { } problem) { Log.Warn($"Transparent taskbar: {problem}"); return null; }
         try
         {
             var parts = File.ReadAllText(GuardPath).Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -167,12 +196,15 @@ internal sealed class ShellHost
         using (h) return GetExitCodeProcess(h, out var code) && code == 259; // STILL_ACTIVE
     }
 
+    /// <summary>Explorer's taskbars: the main one and the secondary ones of the same process (anyone can create a window of those classes).</summary>
     static List<IntPtr> Taskbars()
     {
         var list = new List<IntPtr>();
         var main = FindWindow("Shell_TrayWnd", null);
-        if (main != IntPtr.Zero) list.Add(main);
-        for (var s = IntPtr.Zero; (s = FindWindowEx(IntPtr.Zero, s, "Shell_SecondaryTrayWnd", null)) != IntPtr.Zero;) list.Add(s);
+        if (main == IntPtr.Zero || GetWindowThreadProcessId(main, out var shell) == 0) return list;
+        list.Add(main);
+        for (var s = IntPtr.Zero; (s = FindWindowEx(IntPtr.Zero, s, "Shell_SecondaryTrayWnd", null)) != IntPtr.Zero;)
+            if (GetWindowThreadProcessId(s, out var pid) != 0 && pid == shell) list.Add(s);
         return list;
     }
 
@@ -191,7 +223,7 @@ internal sealed class ShellHost
         return found;
     }
 
-    static void SetAccent(IntPtr hwnd, int state, uint color)
+    static bool SetAccent(IntPtr hwnd, int state, uint color)
     {
         var accent = new Accent { State = state, Flags = 2, Color = color }; // flag 2: the color applies
         var size = Marshal.SizeOf<Accent>();
@@ -200,7 +232,7 @@ internal sealed class ShellHost
         {
             Marshal.StructureToPtr(accent, p, false);
             var data = new CompositionData { Attribute = 19, Data = p, Size = size }; // WCA_ACCENT_POLICY
-            SetWindowCompositionAttribute(hwnd, ref data);
+            return SetWindowCompositionAttribute(hwnd, ref data);
         }
         finally { Marshal.FreeHGlobal(p); }
     }
