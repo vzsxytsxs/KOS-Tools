@@ -47,7 +47,7 @@ public static partial class Txt
         EqGamemodeLabel = "Gamemode profile", EqGamemodeNone = "None (the active profile stays)",
         EqGamemodeHint = "KOS Engine switches this device to the gamemode profile while gamemode is on, and back afterwards.",
         EqGamemodeNowOn = "Gamemode is on now: the device plays its gamemode profile.",
-        EqNewName = "Profile", EqImportedName = "Imported",
+        EqNewName = "Profile", EqImportedName = "Imported", EqPresetFootsteps = "Footsteps (FPS)",
         EqNameLength = "A name has 1 to 64 characters.", EqNameTaken = "Another profile has this name.";
     public static string EqCopyName(string name) => $"{name} copy";
     public static string EqConfigFailed(string error) => $"The profiles couldn't be read, so nothing is saved over them: {error}";

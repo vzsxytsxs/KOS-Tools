@@ -270,7 +270,7 @@ public sealed class EqDeviceViewModel : ObservableObject
         {
             if (_loading || value is null || value == _activeItem || !CanEdit) return; // null: the list being rebuilt
             var entry = Entry();
-            entry.Active = value.Key.Length == 0 ? null : value.Key;
+            entry.Active = Adopt(entry, value.Key);
             ShowProfiles();
             _page.Apply(this, Txt.EqActiveSet(_profile?.Name));
         }
@@ -283,10 +283,20 @@ public sealed class EqDeviceViewModel : ObservableObject
         {
             if (_loading || value is null || value == _gamemodeItem || !CanEdit) return;
             var entry = Entry();
-            entry.Gamemode = value.Key.Length == 0 ? null : value.Key;
+            entry.Gamemode = Adopt(entry, value.Key);
             ShowProfiles();
             _page.Apply(this, Txt.EqGamemodeSet(entry.Gamemode));
         }
+    }
+    /// <summary>
+    /// The picked name (null: "" = flat or none). A built-in preset the device doesn't have yet (<see cref="EqPresets"/>, listed with
+    /// its profiles) becomes one of its profiles now, its own copy.
+    /// </summary>
+    static string? Adopt(EqDevice entry, string key)
+    {
+        if (key.Length == 0) return null;
+        if (entry.Find(key) is null && EqPresets.Find(key) is { } preset) entry.Profiles.Add(preset);
+        return key;
     }
     public bool HasProfile => _profile is not null;
     public string RenameText
@@ -316,7 +326,8 @@ public sealed class EqDeviceViewModel : ObservableObject
         try
         {
             var entry = Find();
-            var names = entry?.Profiles.Select(p => p.Name).Distinct().ToList() ?? [];
+            // The device's profiles, then the built-in presets it doesn't have (picking one adds it: Adopt).
+            var names = (entry?.Profiles.Select(p => p.Name) ?? []).Concat(EqPresets.All().Select(p => p.Name)).Distinct().ToList();
             // The lists are swapped only when the names changed (a pick from one of them runs this too, inside its own selection).
             if (_activeItems.Count == 0 || !_activeItems.Skip(1).Select(i => i.Key).SequenceEqual(names))
             {

@@ -9,6 +9,18 @@ public class EqualizerTests
         new() { Bands = { new EqBand { Type = type, Frequency = f, Gain = gain, Q = q } } };
 
     [Fact]
+    public void FootstepsPresetRaisesStepsOverBassWithoutClipping()
+    {
+        var p = EqPresets.Footsteps();
+        Assert.Null(EqSettingsFile.Problem(p));
+        Assert.InRange(EqSettingsFile.Peak(p), -1, 0.5); // the preamp keeps the peak near 0 dB
+        Assert.True(Equalizer.Response(p, 3000) - Equalizer.Response(p, 60) > 10); // steps well above the bass
+        Assert.NotSame(EqPresets.Find(p.Name), EqPresets.Find(p.Name)); // each pick gets its own copy
+        var device = new EqConfig().Device("{0.0.0.00000000}.{11111111-2222-3333-4444-555555555555}", "Headphones");
+        Assert.Null(device.Playing(true)); // nothing is picked by default, gamemode or not
+    }
+
+    [Fact]
     public void PeakBoostsAtCenterOnly()
     {
         var p = One(EqFilterType.Peak, 1000, 6, 1);
