@@ -37,6 +37,23 @@ public sealed class EqConfig
     /// <summary>Whether the gamemode profiles are playing now (KOS Engine applied them and hasn't switched back).</summary>
     public static bool GamemodeOn => File.Exists(GamemodeMarker);
 
+    /// <summary>Exists while KOS Equalizer's master switch is off: every device it's on for plays flat; the profiles stay.</summary>
+    static string BypassMarker => Path.Combine(EqSettingsFile.AudioDirectory, "bypass.on");
+    public static bool Bypassed => File.Exists(BypassMarker);
+
+    /// <summary>
+    /// The master switch. Off (<paramref name="bypass"/>): every device KOS Equalizer is on for is written flat at once (the effect
+    /// reloads its file: no audio restart, the registration stays); on: each plays its profile again. The marker goes first, so a
+    /// failure halfway leaves the next write (Play, Apply) doing the same. Returns the devices written.
+    /// </summary>
+    public static int SetBypass(bool bypass)
+    {
+        GpuTuner.PrepareDirectory(EqSettingsFile.AudioDirectory); // refuses a link or someone else's folder
+        if (bypass) File.WriteAllText(BypassMarker, "");
+        else File.Delete(BypassMarker);
+        return Apply(GamemodeOn);
+    }
+
     /// <summary>The config (empty when there's none); throws when it can't be trusted or read, so a save never replaces it with an empty one.</summary>
     public static EqConfig Load()
     {
@@ -65,27 +82,29 @@ public sealed class EqConfig
 
     /// <summary>
     /// KOS Equalizer after a change to a device's profiles (save the config first): what the device should play now goes to its
-    /// settings file, the gamemode profile while KOS Engine has gamemode on. Nothing when KOS Equalizer isn't on for the device.
-    /// Throws when the profile can't be played (<see cref="EqSettingsFile.Problem"/>) or the file can't be written.
+    /// settings file, the gamemode profile while KOS Engine has gamemode on, flat while the master switch is off. Nothing when
+    /// KOS Equalizer isn't on for the device. Throws when the profile can't be played (<see cref="EqSettingsFile.Problem"/>) or the
+    /// file can't be written.
     /// </summary>
     public static void Play(EqDevice device)
     {
         if (EqSettingsFile.Read(device.EndpointId) is null) return;
-        EqSettingsFile.Write(device.EndpointId, device.Playing(GamemodeOn));
+        EqSettingsFile.Write(device.EndpointId, Bypassed ? null : device.Playing(GamemodeOn));
     }
 
     /// <summary>
     /// KOS Engine at a gamemode switch (and at its start, with off: a gamemode it didn't end): every device KOS Equalizer is on for
-    /// (it has a settings file) gets what it should play now; only a file whose text differs is written. Returns the devices written;
-    /// one that fails is logged and skipped.
+    /// (it has a settings file) gets what it should play now (flat while the master switch is off); only a file whose text differs
+    /// is written. Returns the devices written; one that fails is logged and skipped.
     /// </summary>
     public static int Apply(bool gamemode)
     {
         var written = 0;
+        var bypassed = Bypassed;
         foreach (var d in Load().Devices)
         {
             if (EqSettingsFile.Read(d.EndpointId) is not { } now) continue; // not on for this device
-            var profile = d.Playing(gamemode);
+            var profile = bypassed ? null : d.Playing(gamemode);
             if (now == (profile is null ? EqSettingsFile.FlatText : EqSettingsFile.Format(profile))) continue;
             try
             {

@@ -256,7 +256,7 @@ public sealed class EqDeviceViewModel : ObservableObject
     internal bool CanEdit => _page.Config is not null && IsConnected;
     public bool IsEditable => CanEdit;
     public string? ConfigError => _page.ConfigError;
-    public string? GamemodeNote => _gamemodeOn ? Txt.EqGamemodeNowOn : null;
+    public string? GamemodeNote => _page.Bypassed ? Txt.EqBypassedNote : _gamemodeOn ? Txt.EqGamemodeNowOn : null;
 
     EqDevice? Find() => _page.Config?.Devices.FirstOrDefault(d => string.Equals(d.EndpointId, Id, StringComparison.OrdinalIgnoreCase));
     /// <summary>For a change only: adds the device to the config when it has no entry yet.</summary>
@@ -580,7 +580,8 @@ public sealed class EqualizerPageViewModel : PageViewModel
     List<EqDeviceViewModel> _devices = new();
     EqDeviceViewModel? _selected, _pending;
     string? _listError;
-    bool _loaded;
+    bool _loaded, _bypassed;
+    AsyncCommand? _master;
 
     public EqualizerPageViewModel() : base("equalizer", Txt.PageEqualizer, "", Txt.PageEqualizerSubtitle) // equalizer sliders
     {
@@ -590,6 +591,28 @@ public sealed class EqualizerPageViewModel : PageViewModel
 
     /// <summary>The list and the selected device scroll on their own, side by side.</summary>
     public override bool ScrollsItself => true;
+
+    // The header's master switch: off plays every device flat (EqConfig.SetBypass); the registration and the profiles stay.
+    public override ICommand? MasterCommand => _master ??= new AsyncCommand(ToggleMasterAsync, () => Config is not null && !IsBusy);
+    public override bool MasterOn => !_bypassed;
+    public override string? MasterText => _bypassed ? Txt.EqMasterOff : Txt.EqMasterOn;
+    public override string? MasterTooltip => Txt.EqMasterTip;
+    internal bool Bypassed => _bypassed;
+
+    async Task ToggleMasterAsync()
+    {
+        var bypass = !_bypassed;
+        string? error = null;
+        try { await RunExclusiveAsync(() => EqConfig.SetBypass(bypass)); }
+        catch (Exception ex)
+        {
+            Log.Error($"Equalizer: turning every device {(bypass ? "off" : "on")} failed", ex);
+            error = ex.Message;
+        }
+        await ListAsync(readSelected: false, profiles: false); // the switch and every device as read now
+        if (error is null && _bypassed == bypass) Toasts.Show(bypass ? Txt.EqMasterTurnedOff : Txt.EqMasterTurnedOn);
+        else Toasts.Show(Txt.EqMasterFailed(error ?? MasterText!), error is null ? ToastKind.Warning : ToastKind.Error);
+    }
     public ICommand SelectCommand { get; }
     public IReadOnlyList<EqDeviceViewModel> Devices => _devices;
     public bool IsEmpty => _loaded && _devices.Count == 0 && _listError is null;
@@ -639,8 +662,11 @@ public sealed class EqualizerPageViewModel : PageViewModel
     /// </summary>
     internal async Task ListAsync(bool readSelected, bool profiles)
     {
-        var (reads, error, gamemode) = await Task.Run(ReadDevices);
+        var (reads, error, gamemode, bypassed) = await Task.Run(ReadDevices);
         ListError = error;
+        _bypassed = bypassed; // before the devices' notes are raised
+        Raise(nameof(MasterOn));
+        Raise(nameof(MasterText));
         var old = _devices;
         _devices = reads.Select(r =>
         {
@@ -659,7 +685,7 @@ public sealed class EqualizerPageViewModel : PageViewModel
     }
 
     /// <summary>Off the UI thread: the playback devices, the journal's devices that aren't among them, and each one's state.</summary>
-    static (List<DeviceRead> Reads, string? Error, bool Gamemode) ReadDevices()
+    static (List<DeviceRead> Reads, string? Error, bool Gamemode, bool Bypassed) ReadDevices()
     {
         var errors = new List<string>();
         var devices = new List<AudioDevice>();
@@ -690,9 +716,10 @@ public sealed class EqualizerPageViewModel : PageViewModel
                     return new DeviceRead(x.Id, x.Name, x.Device, null, Txt.EqStatusFailed(ex.Message));
                 }
             }).ToList();
-        bool gamemode;
-        try { gamemode = EqConfig.GamemodeOn; } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { gamemode = false; }
-        return (reads, errors.Count == 0 ? null : string.Join(" ", errors), gamemode);
+        bool gamemode, bypassed;
+        try { (gamemode, bypassed) = (EqConfig.GamemodeOn, EqConfig.Bypassed); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { (gamemode, bypassed) = (false, false); }
+        return (reads, errors.Count == 0 ? null : string.Join(" ", errors), gamemode, bypassed);
     }
 
     async Task SelectAsync(EqDeviceViewModel d)
@@ -757,7 +784,7 @@ public sealed class EqualizerPageViewModel : PageViewModel
                 var entry = copy.Devices.FirstOrDefault(x => string.Equals(x.EndpointId, id, StringComparison.OrdinalIgnoreCase));
                 if (entry is null) return null;
                 EqConfig.Play(entry);
-                return entry.Playing(EqConfig.GamemodeOn)?.Name;
+                return EqConfig.Bypassed ? null : entry.Playing(EqConfig.GamemodeOn)?.Name; // flat while the master switch is off
             });
             if (done is not null) Toasts.Show($"{done} {Txt.EqPlays(d.Name, on, playing)}");
         }

@@ -147,6 +147,7 @@ public sealed class FirewallPageViewModel : PageViewModel
         SelectTabCommand = new RelayCommand(p => MainViewModel.Fire(SelectTabAsync((string)p!)));
         ToggleKosCommand = new AsyncCommand(ToggleKosAsync, () => CanEdit && _bfe is null);
         TogglePopupsCommand = new AsyncCommand(TogglePopupsAsync, () => CanEdit);
+        ToggleKillswitchLanCommand = new AsyncCommand(ToggleKillswitchLanAsync, () => CanEdit);
         WindowsOnCommand = new AsyncCommand(WindowsOnAsync, () => CanEdit && _anyWindowsOff);
         AddProgramCommand = new AsyncCommand(AddProgramAsync, () => CanEdit);
         BrowseRuleProgramCommand = new RelayCommand(BrowseRuleProgram);
@@ -169,6 +170,13 @@ public sealed class FirewallPageViewModel : PageViewModel
     // ---------- header ----------
     public bool KosOn => _config.Enabled;
     public bool Popups => _config.Popups;
+    public bool KillswitchLan => _config.KillswitchBlocksLan;
+    public ICommand ToggleKillswitchLanCommand { get; }
+    // The header's master switch is KOS Firewall's on/off.
+    public override ICommand? MasterCommand => ToggleKosCommand;
+    public override bool MasterOn => KosOn;
+    public override string? MasterText => KosOn ? Txt.FwMasterOn : Txt.FwMasterOff;
+    public override string? MasterTooltip => Txt.FwMasterTip;
     public string Status { get => _status; private set => Set(ref _status, value); }
     public bool StatusWarning { get => _statusWarning; private set => Set(ref _statusWarning, value); }
     public string WindowsState { get => _windows; private set => Set(ref _windows, value); }
@@ -318,8 +326,7 @@ public sealed class FirewallPageViewModel : PageViewModel
             (false, 0) => (Txt.FwStatusOff, false),
             (false, var n) => (Txt.FwStatusOffLeftover(n.Value), true),
         };
-        Raise(nameof(KosOn));
-        Raise(nameof(Popups));
+        foreach (var name in new[] { nameof(KosOn), nameof(Popups), nameof(KillswitchLan), nameof(MasterOn), nameof(MasterText) }) Raise(name);
         // A rule until restart shows while its filters are in the engine; after a restart it's gone (dropped at the next change).
         AppRows = _config.Rules.Where(x => x.Kind == FirewallRuleKind.App && (!x.UntilRestart || FirewallPolicy.Holds(x, _filterNames)))
             .Select(x => new FirewallRuleRow(x, this)).ToList();
@@ -451,8 +458,8 @@ public sealed class FirewallPageViewModel : PageViewModel
         finally
         {
             IsBusy = false;
-            Raise(nameof(KosOn)); // the switch shows what was read, also after a failure
-            Raise(nameof(Popups));
+            // the switches show what was read, also after a failure
+            foreach (var name in new[] { nameof(KosOn), nameof(Popups), nameof(KillswitchLan), nameof(MasterOn), nameof(MasterText) }) Raise(name);
         }
     }
 
@@ -468,6 +475,14 @@ public sealed class FirewallPageViewModel : PageViewModel
     {
         var on = !_config.Popups;
         return RunAsync(async () => (await Task.Run(() => KosFirewall.Change(c => c.Popups = on)))?.Skipped, () => Txt.FwPopups(_config.Popups));
+    }
+
+    /// <summary>Read by KOS Engine when the killswitch is turned on.</summary>
+    Task ToggleKillswitchLanAsync()
+    {
+        var on = !_config.KillswitchBlocksLan;
+        return RunAsync(async () => (await Task.Run(() => KosFirewall.Change(c => c.KillswitchBlocksLan = on)))?.Skipped,
+            () => Txt.FwKillswitchLanSet(_config.KillswitchBlocksLan));
     }
 
     /// <summary>Windows Firewall on first (an exception stops here), then KOS Firewall off: never a moment with neither.</summary>

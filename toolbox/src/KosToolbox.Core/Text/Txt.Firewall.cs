@@ -14,6 +14,11 @@ public static partial class Txt
     public const string FwNeedsAdmin = "KOS Firewall's filters and settings need administrator.",
         FwKosSwitch = "KOS Firewall", FwPopupsSwitch = "Ask about new programs",
         FwPopupsTip = "KOS Engine asks Allow or Block when a program without a rule is blocked.",
+        FwMasterOn = "KOS Firewall on", FwMasterOff = "KOS Firewall off",
+        FwMasterTip = "Turns KOS Firewall on or off: its filters first, then Windows Firewall off (and the reverse).",
+        FwKillswitchLan = "Killswitch cuts the local network too",
+        FwKillswitchLanTip = "KOS Engine's killswitch (Ctrl+Alt+K by default, set in KOS Governor) cuts the internet until pressed again, " +
+                             "with or without KOS Firewall on. On: printers, NAS and other PCs here are cut too. Loopback always stays.",
         FwNote = "An allow-list: everything not allowed is blocked. Loopback, DHCP, DNS, ICMPv6 and the KOS programs are always allowed. " +
                  "Its filters stay in the filter engine and hold from boot, with no KOS program running. " +
                  "While it's on, Windows Security reports the firewall as off: KOS Firewall isn't a registered firewall product.",
@@ -35,6 +40,7 @@ public static partial class Txt
     public static string FwWindowsTurnedOn(string windows, bool kosOn) => $"{windows}." + (kosOn ? "" : " KOS Firewall is off.");
     public static string FwSkipped(IEnumerable<string> rules) => "Rules left out: " + string.Join("; ", rules);
     public static string FwPopups(bool on) => on ? "KOS Engine asks about newly blocked programs." : "Newly blocked programs stay blocked without asking.";
+    public static string FwKillswitchLanSet(bool on) => on ? "The killswitch cuts the local network too." : "The killswitch cuts the internet only; the local network stays.";
     public static string FwSaved(string? status) => status is null ? "Saved. KOS Firewall is off: the rules apply when it's turned on." : $"Saved. {status}.";
 
     // Tabs

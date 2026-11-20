@@ -27,6 +27,11 @@ public abstract class PageViewModel(string key, string title, string glyph, stri
     public virtual ICommand? HeaderCommand => null;
     public virtual string? HeaderGlyph => null;
     public virtual string? HeaderTooltip => null;
+    /// <summary>A KOS app's master switch, in its window header (AppWindow); null = none. Raise MasterOn and MasterText when they change.</summary>
+    public virtual ICommand? MasterCommand => null;
+    public virtual bool MasterOn => false;
+    public virtual string? MasterText => null;
+    public virtual string? MasterTooltip => null;
     /// <summary>The page became (or stopped being) the one displayed; used for periodic reads only while visible.</summary>
     public virtual void OnShown(bool shown) { }
 }

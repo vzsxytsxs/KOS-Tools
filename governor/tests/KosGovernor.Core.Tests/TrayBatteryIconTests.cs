@@ -23,6 +23,16 @@ public class TrayBatteryIconTests
     }
 
     [Fact]
+    public void KillswitchIconIsAnAmberNoEntrySign()
+    {
+        var px = TrayBatteryIcon.RenderKillswitch(Size);
+        Assert.Equal(0xFFB020u, Rgb(At(px, TopRightX, RingY)));   // the ring
+        Assert.Equal(0xFFB020u, Rgb(At(px, 16, 16)));             // the slash through the middle
+        Assert.Equal(0u, At(px, 22, 10) >> 24);                   // inside the ring, off the slash: empty
+        Assert.Equal(0u, At(px, 0, 0));
+    }
+
+    [Fact]
     public void LowAndNotChargingIsAmber()
     {
         var low = TrayBatteryIcon.Render(Size, 30, TrayGlyph.Headset, charging: false);

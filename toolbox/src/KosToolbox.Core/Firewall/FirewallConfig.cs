@@ -41,6 +41,8 @@ public sealed class FirewallConfig
     public bool Enabled { get; set; }
     /// <summary>KOS Engine asks (Allow / Block) when a program without a rule is blocked.</summary>
     public bool Popups { get; set; } = true;
+    /// <summary>KOS Engine's killswitch (<see cref="Killswitch"/>) cuts the local network too, not only the internet.</summary>
+    public bool KillswitchBlocksLan { get; set; }
     /// <summary>Windows Firewall profiles that were on when KOS Firewall was turned on; turned on again when it's turned off.</summary>
     public List<string> RestoreProfiles { get; set; } = new();
     public List<FirewallRule> Rules { get; set; } = new();

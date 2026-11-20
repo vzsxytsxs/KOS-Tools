@@ -45,6 +45,9 @@ public static class ConfigStore
             foreach (var p in config.Profiles) DefaultRules.AddMissing(p);
             config.Version = 3;
         }
+        // The killswitch came later with Ctrl+Alt+K: a gamemode hotkey that was already that keeps it, the killswitch moves.
+        if (config.KillswitchHotkey.Modifiers == config.Hotkey.Modifiers && config.KillswitchHotkey.Key == config.Hotkey.Key)
+            config.KillswitchHotkey = new Hotkey { Modifiers = Hotkey.Ctrl | Hotkey.Alt | Hotkey.Shift, Key = 0x4B };
         return config;
     }
 

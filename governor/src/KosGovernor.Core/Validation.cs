@@ -24,6 +24,10 @@ public static class Validation
         foreach (var m in c.Masks)
             if (MaskProblem(m, c.Masks, topo) is { } e) yield return e;
         if ((c.Hotkey.Modifiers & ~0xFu) != 0 || c.Hotkey.Key is < 0x08 or > 0xFE) yield return "The gamemode hotkey isn't valid.";
+        if ((c.KillswitchHotkey.Modifiers & ~0xFu) != 0 || c.KillswitchHotkey.Modifiers == 0 || c.KillswitchHotkey.Key is < 0x08 or > 0xFE)
+            yield return "The killswitch hotkey isn't valid.";
+        else if (c.KillswitchHotkey.Modifiers == c.Hotkey.Modifiers && c.KillswitchHotkey.Key == c.Hotkey.Key)
+            yield return "The killswitch and gamemode hotkeys are the same.";
         if (c.General.GuiIntervalMs is < MinGuiMs or > MaxGuiMs) yield return $"The GUI refresh must be {MinGuiMs}–{MaxGuiMs} ms.";
         if (c.General.EngineIntervalMs is < MinEngineMs or > MaxEngineMs) yield return $"The tray refresh must be {MinEngineMs}–{MaxEngineMs} ms.";
         if (c.AutoGamemode.OffDelaySeconds is < MinOffDelay or > MaxOffDelay) yield return $"The automatic gamemode delay must be {MinOffDelay}–{MaxOffDelay} s.";

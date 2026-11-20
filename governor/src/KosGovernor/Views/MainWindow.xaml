@@ -506,6 +506,15 @@
                                                             </TextBlock>
                                                         </DockPanel>
                                                     </Border>
+                                                    <!-- KOS Engine's network killswitch: its own hotkey; KOS Firewall says whether it cuts the local network too. -->
+                                                    <DockPanel Margin="0,8,0,0" ToolTip="Cuts the internet until pressed again (open connections too); KOS Engine closing brings it back. KOS Firewall's options say whether the local network is cut too.">
+                                                        <Button DockPanel.Dock="Right" Style="{StaticResource Small}" Content="Reset" Margin="6,0,0,0" Command="{Binding ResetKillswitchHotkeyCommand}" />
+                                                        <Button DockPanel.Dock="Right" Style="{StaticResource Small}" Content="Change" Command="{Binding ChangeKillswitchHotkeyCommand}" />
+                                                        <TextBlock VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,10,0">
+                                                            <Run Text="Killswitch" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                            <Run Text="{Binding KillswitchHotkeyText, Mode=OneWay}" FontWeight="SemiBold" />
+                                                        </TextBlock>
+                                                    </DockPanel>
                                                 </StackPanel>
                                             </Border>
 

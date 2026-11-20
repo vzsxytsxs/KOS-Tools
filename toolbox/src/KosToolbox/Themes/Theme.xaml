@@ -625,6 +625,41 @@
         </Setter>
     </Style>
 
+    <!-- A KOS app's master switch in its header (AppWindow): a pill with a track, a knob and the page's MasterText; on = the switches' blue. -->
+    <Style x:Key="MasterSwitch" TargetType="Button">
+        <Setter Property="FocusVisualStyle" Value="{StaticResource FocusVisual}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid Height="34">
+                        <Border x:Name="Frame" CornerRadius="17" Background="{StaticResource ControlBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" />
+                        <Border CornerRadius="17" Margin="1" Background="{StaticResource HoverBrush}" Opacity="0" v:Motion.ShowWhen="{TemplateBinding IsMouseOver}" />
+                        <StackPanel Orientation="Horizontal" Margin="9,0,14,0">
+                            <Grid Width="36" Height="20" VerticalAlignment="Center">
+                                <Border x:Name="Track" CornerRadius="10" Background="{StaticResource ControlBrush}" BorderBrush="{StaticResource BorderStrongBrush}" BorderThickness="1" />
+                                <Ellipse x:Name="Knob" Width="12" Height="12" Margin="4,0" HorizontalAlignment="Left" Fill="{StaticResource TextSecondaryBrush}" />
+                            </Grid>
+                            <TextBlock x:Name="Label" Text="{Binding Current.MasterText}" Margin="10,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" />
+                        </StackPanel>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <DataTrigger Binding="{Binding Current.MasterOn}" Value="True">
+                            <Setter TargetName="Frame" Property="BorderBrush" Value="{StaticResource BorderStrongBrush}" />
+                            <Setter TargetName="Track" Property="Background" Value="#1E9BE0" />
+                            <Setter TargetName="Track" Property="BorderBrush" Value="#1E9BE0" />
+                            <Setter TargetName="Knob" Property="Fill" Value="#FFFFFF" />
+                            <Setter TargetName="Knob" Property="HorizontalAlignment" Value="Right" />
+                            <Setter TargetName="Label" Property="Foreground" Value="{StaticResource TextBrush}" />
+                            <Setter TargetName="Label" Property="FontWeight" Value="SemiBold" />
+                        </DataTrigger>
+                        <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.5" /></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- The sidebar's Collapse button: the same row as a page, with a chevron. -->
     <Style x:Key="NavButton" TargetType="Button">
         <Setter Property="FocusVisualStyle" Value="{StaticResource FocusVisual}" />

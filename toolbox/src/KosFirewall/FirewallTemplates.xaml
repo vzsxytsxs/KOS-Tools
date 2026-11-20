@@ -128,11 +128,9 @@
                     <Grid>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                         <StackPanel Margin="0,0,16,0">
+                            <!-- On and off: the master switch in the window's header. -->
                             <StackPanel Orientation="Horizontal">
-                                <CheckBox Style="{StaticResource GpuSwitch}" IsChecked="{Binding KosOn, Mode=OneWay}" Command="{Binding ToggleKosCommand}"
-                                          AutomationProperties.Name="{x:Static t:Txt.FwKosSwitch}">
-                                    <TextBlock Style="{StaticResource CardTitle}" Text="{x:Static t:Txt.FwKosSwitch}" />
-                                </CheckBox>
+                                <TextBlock Style="{StaticResource CardTitle}" Text="{x:Static t:Txt.FwKosSwitch}" VerticalAlignment="Center" />
                                 <TextBlock Text="{Binding Status}" Margin="16,0,0,0" VerticalAlignment="Center">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock" BasedOn="{StaticResource Secondary}">
@@ -145,6 +143,8 @@
                             </StackPanel>
                             <CheckBox Style="{StaticResource GpuSwitch}" Content="{x:Static t:Txt.FwPopupsSwitch}" IsChecked="{Binding Popups, Mode=OneWay}" Command="{Binding TogglePopupsCommand}"
                                       ToolTip="{x:Static t:Txt.FwPopupsTip}" HorizontalAlignment="Left" Margin="0,12,0,0" AutomationProperties.Name="{x:Static t:Txt.FwPopupsSwitch}" />
+                            <CheckBox Style="{StaticResource GpuSwitch}" Content="{x:Static t:Txt.FwKillswitchLan}" IsChecked="{Binding KillswitchLan, Mode=OneWay}" Command="{Binding ToggleKillswitchLanCommand}"
+                                      ToolTip="{x:Static t:Txt.FwKillswitchLanTip}" HorizontalAlignment="Left" Margin="0,8,0,0" AutomationProperties.Name="{x:Static t:Txt.FwKillswitchLan}" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" VerticalAlignment="Top">
                             <TextBlock Style="{StaticResource Secondary}" Text="{Binding WindowsState}" HorizontalAlignment="Right" />

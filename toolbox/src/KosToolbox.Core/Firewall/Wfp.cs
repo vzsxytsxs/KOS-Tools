@@ -66,8 +66,29 @@ public sealed class WfpSession : IDisposable
     readonly bool _dynamic;
     IntPtr _events;
     Wfp.NetEventCallback? _callback; // kept: the engine calls it while subscribed
+    Guid _subLayer = SubLayerKey;
+    Guid? _provider = ProviderKey; // null: filters without a provider, in a sublayer of their own (OpenSubLayer)
 
     WfpSession(IntPtr engine, bool dynamic) => (_engine, _dynamic) = (engine, dynamic);
+
+    /// <summary>
+    /// A dynamic session whose filters go to a sublayer of its own (created here, weighted above KOS Firewall's), without a
+    /// provider: KOS Firewall's changes, which work on its provider's filters, never see them. Everything vanishes when it closes.
+    /// </summary>
+    public static WfpSession OpenSubLayer(Guid key, string name)
+    {
+        var s = Open(dynamic: true);
+        (s._subLayer, s._provider) = (key, null);
+        try
+        {
+            using var mem = new Arena();
+            var sub = new Wfp.SubLayer { Key = key, Weight = 0xFFFF };
+            sub.Display.Name = mem.String(name);
+            Wfp.Check(Wfp.FwpmSubLayerAdd0(s._engine, ref sub, IntPtr.Zero), "Adding the sublayer");
+            return s;
+        }
+        catch { s.Dispose(); throw; }
+    }
 
     public static WfpSession Open(bool dynamic)
     {
@@ -107,7 +128,7 @@ public sealed class WfpSession : IDisposable
         if (r != Wfp.EAlreadyExists) Wfp.Check(r, "Adding the sublayer");
     }
 
-    /// <summary>Adds the filter to KOS's sublayer; returns the id the engine gave it.</summary>
+    /// <summary>Adds the filter to KOS's sublayer (or the session's own); returns the id the engine gave it.</summary>
     public ulong Add(WfpFilter f)
     {
         using var mem = new Arena();
@@ -120,7 +141,7 @@ public sealed class WfpSession : IDisposable
         }
         var filter = new Wfp.Filter
         {
-            Key = Guid.NewGuid(), ProviderKey = mem.Guid(ProviderKey), Layer = f.Layer, SubLayer = SubLayerKey,
+            Key = Guid.NewGuid(), ProviderKey = _provider is { } provider ? mem.Guid(provider) : IntPtr.Zero, Layer = f.Layer, SubLayer = _subLayer,
             // A dynamic session's filters can't be persistent; boot-time and persistent are two different filters
             Flags = _dynamic || f.UntilRestart ? 0 : f.BootTime ? Wfp.FilterFlagBootTime : Wfp.FilterFlagPersistent,
             Weight = new Wfp.Value { Type = Wfp.TypeUInt8, UInt8 = f.Weight },
@@ -185,7 +206,7 @@ public sealed class WfpSession : IDisposable
         return (uint)b[0] << 24 | (uint)b[1] << 16 | (uint)b[2] << 8 | b[3];
     }
 
-    /// <summary>Every filter that belongs to KOS's provider, in any layer.</summary>
+    /// <summary>Every filter that belongs to KOS's provider, in any layer (a session of its own sublayer: the filters in it).</summary>
     public List<WfpFilterInfo> Filters()
     {
         var found = new List<WfpFilterInfo>();
@@ -200,7 +221,7 @@ public sealed class WfpSession : IDisposable
                     for (var i = 0; i < count; i++)
                     {
                         var f = Marshal.PtrToStructure<Wfp.Filter>(Marshal.ReadIntPtr(entries, i * IntPtr.Size));
-                        if (f.ProviderKey == IntPtr.Zero || Marshal.PtrToStructure<Guid>(f.ProviderKey) != ProviderKey) continue;
+                        if (_provider is { } provider ? f.ProviderKey == IntPtr.Zero || Marshal.PtrToStructure<Guid>(f.ProviderKey) != provider : f.SubLayer != _subLayer) continue;
                         found.Add(new(f.Key, f.FilterId, Marshal.PtrToStringUni(f.Display.Name) ?? "", f.Layer,
                             f.ActionType == Wfp.ActionBlock ? WfpAction.Block : WfpAction.Permit,
                             (f.Flags & Wfp.FilterFlagPersistent) != 0, (f.Flags & Wfp.FilterFlagBootTime) != 0));
@@ -376,6 +397,9 @@ public static class Wfp
     // Layers: an outbound connection being authorized, an inbound one being accepted (per IP version)
     public static readonly Guid LayerConnectV4 = new("c38d57d1-05a7-4c33-904f-7fbceee60e82"), LayerConnectV6 = new("4a72393b-319f-44bc-84c3-ba54dcb3b6b4"),
         LayerAcceptV4 = new("e1cd9fe7-f4b5-4273-96c0-592e487b8650"), LayerAcceptV6 = new("a3b42c97-9f04-4672-b87e-cee9c483257f");
+    // Every packet sent or received (established connections too), per IP version (fwpmu.h, 10.0.26100)
+    public static readonly Guid LayerOutboundTransportV4 = new("09e61aea-d214-46e2-9b21-b26b0b2f28c8"), LayerOutboundTransportV6 = new("e1735bde-013f-4655-b351-a49e15762df0"),
+        LayerInboundTransportV4 = new("5926dfc8-e3cf-4426-a283-dc393f5d0f9d"), LayerInboundTransportV6 = new("634a869f-fc23-4b90-b0c1-bf620a36ae6f");
     public static readonly Guid ConditionAppId = new("d78e1e87-8644-4ea5-9437-d809ecefc971"), ConditionUserId = new("af043a0a-b34d-4f86-979c-c90371af6e66"),
         ConditionPackageId = new("71bc78fa-f17c-4997-a602-6abb261f351c"), ConditionRemoteAddress = new("b235ae9a-1d64-49b8-a44c-5ff3d9095045"),
         ConditionLocalAddress = new("d9ee00de-c1ef-4617-bfe3-ffd8f5a08957"), ConditionRemotePort = new("c35a604d-d22b-4e1a-91b4-68f674ee674b"),

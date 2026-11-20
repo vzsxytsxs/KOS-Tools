@@ -178,6 +178,24 @@ public class ValidationTests
         c.Profiles[0].OnEnable.Start.Add(new StartEntry { Path = "relative.exe" });
         Assert.Equal(4, Validation.Problems(c, Topo).Count()); // mask, duplicate name, interval, relative path
     }
+
+    [Fact]
+    public void KillswitchHotkeyIsCtrlAltKAndNeverTheGamemodeOne()
+    {
+        var c = new GovernorConfig();
+        Assert.Equal((Hotkey.Ctrl | Hotkey.Alt, 0x4Bu), (c.KillswitchHotkey.Modifiers, c.KillswitchHotkey.Key));
+        c.KillswitchHotkey = new Hotkey { Modifiers = c.Hotkey.Modifiers, Key = c.Hotkey.Key };
+        Assert.Contains(Validation.Problems(c, Topo), p => p.Contains("same"));
+        c.KillswitchHotkey = new Hotkey { Modifiers = 0, Key = 0x4B };
+        Assert.Contains(Validation.Problems(c, Topo), p => p.Contains("killswitch")); // a bare key would fire while typing
+
+        // A gamemode hotkey that was already Ctrl+Alt+K keeps it; the killswitch moves to Ctrl+Alt+Shift+K.
+        var old = new GovernorConfig { Hotkey = new Hotkey { Key = 0x4B } };
+        ConfigStore.Migrate(old);
+        Assert.Equal(0x4Bu, old.Hotkey.Key);
+        Assert.Equal(Hotkey.Ctrl | Hotkey.Alt | Hotkey.Shift, old.KillswitchHotkey.Modifiers);
+        Assert.Empty(Validation.Problems(old, Topo));
+    }
 }
 
 public class EngineLogicTests

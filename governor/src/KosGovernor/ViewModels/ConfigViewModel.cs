@@ -44,7 +44,7 @@ public sealed class ConfigViewModel : ObservableObject
     readonly MainViewModel _main;
     GovernorConfig _config = new();
     string _tab = "Rules", _search = "";
-    bool _enablePhase = true, _capturing;
+    bool _enablePhase = true, _capturing, _forKillswitch;
     bool? _signIn;
     string? _loadProblem;
 
@@ -61,8 +61,10 @@ public sealed class ConfigViewModel : ObservableObject
         ShowGameSettingsCommand = new RelayCommand(() => GameSettingsWindow.ShowSingle(_main));
         ImportCommand = new RelayCommand(Import);
         ExportCommand = new RelayCommand(Export);
-        ChangeHotkeyCommand = new RelayCommand(() => CapturingHotkey = true);
+        ChangeHotkeyCommand = new RelayCommand(() => { _forKillswitch = false; CapturingHotkey = true; });
         ResetHotkeyCommand = new RelayCommand(() => Mutate(c => c.Hotkey = new Hotkey(), "Hotkey reset to Ctrl+Alt+G."));
+        ChangeKillswitchHotkeyCommand = new RelayCommand(() => { _forKillswitch = true; CapturingHotkey = true; });
+        ResetKillswitchHotkeyCommand = new RelayCommand(() => Mutate(c => c.KillswitchHotkey = new GovernorConfig().KillswitchHotkey, "Killswitch hotkey reset to Ctrl+Alt+K."));
         StartEngineCommand = new RelayCommand(() => { EngineHost.EnsureRunning(); _main.Report("Engine started."); });
         StopEngineCommand = new RelayCommand(() => { Names.Signal(Names.Stop); _main.Report("Engine stopped: rules aren't applied until it starts again."); });
         Load(firstRun: true);
@@ -175,7 +177,7 @@ public sealed class ConfigViewModel : ObservableObject
 
     void RaiseAll()
     {
-        foreach (var n in new[] { nameof(ProfileName), nameof(RuleRows), nameof(GamemodeRows), nameof(MaskRows), nameof(HotkeyText), nameof(GuiInterval), nameof(AutoGamemode),
+        foreach (var n in new[] { nameof(ProfileName), nameof(RuleRows), nameof(GamemodeRows), nameof(MaskRows), nameof(HotkeyText), nameof(KillswitchHotkeyText), nameof(GuiInterval), nameof(AutoGamemode),
                      nameof(AutoOffDelay), nameof(AutoOpensPrograms), nameof(GameListText), nameof(GameRows),
                      nameof(EngineInterval), nameof(SessionReport), nameof(ProcessColumnOptions), nameof(ThreadColumnOptions), nameof(StartWithWindows), nameof(SignInProblem) })
             Raise(n);
@@ -359,13 +361,18 @@ public sealed class ConfigViewModel : ObservableObject
         if (ok) Mutate(c => Phase(c.Active).Start[index].Arguments = args.Length == 0 ? null : args, "Saved.");
     }
 
-    public string HotkeyText => _capturing ? "Press the new shortcut… (Esc cancels)"
-        : Labels.Hotkey(_config.Hotkey, vk => System.Windows.Input.KeyInterop.KeyFromVirtualKey((int)vk).ToString());
+    const string PressKeys = "Press the new shortcut… (Esc cancels)";
+    public string HotkeyText => _capturing && !_forKillswitch ? PressKeys : KeyText(_config.Hotkey);
+    /// <summary>KOS Engine's network killswitch (KOS Firewall says whether it cuts the local network too).</summary>
+    public string KillswitchHotkeyText => _capturing && _forKillswitch ? PressKeys : KeyText(_config.KillswitchHotkey);
+    public ICommand ChangeKillswitchHotkeyCommand { get; }
+    public ICommand ResetKillswitchHotkeyCommand { get; }
+    static string KeyText(Hotkey h) => Labels.Hotkey(h, vk => KeyInterop.KeyFromVirtualKey((int)vk).ToString());
 
     public bool CapturingHotkey
     {
         get => _capturing;
-        set { if (Set(ref _capturing, value)) Raise(nameof(HotkeyText)); }
+        set { if (Set(ref _capturing, value)) { Raise(nameof(HotkeyText)); Raise(nameof(KillswitchHotkeyText)); } }
     }
 
     /// <summary>Key captured by the window during "Change": needs at least one modifier.</summary>
@@ -381,7 +388,8 @@ public sealed class ConfigViewModel : ObservableObject
         CapturingHotkey = false;
         if (mods == 0) { _main.Report("Use at least one of Ctrl, Alt, Shift or Win with the key.", true); return; }
         var vk = (uint)KeyInterop.VirtualKeyFromKey(key);
-        Mutate(c => c.Hotkey = new Hotkey { Modifiers = mods, Key = vk }, "Hotkey saved.");
+        if (_forKillswitch) Mutate(c => c.KillswitchHotkey = new Hotkey { Modifiers = mods, Key = vk }, "Killswitch hotkey saved.");
+        else Mutate(c => c.Hotkey = new Hotkey { Modifiers = mods, Key = vk }, "Hotkey saved.");
     }
 
     // ---------- masks ----------

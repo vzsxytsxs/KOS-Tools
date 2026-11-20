@@ -36,6 +36,11 @@ public sealed record EngineFacts
     /// <summary>Devices KOS Equalizer is on for / of them, those with a gamemode profile.</summary>
     public int EqualizerDevices { get; init; }
     public int EqualizerGamemode { get; init; }
+    /// <summary>KOS Equalizer's master switch is off: every device plays flat.</summary>
+    public bool EqualizerBypassed { get; init; }
+    /// <summary>The killswitch has the network cut (and whether the local network too).</summary>
+    public bool Killswitch { get; init; }
+    public bool KillswitchBlocksLan { get; init; }
 }
 
 public static class EngineStatus
@@ -58,8 +63,9 @@ public static class EngineStatus
             Line("Peripherals", Peripherals(f), f.Batteries > 0 || f.PeripheralProfiles > 0, EngineTask.Peripherals),
             new("Timer resolution", f.TimerHeld is { } t ? (t / 10000.0).ToString("0.###", CultureInfo.InvariantCulture) + " ms held" : "Off", f.TimerHeld is not null),
             Line("RTSS overlay", f.Overlay ? "Showing" : "Off", f.Overlay, EngineTask.Rtss),
+            new("Killswitch", !f.Killswitch ? "Off" : f.KillswitchBlocksLan ? "On · every connection cut, local network too" : "On · the internet is cut", f.Killswitch),
             Line("KOS Firewall", Firewall(f), f.FirewallOn && f.FirewallFilters > 0, EngineTask.Firewall),
-            Line("KOS Equalizer", Equalizer(f), f.EqualizerGamemode > 0, EngineTask.Equalizer),
+            Line("KOS Equalizer", Equalizer(f), f.EqualizerGamemode > 0 && !f.EqualizerBypassed, EngineTask.Equalizer),
             Line("Tray and this window", "Open", true, EngineTask.Tray),
         };
         // What no task accounts for: the runtime, the configuration in memory, threads waiting.
@@ -77,7 +83,7 @@ public static class EngineStatus
     /// <summary>The sound is processed in the audio engine; the engine's share is switching profiles at gamemode.</summary>
     static string Equalizer(EngineFacts f) => f.EqualizerDevices == 0 ? "Off"
         : $"{f.EqualizerDevices} device{(f.EqualizerDevices == 1 ? "" : "s")}"
-          + (f.EqualizerGamemode == 0 ? " · no gamemode profile" : f.Gamemode ? " · gamemode profile playing" : " · gamemode profile waiting");
+          + (f.EqualizerBypassed ? " · switched off: flat" : f.EqualizerGamemode == 0 ? " · no gamemode profile" : f.Gamemode ? " · gamemode profile playing" : " · gamemode profile waiting");
 
     static string Peripherals(EngineFacts f)
     {

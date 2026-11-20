@@ -162,6 +162,8 @@ public sealed class GovernorConfig
     public int ActiveProfile { get; set; }
     public List<CpuMask> Masks { get; set; } = new();
     public Hotkey Hotkey { get; set; } = new();
+    /// <summary>KOS Engine's network killswitch (KosToolbox.Core.Firewall.Killswitch); Ctrl+Alt+K by default.</summary>
+    public Hotkey KillswitchHotkey { get; set; } = new() { Key = 0x4B };
     public AutoGamemodeSettings AutoGamemode { get; set; } = new();
     public TimerSettings Timer { get; set; } = new();
     public GeneralSettings General { get; set; } = new();

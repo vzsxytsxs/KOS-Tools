@@ -47,6 +47,11 @@ public static partial class Txt
         EqGamemodeLabel = "Gamemode profile", EqGamemodeNone = "None (the active profile stays)",
         EqGamemodeHint = "KOS Engine switches this device to the gamemode profile while gamemode is on, and back afterwards.",
         EqGamemodeNowOn = "Gamemode is on now: the device plays its gamemode profile.",
+        EqMasterOn = "KOS Equalizer on", EqMasterOff = "KOS Equalizer off",
+        EqMasterTip = "Off: every device plays flat at once (no audio restart); the profiles stay. On: each plays its profile again.",
+        EqBypassedNote = "KOS Equalizer is off (the switch at the top): every device plays flat; the profiles stay as they are.",
+        EqMasterTurnedOff = "KOS Equalizer is off: every device plays flat.",
+        EqMasterTurnedOn = "KOS Equalizer is on: each device plays its profile again.",
         EqNewName = "Profile", EqImportedName = "Imported", EqPresetFootsteps = "Footsteps (FPS)",
         EqNameLength = "A name has 1 to 64 characters.", EqNameTaken = "Another profile has this name.";
     public static string EqCopyName(string name) => $"{name} copy";
@@ -60,6 +65,7 @@ public static partial class Txt
     public static string EqPlays(string device, bool on, string? profile) =>
         on ? $"{device} plays {profile ?? "flat"}." : $"Saved; it plays once KOS Equalizer is on for {device}.";
     public static string EqApplyFailed(string device, string error) => $"{device}: saving or playing the profile failed: {error}";
+    public static string EqMasterFailed(string error) => $"The switch didn't take: {error}";
 
     // ---------- editor ----------
     public const string EqEditorTitle = "Editor", EqParametric = "Parametric", EqPreamp = "Preamp",

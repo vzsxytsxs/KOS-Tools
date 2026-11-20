@@ -51,7 +51,7 @@ public static class EngineHost
         var recovery = new GpuRecovery();
         Tray? shown = null;
         using var firewall = new FirewallWatch(a => shown?.Ask(a), (title, text) => shown?.Balloon(title, text, warning: true));
-        using var tray = new Tray(engine, stop, sample => EngineStatus.Build(Facts(engine, fans, firewall), sample), firewall.Answer);
+        using var tray = new Tray(engine, stop, sample => EngineStatus.Build(Facts(engine, fans, firewall, shown), sample), firewall.Answer);
         shown = tray;
         engine.ConfigChanged += tray.Refresh;
         engine.SessionEnded += report => tray.Balloon("Gamemode session", $"{report.Summary}. Report on the toolbox's Stability page.",
@@ -161,7 +161,7 @@ public static class EngineHost
     }
 
     /// <summary>What the status window's lines are built from; the files are read only while it is open.</summary>
-    static EngineFacts Facts(Engine engine, FanCurveHost fans, FirewallWatch firewall)
+    static EngineFacts Facts(Engine engine, FanCurveHost fans, FirewallWatch firewall, Tray? tray)
     {
         static T? Try<T>(Func<T?> read) where T : class
         {
@@ -182,6 +182,8 @@ public static class EngineHost
             TimerHeld = TimerResolution.Held, Overlay = engine.OverlayOn,
             FirewallOn = firewall.On, FirewallFilters = firewall.Filters, FirewallBlocked = firewall.Blocked, FirewallPopups = firewall.Popups,
             EqualizerDevices = eq?.Count ?? 0, EqualizerGamemode = eq?.Count(d => d.Gamemode is not null) ?? 0,
+            EqualizerBypassed = KosToolbox.Core.Audio.EqConfig.Bypassed,
+            Killswitch = tray?.KillswitchOn == true, KillswitchBlocksLan = tray?.KillswitchBlocksLan == true,
         };
     }
 
@@ -227,7 +229,8 @@ internal sealed class Tray : IDisposable
     const uint WmLButtonUp = 0x202, WmLButtonDblClk = 0x203, WmRButtonUp = 0x205;
     const uint NimAdd = 0, NimModify = 1, NimDelete = 2, NifMessage = 1, NifIcon = 2, NifTip = 4, NifInfo = 0x10, NiifInfo = 1, NiifWarning = 2;
     const uint MfString = 0, MfChecked = 8, MfPopup = 0x10, MfSeparator = 0x800;
-    const int CmdOpen = 1, CmdGamemode = 2, CmdExit = 3, CmdToolbox = 4, CmdStatus = 5, CmdFirewall = 6, CmdEqualizer = 7, CmdProfile = 100;
+    const int CmdOpen = 1, CmdGamemode = 2, CmdExit = 3, CmdToolbox = 4, CmdStatus = 5, CmdFirewall = 6, CmdEqualizer = 7, CmdKillswitch = 8, CmdProfile = 100;
+    const int HotkeyGamemode = 1, HotkeyKillswitch = 2;
 
     readonly Engine _engine;
     readonly EventWaitHandle _stop;
@@ -332,7 +335,7 @@ internal sealed class Tray : IDisposable
 
     IntPtr Proc(IntPtr hwnd, uint msg, IntPtr w, IntPtr l)
     {
-        if (msg == _taskbarCreated && msg != 0) { AddIcon(); ReAddDevices(); return IntPtr.Zero; }
+        if (msg == _taskbarCreated && msg != 0) { AddIcon(); ReAddDevices(); if (_killswitchOn) KillswitchIcon(true); return IntPtr.Zero; }
         switch (msg)
         {
             case WmTray:
@@ -341,7 +344,8 @@ internal sealed class Tray : IDisposable
                 else if (e is WmRButtonUp or WmContextMenu) ShowMenu();
                 return IntPtr.Zero;
             case WmHotkey:
-                _engine.RequestToggle();
+                if (w == HotkeyKillswitch) ToggleKillswitch();
+                else _engine.RequestToggle();
                 return IntPtr.Zero;
             case WmStatus:
                 _status.Show();
@@ -363,23 +367,98 @@ internal sealed class Tray : IDisposable
                 Notify(NimDelete);
                 foreach (var d in _devices.Values) { DeviceIcon(NimDelete, d.Id, IntPtr.Zero, ""); DestroyIcon(d.Icon); }
                 _devices.Clear();
-                if (_hotkey) UnregisterHotKey(hwnd, 1);
+                if (_hotkey) UnregisterHotKey(hwnd, HotkeyGamemode);
+                if (_killHotkey) UnregisterHotKey(hwnd, HotkeyKillswitch);
+                _killswitch?.Dispose(); // the network comes back (the process ending would do it too)
+                (_killswitch, _killswitchOn) = (null, false);
+                KillswitchIcon(false);
                 PostQuitMessage(0);
                 return IntPtr.Zero;
         }
         return DefWindowProc(hwnd, msg, w, l);
     }
 
-    uint _hotkeyMods, _hotkeyKey;
+    uint _hotkeyMods, _hotkeyKey, _killMods, _killKey;
+    bool _killHotkey;
 
     void RegisterHotkey()
     {
-        var hk = _engine.Config.Hotkey;
-        if (_hotkey && hk.Modifiers == _hotkeyMods && hk.Key == _hotkeyKey) return;
-        if (_hotkey) UnregisterHotKey(_hwnd, 1);
-        (_hotkeyMods, _hotkeyKey) = (hk.Modifiers, hk.Key);
-        _hotkey = RegisterHotKey(_hwnd, 1, hk.Modifiers | 0x4000, hk.Key); // MOD_NOREPEAT
-        if (!_hotkey) Log.Warn($"The gamemode hotkey couldn't be registered (another program may use it): {Native.Win32Message(Marshal.GetLastWin32Error())}");
+        Register(HotkeyGamemode, _engine.Config.Hotkey, ref _hotkey, ref _hotkeyMods, ref _hotkeyKey, "gamemode");
+        Register(HotkeyKillswitch, _engine.Config.KillswitchHotkey, ref _killHotkey, ref _killMods, ref _killKey, "killswitch");
+    }
+
+    /// <summary>(Re)registers a hotkey that changed or isn't registered yet; a failure is logged once per key combination.</summary>
+    void Register(int id, Hotkey hk, ref bool registered, ref uint mods, ref uint key, string what)
+    {
+        var changed = hk.Modifiers != mods || hk.Key != key;
+        if (registered && !changed) return;
+        if (registered) UnregisterHotKey(_hwnd, id);
+        (mods, key) = (hk.Modifiers, hk.Key);
+        registered = RegisterHotKey(_hwnd, id, hk.Modifiers | 0x4000, hk.Key); // MOD_NOREPEAT
+        if (!registered && changed)
+            Log.Warn($"The {what} hotkey couldn't be registered (another program may use it): {Native.Win32Message(Marshal.GetLastWin32Error())}");
+    }
+
+    // ---------- the network killswitch: KosToolbox.Core.Firewall.Killswitch, its filters held by this process ----------
+    const uint KillswitchIconId = 0xFFFFFF01;
+    KosToolbox.Core.Firewall.WfpSession? _killswitch;
+    IntPtr _killswitchIcon;
+    volatile bool _killswitchOn, _killswitchLan;
+
+    /// <summary>Whether it has the network cut, and the local network too (the status window reads them, any thread).</summary>
+    public bool KillswitchOn => _killswitchOn;
+    public bool KillswitchBlocksLan => _killswitchLan;
+
+    void ToggleKillswitch()
+    {
+        var hotkey = HotkeyText(_engine.Config.KillswitchHotkey);
+        if (_killswitch is { } held)
+        {
+            held.Dispose();
+            (_killswitch, _killswitchOn) = (null, false);
+            KillswitchIcon(false);
+            Log.Info("Killswitch off: the network is back.");
+            Balloon("Killswitch off", "The network is back.", warning: false);
+            Notify(NimModify);
+            return;
+        }
+        bool lan;
+        try { lan = KosToolbox.Core.Firewall.KosFirewall.Load().KillswitchBlocksLan; }
+        catch (Exception ex)
+        {
+            Log.Warn($"Killswitch: KOS Firewall's config can't be read ({ex.Message}); the local network is cut too.");
+            lan = true; // the stricter cut
+        }
+        try { _killswitch = KosToolbox.Core.Firewall.Killswitch.On(lan); }
+        catch (Exception ex)
+        {
+            Log.Error("Turning the killswitch on failed", ex);
+            Balloon("Killswitch", $"The network couldn't be cut: {ex.Message}", warning: true);
+            return;
+        }
+        (_killswitchOn, _killswitchLan) = (true, lan);
+        KillswitchIcon(true);
+        Log.Info($"Killswitch on: {(lan ? "every connection, the local network too," : "the internet")} cut.");
+        Balloon("Killswitch on", lan ? $"Every connection is cut, the local network too. {hotkey} brings it back."
+            : $"The internet is cut; the local network still works. {hotkey} brings it back.", warning: true);
+        Notify(NimModify);
+    }
+
+    /// <summary>Its own tray icon (an amber "no entry" sign) while the network is cut.</summary>
+    void KillswitchIcon(bool show)
+    {
+        if (_killswitchIcon != IntPtr.Zero)
+        {
+            DeviceIcon(NimDelete, KillswitchIconId, IntPtr.Zero, "");
+            DestroyIcon(_killswitchIcon);
+            _killswitchIcon = IntPtr.Zero;
+        }
+        if (!show) return;
+        var size = GetSystemMetrics(49); // SM_CXSMICON
+        _killswitchIcon = TrayBatteryIcon.ToIcon(TrayBatteryIcon.RenderKillswitch(size), size);
+        if (_killswitchIcon != IntPtr.Zero)
+            DeviceIcon(NimAdd, KillswitchIconId, _killswitchIcon,
+                $"Killswitch on: {(_killswitchLan ? "every connection" : "the internet")} is cut · {HotkeyText(_engine.Config.KillswitchHotkey)}");
     }
 
     /// <summary>A Windows notification from the tray icon (any thread).</summary>
@@ -409,7 +488,8 @@ internal sealed class Tray : IDisposable
     }
 
     /// <summary>The engine's tooltip, then the device batteries when there are any (a tooltip holds 127 characters).</summary>
-    string Tip() => (PeripheralBatteryMonitor.Line is { Length: > 0 } line ? _engine.Tooltip + "\n" + line : _engine.Tooltip) is var t && t.Length > 127 ? t[..127] : t;
+    string Tip() => ((_killswitchOn ? "Killswitch on: the network is cut\n" : "")
+        + (PeripheralBatteryMonitor.Line is { Length: > 0 } line ? _engine.Tooltip + "\n" + line : _engine.Tooltip)) is var t && t.Length > 127 ? t[..127] : t;
 
     void ShowMenu()
     {
@@ -425,6 +505,7 @@ internal sealed class Tray : IDisposable
         AppendMenu(menu, MfSeparator, 0, null);
         // The text after the \t is shown right-aligned (the hotkey).
         AppendMenu(menu, MfString | (_engine.Gamemode ? MfChecked : 0), CmdGamemode, $"Gamemode\t{HotkeyText(config.Hotkey)}");
+        AppendMenu(menu, MfString | (_killswitchOn ? MfChecked : 0), CmdKillswitch, $"Killswitch (cut the internet)\t{HotkeyText(config.KillswitchHotkey)}");
         for (var i = 0; i < config.Profiles.Count; i++)
             AppendMenu(profiles, MfString | (i == config.ActiveProfile ? MfChecked : 0), CmdProfile + i, config.Profiles[i].Name);
         AppendMenu(menu, MfPopup, profiles, "Profile");
@@ -443,6 +524,7 @@ internal sealed class Tray : IDisposable
             case CmdEqualizer: Open(EngineHost.EqualizerPath); break;
             case CmdStatus: _status.Show(); break;
             case CmdGamemode: _engine.RequestToggle(); break;
+            case CmdKillswitch: ToggleKillswitch(); break;
             case CmdExit: _stop.Set(); break;
             case >= CmdProfile: SwitchProfile(cmd - CmdProfile); break;
         }

@@ -423,4 +423,34 @@ public class FirewallRulesTests
         // They build into filters: none is left out.
         Assert.Empty(FirewallPolicy.Build(config, [], _ => true).Skipped);
     }
+
+    [Fact]
+    public void KillswitchCutsEveryPacketButLoopbackAndTheLocalNetwork()
+    {
+        var layers = new[] { Wfp.LayerOutboundTransportV4, Wfp.LayerInboundTransportV4, Wfp.LayerOutboundTransportV6, Wfp.LayerInboundTransportV6 };
+        var plan = Killswitch.Plan(blockLan: false);
+        Assert.Equal(12, plan.Count);
+        foreach (var layer in layers)
+        {
+            var here = plan.Where(f => f.Layer == layer).ToList();
+            // An unconditioned block under the permits: the loopback permit and the local one outweigh it.
+            Assert.Single(here, f => f.Action == WfpAction.Block && f.Conditions.Count == 0 && f.Weight == Killswitch.WeightBlock);
+            Assert.Single(here, f => f.Action == WfpAction.Permit && f.Weight == Killswitch.WeightLoopback && f.Conditions.Single().Field == Wfp.ConditionFlags);
+            var local = here.Single(f => f.Weight == Killswitch.WeightLocal);
+            Assert.All(local.Conditions, c => Assert.Equal(Wfp.ConditionRemoteAddress, c.Field));
+        }
+        var v4 = plan.First(f => f.Layer == Wfp.LayerOutboundTransportV4 && f.Weight == Killswitch.WeightLocal).Conditions;
+        Assert.Contains(v4, c => c.Value is (IPAddress a, 16) && a.Equals(IPAddress.Parse("192.168.0.0")));
+        Assert.DoesNotContain(v4, c => c.Type == Wfp.TypeV6AddrMask);
+        Assert.All(plan.Where(f => f.Layer == Wfp.LayerInboundTransportV6 && f.Weight == Killswitch.WeightLocal).Single().Conditions,
+            c => Assert.Equal(Wfp.TypeV6AddrMask, c.Type));
+
+        // Cutting the local network too: no local permit, loopback still passes.
+        var strict = Killswitch.Plan(blockLan: true);
+        Assert.Equal(8, strict.Count);
+        Assert.DoesNotContain(strict, f => f.Weight == Killswitch.WeightLocal);
+        // A scoped (test) plan conditions only the blocks.
+        var scoped = Killswitch.Plan(false, WfpCondition.RemotePort(9));
+        Assert.All(scoped.Where(f => f.Action == WfpAction.Block), f => Assert.Equal(Wfp.ConditionRemotePort, f.Conditions.Single().Field));
+    }
 }

@@ -20,9 +20,29 @@ public static class TrayBatteryIcon
     {
         percent = Math.Clamp(percent, 0, 100);
         var color = percent <= 15 && !charging ? Amber : White;
-        var px = new uint[size * size];
         var s = size / 16.0; // shapes are laid out on a 16-unit grid
         double ringOuter = 7.6 * s, ringWidth = Math.Max(1.2, 1.7 * s), stroke = Math.Max(1.0, 1.25 * s);
+        return Draw(size, (u, v) =>
+            charging && InBolt(u, v) ? Bolt
+            : Ring(u, v, ringOuter / s, ringWidth / s) is { } angle ? angle <= percent / 100.0 ? color : Track
+            : InGlyph(glyph, u, v, stroke / s) ? color : null);
+    }
+
+    /// <summary>The killswitch's own tray icon while it has the network cut: an amber "no entry" sign (a ring and a slash).</summary>
+    public static uint[] RenderKillswitch(int size)
+    {
+        var s = size / 16.0;
+        double ringWidth = Math.Max(1.2, 1.7 * s) / s, slash = Math.Max(1.2, 1.7 * s) / s / 2;
+        // the slash from the ring's top left to its bottom right: distance to the line u = v, inside the ring
+        return Draw(size, (u, v) => Ring(u, v, 7.6, ringWidth) is not null
+            || (Math.Abs(u - v) / Math.Sqrt(2) < slash && (u - 8) * (u - 8) + (v - 8) * (v - 8) < 7.6 * 7.6) ? Amber : null);
+    }
+
+    /// <summary>Each pixel from 4×4 samples of <paramref name="at"/> (a color, or null for nothing) on the 16-unit grid.</summary>
+    static uint[] Draw(int size, Func<double, double, uint?> at)
+    {
+        var px = new uint[size * size];
+        var s = size / 16.0;
         for (var y = 0; y < size; y++)
             for (var x = 0; x < size; x++)
             {
@@ -32,11 +52,7 @@ public static class TrayBatteryIcon
                     {
                         var u = (x + (sx + 0.5) / Samples) / s; // 0..16
                         var v = (y + (sy + 0.5) / Samples) / s;
-                        uint? c = null;
-                        if (charging && InBolt(u, v)) c = Bolt;
-                        else if (Ring(u, v, ringOuter / s, ringWidth / s) is { } angle) c = angle <= percent / 100.0 ? color : Track;
-                        else if (InGlyph(glyph, u, v, stroke / s)) c = color;
-                        if (c is not { } k) continue;
+                        if (at(u, v) is not { } k) continue;
                         r += (k >> 16) & 0xFF; g += (k >> 8) & 0xFF; b += k & 0xFF; a += 1;
                     }
                 if (a == 0) continue;
