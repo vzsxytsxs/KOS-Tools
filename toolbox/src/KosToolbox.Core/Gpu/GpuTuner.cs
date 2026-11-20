@@ -240,8 +240,25 @@ public static class GpuTuner
     public static int Generation => Nvml.Generation + Nvapi.Generation;
 
     /// <summary>
+    /// KOS Engine, once nothing it runs is reading the card through NVML: closes the session so the driver's nvml.dll unloads and its
+    /// ~20 MB of private memory go back. The next NVML call opens it again. Under <see cref="Gate"/>: no call is inside NVML meanwhile.
+    /// </summary>
+    public static void ReleaseNvml()
+    {
+        lock (Gate) if (Nvml.Close()) Log.Info("NVML closed.");
+    }
+
+    /// <summary>KOS Engine: NVML opened inside the scope is closed at its end; a session already open (a reader still using it) stays.</summary>
+    public static NvmlScope UseNvml() => new(Nvml.Loaded);
+
+    public readonly struct NvmlScope(bool wasOpen) : IDisposable
+    {
+        public void Dispose() { if (!wasOpen) ReleaseNvml(); }
+    }
+
+    /// <summary>
     /// Checks the card (reopens a session the driver dropped): NVAPI, and NVML only when something in this process already opened it.
-    /// Opening NVML just to check would cost ~20 MB that stay until the process exits; a restart is noticed by the adapter's LUID.
+    /// Opening NVML just to check would cost ~20 MB; a restart is noticed by the adapter's LUID.
     /// </summary>
     public static void Probe(string busId)
     {
@@ -330,7 +347,7 @@ public static class GpuTuner
 
     /// <summary>
     /// The fan curve's range and API: NVAPI when the card's fan coolers answer there (NVML's session costs KOS Engine ~20 MB of
-    /// private memory it keeps until it exits; NVAPI's ~2 MB), otherwise NVML, which refuses cards without manual fan control.
+    /// private memory while it is open, and a curve reads it every second; NVAPI's ~2 MB), otherwise NVML, which refuses cards without manual fan control.
     /// </summary>
     internal static (uint Min, uint Max, bool Nvapi) FanCurveRange(string busId, bool allowNvapi)
     {

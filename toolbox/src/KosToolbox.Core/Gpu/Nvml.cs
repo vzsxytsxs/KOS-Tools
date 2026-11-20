@@ -61,11 +61,45 @@ internal static class Nvml
     static IntPtr _lib;
     static string? _loadError;
 
+    /// <summary>
+    /// The driver's own nvml.dll first: the System32 copy only loads that one and pins both, so a session opened through it can't
+    /// be unloaded. Unloading matters to KOS Engine: the DLL's 20 MB data section counts as private memory while it is mapped.
+    /// </summary>
     public static string[] Candidates => new[]
     {
+        DriverStoreNvml(),
         Path.Combine(Environment.SystemDirectory, "nvml.dll"),
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "NVIDIA Corporation", "NVSMI", "nvml.dll"),
-    };
+    }.OfType<string>().ToArray();
+
+    /// <summary>nvml.dll of the present NVIDIA adapter's driver package (DCH drivers); null without one.</summary>
+    static string? DriverStoreNvml()
+    {
+        try
+        {
+            foreach (var (_, key) in GpuTuner.NvidiaAdapters())
+            {
+                if (key is null) continue;
+                using var k = Microsoft.Win32.Registry.LocalMachine.OpenSubKey($@"SYSTEM\CurrentControlSet\Control\Class\{key}");
+                if (DriverStorePath((k?.GetValue("UserModeDriverName") as string[])?.FirstOrDefault(), Environment.SystemDirectory) is { } path && File.Exists(path)) return path;
+            }
+        }
+        catch (Exception ex) { Persistence.Log.Warn($"NVML: the driver package's nvml.dll wasn't found ({ex.Message})."); }
+        return null;
+    }
+
+    /// <summary>
+    /// nvml.dll beside the display driver's user-mode DLL, only when that DLL sits in a package folder directly under
+    /// System32\DriverStore\FileRepository (writable only by the system); otherwise null. The path comes from the registry and is loaded elevated.
+    /// </summary>
+    internal static string? DriverStorePath(string? userModeDriver, string systemDirectory)
+    {
+        if (string.IsNullOrEmpty(userModeDriver) || !Path.IsPathFullyQualified(userModeDriver)) return null;
+        var package = Path.GetDirectoryName(Path.GetFullPath(userModeDriver));
+        var repository = Path.Combine(systemDirectory, "DriverStore", "FileRepository");
+        return package is not null && string.Equals(Path.GetDirectoryName(package), repository, StringComparison.OrdinalIgnoreCase)
+            ? Path.Combine(package, "nvml.dll") : null;
+    }
 
     /// <summary>Loads and initializes once per process. Null = ready; otherwise, the reason (only the missing DLL is cached).</summary>
     public static string? Initialize()
@@ -74,45 +108,58 @@ internal static class Nvml
         {
             if (_lib != IntPtr.Zero) return null;
             if (_loadError is not null) return _loadError;
-            // Full paths only: the default DLL search could find an nvml.dll in the current folder.
-            var path = Candidates.FirstOrDefault(File.Exists);
-            if (path is null || !NativeLibrary.TryLoad(path, out var lib)) return _loadError = Txt.NvmlMissing;
-            _lib = lib;
-            var init = Fn<NoArgs>("nvmlInit_v2");
-            var code = init?.Invoke() ?? FunctionNotFound;
-            if (code != Success)
+            // Full paths only: the default DLL search could find an nvml.dll in the current folder. One that doesn't load or init: the
+            // next one (a driver update waiting for a restart can point the registry at a package that doesn't match the running driver).
+            string? problem = null;
+            foreach (var path in Candidates)
             {
+                if (!File.Exists(path) || !NativeLibrary.TryLoad(path, out var lib)) continue;
+                _lib = lib;
+                var code = Fn<NoArgs>("nvmlInit_v2")?.Invoke() ?? FunctionNotFound;
+                if (code == Success)
+                {
+                    Persistence.Log.Info("NVML opened.");
+                    return null;
+                }
                 // No cache: a transient failure (driver being updated) goes away on the next Refresh.
-                var message = Txt.GpuInitFailed(Describe(code), code);
+                problem ??= Txt.GpuInitFailed(Describe(code), code);
                 _lib = IntPtr.Zero;
                 NativeLibrary.Free(lib);
-                return message;
             }
-            Persistence.Log.Info("NVML opened.");
-            return null;
+            return problem ?? (_loadError = Txt.NvmlMissing);
         }
     }
 
     /// <summary>A session is open in this process.</summary>
     public static bool Loaded => _lib != IntPtr.Zero;
 
+    /// <summary>How many times the NVML session was reopened (driver restarted).</summary>
+    public static int Generation { get; private set; }
+
     /// <summary>
     /// Closes and reopens NVML. After the video driver restarts (Restart Driver, update), the old session only
     /// returns errors ("GPU is lost"/uninitialized); the next call to Initialize opens a new one.
     /// </summary>
-    /// <summary>How many times the NVML session was reopened (driver restarted).</summary>
-    public static int Generation { get; private set; }
-
     public static void Reset()
     {
         lock (Gate)
         {
-            if (_lib == IntPtr.Zero) return;
+            if (!Close()) return;
+            Generation++;
+            Persistence.Log.Info("NVML reset (driver restarted?).");
+        }
+    }
+
+    /// <summary>Shuts the session down and frees the DLL; false when none was open. Not a driver restart: <see cref="Generation"/> stays.</summary>
+    public static bool Close()
+    {
+        lock (Gate)
+        {
+            if (_lib == IntPtr.Zero) return false;
             try { Fn<NoArgs>("nvmlShutdown")?.Invoke(); } catch { /* session already lost */ }
             NativeLibrary.Free(_lib);
             _lib = IntPtr.Zero;
-            Generation++;
-            Persistence.Log.Info("NVML reset (driver restarted?).");
+            return true;
         }
     }
 

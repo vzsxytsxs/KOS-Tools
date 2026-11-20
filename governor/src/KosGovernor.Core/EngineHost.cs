@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
+using KosToolbox.Core.Gpu;
 
 namespace KosGovernor.Core;
 
@@ -41,8 +42,9 @@ public static class EngineHost
         var engine = new Engine();
         var fans = new FanCurveHost();
         var gpu = new GamemodeGpuHost(fans);
-        gpu.RecoverAtStart();
-        engine.GamemodeSwitched += on => { using (TaskMeter.Measure(EngineTask.GpuProfile)) gpu.Switch(on); };
+        // NVML opened for the GPU profile is closed in the same task scope, so the status window doesn't book its ~20 MB to another task.
+        using (GpuTuner.UseNvml()) gpu.RecoverAtStart();
+        engine.GamemodeSwitched += on => { using (TaskMeter.Measure(EngineTask.GpuProfile)) using (GpuTuner.UseNvml()) gpu.Switch(on); };
         var mice = new GamemodePeripheralHost(); // peripherals: gamemode mouse settings
         mice.RecoverAtStart();
         engine.GamemodeSwitched += on => { using (TaskMeter.Measure(EngineTask.Peripherals)) mice.Switch(on); };

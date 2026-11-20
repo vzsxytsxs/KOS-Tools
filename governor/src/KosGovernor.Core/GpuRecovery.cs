@@ -30,7 +30,8 @@ internal sealed class GpuRecovery
             if (File.Exists(GpuTuner.SignInFile)) (_until, _next) = (now + Window, now);
         }
         if (_until is not { } until || now < _next) return;
-        var code = GpuTuner.RunAtSignIn(); // revalidates and saves; the detailed result goes to the toolbox log
+        int code;
+        using (GpuTuner.UseNvml()) code = GpuTuner.RunAtSignIn(); // revalidates and saves; the detailed result goes to the toolbox log
         if (code is ElevatedJob.ExitOk or ElevatedJob.ExitPartial or ElevatedJob.ExitRefused || now > until)
         {
             _until = null;

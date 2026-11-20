@@ -27,6 +27,23 @@ public class GpuTests
     [InlineData("00000000:04:00.0\n", false)]
     public void ValidatesPciBusIds(string? id, bool valid) => Assert.Equal(valid, GpuTuner.IsBusId(id));
 
+    // The engine loads this path elevated: only a driver package folder directly under FileRepository is accepted.
+    [Theory]
+    [InlineData(@"C:\Windows\System32\DriverStore\FileRepository\nv_dispi.inf_amd64_cee48bd6d33f95ab\nvldumdx.dll", @"C:\Windows\System32\DriverStore\FileRepository\nv_dispi.inf_amd64_cee48bd6d33f95ab\nvml.dll")]
+    [InlineData(@"c:\windows\system32\driverstore\filerepository\nv_dispi.inf_amd64_x\nvldumdx.dll", @"c:\windows\system32\driverstore\filerepository\nv_dispi.inf_amd64_x\nvml.dll")]
+    [InlineData(@"C:\Windows\System32\DriverStore\FileRepository\nvldumdx.dll", null)]
+    [InlineData(@"C:\Windows\System32\DriverStore\FileRepository\pkg\sub\nvldumdx.dll", null)]
+    [InlineData(@"C:\Windows\System32\DriverStore\FileRepository\pkg\..\..\..\..\Users\Public\x\nvldumdx.dll", null)]
+    [InlineData(@"C:\Users\Public\FileRepository\pkg\nvldumdx.dll", null)]
+    [InlineData(@"\\server\share\DriverStore\FileRepository\pkg\nvldumdx.dll", null)]
+    [InlineData(@"\\?\C:\Windows\System32\DriverStore\FileRepository\pkg\nvldumdx.dll", null)]
+    [InlineData(@"\\.\C:\Windows\System32\DriverStore\FileRepository\pkg\nvldumdx.dll", null)]
+    [InlineData(@"DriverStore\FileRepository\pkg\nvldumdx.dll", null)]
+    [InlineData("", null)]
+    [InlineData(null, null)]
+    public void AcceptsOnlyTheDriverStoresNvml(string? userModeDriver, string? expected) =>
+        Assert.Equal(expected, Nvml.DriverStorePath(userModeDriver, @"C:\Windows\System32"));
+
     // Values read from this machine's GTX 1650 SUPER (driver 537.58), plus a fictitious offset range.
     static GpuState State(bool offsets = true) => new()
     {

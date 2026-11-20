@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using KosToolbox.Core.Gpu;
 using KosToolbox.Core.SystemInfo;
 
 namespace KosGovernor.Core;
@@ -424,6 +425,8 @@ public sealed class Engine
         SyncOsd();
         GamemodeSwitched?.Invoke(Gamemode);
         if (!Gamemode) EndSession(); // after everything is undone: the log read and the file write don't delay the restore
+        // The session report and the OSD kept NVML open during gamemode: nothing reads it anymore (~20 MB back).
+        if (!Gamemode) GpuTuner.ReleaseNvml();
         // Programs: always on a manual switch; on an automatic one only if the profile asks (opening programs by itself can surprise).
         foreach (var s in automatic is null || profile.AutoOpensPrograms ? (Gamemode ? profile.OnEnable : profile.OnDisable).Start : new List<StartEntry>())
         {
