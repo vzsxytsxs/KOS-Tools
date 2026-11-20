@@ -223,4 +223,12 @@ public class GpuTests
         Assert.Null(GamemodeGpu.Problem(new GamemodeGpuProfile { Tuning = new GpuTuning { ThermalSlowdown = true }, Curve = curve }));
         Assert.Null(GamemodeGpu.Problem(new GamemodeGpuProfile { Tuning = new GpuTuning { ThermalSlowdown = false, FanAuto = true } }));
     }
+
+    [Fact]
+    public void DisplayAdapterLuidsReadTheSameWhileNothingRestarts()
+    {
+        var first = DisplayAdapters.Luids();
+        Assert.Matches("^[0-9A-F]+:[0-9A-F]+(,[0-9A-F]+:[0-9A-F]+)*$", first); // at least the basic render adapter
+        Assert.Equal(first, DisplayAdapters.Luids());
+    }
 }

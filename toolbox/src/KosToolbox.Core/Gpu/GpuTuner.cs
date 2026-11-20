@@ -239,16 +239,15 @@ public static class GpuTuner
     /// <summary>How many times NVML or NVAPI reopened the session (driver restarted); see <see cref="GpuResetWatch"/>.</summary>
     public static int Generation => Nvml.Generation + Nvapi.Generation;
 
-    /// <summary>Checks the card on both APIs (reopens the session if the driver dropped it).</summary>
-    /// <param name="nvml">
-    /// Also opens NVML when nothing in this process has yet: NVML notices every driver restart, but its session costs ~20 MB that
-    /// stay until the process exits. NVAPI alone hands out fresh handles after a restart, so a restart may go unnoticed there.
-    /// </param>
-    public static void Probe(string busId, bool nvml = true)
+    /// <summary>
+    /// Checks the card (reopens a session the driver dropped): NVAPI, and NVML only when something in this process already opened it.
+    /// Opening NVML just to check would cost ~20 MB that stay until the process exits; a restart is noticed by the adapter's LUID.
+    /// </summary>
+    public static void Probe(string busId)
     {
         lock (Gate)
         {
-            if (nvml || Nvml.Loaded) Open(busId);
+            if (Nvml.Loaded) Open(busId);
             Nvapi.ReadVoltage(busId);
         }
     }

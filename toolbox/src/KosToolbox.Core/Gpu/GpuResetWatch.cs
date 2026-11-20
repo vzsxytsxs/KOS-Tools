@@ -4,25 +4,65 @@ using System.Text;
 namespace KosToolbox.Core.Gpu;
 
 /// <summary>
-/// Detects that the video driver restarted (NVML or NVAPI had to reopen the session) or recovered from a
-/// hang (event 4101 "Display" in the System log: the driver stopped responding and came back), since the last check.
-/// In both cases the driver comes back with clocks, limits and fans at their defaults.
+/// Detects that the video driver restarted (a display adapter came back under a new LUID, or NVML or NVAPI had to reopen the
+/// session) or recovered from a hang (event 4101 "Display" in the System log: the driver stopped responding and came back), since
+/// the last check. In both cases the driver comes back with clocks, limits and fans at their defaults.
 /// </summary>
 public sealed class GpuResetWatch
 {
     int _generation = GpuTuner.Generation;
     uint _lastRecord = DisplayEvents.Newest();
+    string _adapters = DisplayAdapters.Luids();
 
     /// <param name="probeBusId">Card to check the session now (callers that do not read the card themselves pass the bus id).</param>
-    /// <param name="nvml">Probe through NVML too even if nothing opened it yet (see <see cref="GpuTuner.Probe"/>).</param>
-    public bool Poll(string? probeBusId = null, bool nvml = true)
+    public bool Poll(string? probeBusId = null)
     {
         if (probeBusId is not null)
-            try { GpuTuner.Probe(probeBusId, nvml); } catch { /* the reopening counts through the generation; the failure itself does not matter here */ }
+            try { GpuTuner.Probe(probeBusId); } catch { /* the reopening counts through the generation; the failure itself does not matter here */ }
         var reset = false;
         if (GpuTuner.Generation != _generation) { _generation = GpuTuner.Generation; reset = true; }
         if (DisplayEvents.RecoveredSince(ref _lastRecord)) reset = true;
+        if (DisplayAdapters.Luids() is var adapters && adapters != _adapters) { _adapters = adapters; reset = true; }
         return reset;
+    }
+}
+
+/// <summary>
+/// The display adapters' LUIDs (D3DKMTEnumAdapters2). A restarted display driver comes back under a new LUID: with a GTX card and
+/// pnputil /restart-device the LUID changed every time, NVML's session stayed broken until reopened, and NVAPI failed only for the
+/// two seconds of the restart (its handle was valid again after). A new or removed adapter reads as a restart too, which only
+/// re-applies settings.
+/// </summary>
+internal static class DisplayAdapters
+{
+    [StructLayout(LayoutKind.Sequential)] struct AdapterInfo { public uint Handle, LuidLow; public int LuidHigh; public uint Sources; public int PreciseRegions; }
+    [StructLayout(LayoutKind.Sequential)] struct EnumAdapters2 { public uint Count; public IntPtr Adapters; }
+    [StructLayout(LayoutKind.Sequential)] struct CloseAdapter { public uint Handle; }
+    [DllImport("gdi32.dll")] static extern int D3DKMTEnumAdapters2(ref EnumAdapters2 e);
+    [DllImport("gdi32.dll")] static extern int D3DKMTCloseAdapter(ref CloseAdapter c);
+
+    /// <summary>"high:low" per adapter, sorted; empty when they can't be read.</summary>
+    public static string Luids()
+    {
+        var e = new EnumAdapters2();
+        if (D3DKMTEnumAdapters2(ref e) != 0 || e.Count == 0) return "";
+        var size = Marshal.SizeOf<AdapterInfo>();
+        e.Adapters = Marshal.AllocHGlobal(size * (int)e.Count);
+        try
+        {
+            if (D3DKMTEnumAdapters2(ref e) != 0) return "";
+            var list = new List<string>();
+            for (var i = 0; i < e.Count; i++)
+            {
+                var a = Marshal.PtrToStructure<AdapterInfo>(e.Adapters + i * size);
+                list.Add($"{a.LuidHigh:X}:{a.LuidLow:X}");
+                var close = new CloseAdapter { Handle = a.Handle };
+                D3DKMTCloseAdapter(ref close);
+            }
+            list.Sort(StringComparer.Ordinal);
+            return string.Join(",", list);
+        }
+        finally { Marshal.FreeHGlobal(e.Adapters); }
     }
 }
 
