@@ -57,6 +57,11 @@ public class ShellHostTests
         Assert.False(DarkApps.Wants(wanted, @"C:\Windows\System32\rundll32.exe", "#32770", () => "rundll32 other.dll,Entry", @"C:\Windows"));
         Assert.False(DarkApps.Wants(wanted, @"C:\Windows\System32\rundll32.exe", "#32770", () => null, @"C:\Windows"));
         Assert.True(DarkApps.Wants(wanted, @"C:\Windows\System32\SystemPropertiesRemote.exe", "#32770", Never, @"C:\Windows"));
+        Assert.True(DarkApps.Wants(wanted, @"C:\Windows\System32\msconfig.exe", "#32770", Never, @"C:\Windows"));
+        Assert.True(DarkApps.Wants(wanted, @"C:\Windows\System32\colorcpl.exe", "#32770", Never, @"C:\Windows"));
+        Assert.False(DarkApps.Wants(wanted, @"C:\Windows\System32\cleanmgr.exe", "#32770", Never, @"C:\Windows")); // its drive list stays white
+        Assert.False(DarkApps.Wants(wanted, @"C:\Windows\System32\odbcad32.exe", "#32770", Never, @"C:\Windows")); // crashes with the DLL
+        Assert.False(DarkApps.Wants(wanted, @"C:\Windows\SysWOW64\msconfig.exe", "#32770", Never, @"C:\Windows"));
         Assert.False(DarkApps.Wants(wanted, @"C:\Windows\System32\notepad.exe", "Notepad", Never, @"C:\Windows")); // its own switch
         Assert.False(DarkApps.Wants(wanted, @"C:\Games\game.exe", "#32770", Never, @"C:\Windows"));
     }

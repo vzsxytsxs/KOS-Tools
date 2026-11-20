@@ -1,5 +1,5 @@
 // KOS Shell's dark mode for classic Windows tools: Registry Editor, management consoles, classic Notepad, Control Panel applets
-// (rundll32 shell32.dll,Control_RunDLL; System Properties) and File Explorer's classic dialogs (Properties, Folder Options; not the
+// (rundll32 shell32.dll,Control_RunDLL; System Properties; System Configuration, Color Management) and File Explorer's classic dialogs (Properties, Folder Options; not the
 // Run box, which paints its own light body).
 // KOS Engine loads this DLL into such an app when its window opens and the toolbox switch for it is on: a WH_CALLWNDPROC hook on
 // that window's thread only (DarkHook), removed right after one message. In the app the DLL checks its exe against its own fixed
@@ -60,6 +60,8 @@ namespace
         if (length == 0 || length >= MAX_PATH || folder == 0 || folder >= MAX_PATH) return Scope::None;
         auto is = [&](const wchar_t* name) { return wcscpy_s(path, windows) == 0 && wcscat_s(path, name) == 0 && SamePath(exe, path); };
         if (is(L"\\regedit.exe") || is(L"\\System32\\mmc.exe") || is(L"\\System32\\notepad.exe")) return Scope::App;
+        // DarkDialogs' tools: System Configuration, Color Management (KOS Engine's DarkApps.Apps has the same list).
+        if (is(L"\\System32\\msconfig.exe") || is(L"\\System32\\colorcpl.exe")) return Scope::App;
         if (is(L"\\explorer.exe")) return Scope::Dialogs;
         if (is(L"\\System32\\rundll32.exe")) return Contains(GetCommandLineW(), L"shell32.dll,Control_RunDLL") ? Scope::App : Scope::None;
         // System32\SystemProperties*.exe (System Properties and its tabs).

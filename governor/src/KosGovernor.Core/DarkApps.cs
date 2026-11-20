@@ -14,7 +14,8 @@ namespace KosGovernor.Core;
 /// hook on that window's thread only (DarkHook), removed after one message; the DLL checks its exe again and turns on dark mode in that
 /// process (shell\KosDark.cpp).</item>
 /// <item>DarkDialogs: File Explorer only once it shows a dialog (#32770; the DLL then darkens only dialogs there), rundll32 only while it
-/// runs a Control Panel applet (shell32.dll,Control_RunDLL), and System Properties (System32\SystemProperties*.exe).</item>
+/// runs a Control Panel applet (shell32.dll,Control_RunDLL), System Properties (System32\SystemProperties*.exe), System Configuration
+/// and Color Management.</item>
 /// <item>No other process gets the DLL, games included. Off applies to apps started afterwards: an open window stays dark until it's closed.</item>
 /// <item>A second instance does the same for KOS Shell's folder fix (NoBlankFolders = 1, shell\KosFolders.cpp): File Explorer gets the DLL
 /// through FolderHook once it shows a folder window (CabinetWClass).</item>
@@ -29,7 +30,10 @@ internal sealed class DarkApps
         ("DarkRegedit", ["regedit.exe"]),
         ("DarkConsoles", [@"System32\mmc.exe"]),
         ("DarkNotepad", [@"System32\notepad.exe"]),
-        ("DarkDialogs", ["explorer.exe", @"System32\rundll32.exe", @"System32\SystemProperties*.exe"]),
+        // The tools only those that come out fully dark (checked in use): not charmap (white grid), msinfo32 (white pane), hdwwiz,
+        // credwiz, cttune and dccw (white wizard bands), netplwiz (a white box), cleanmgr (its drive list stays white), nor odbcad32
+        // (crashes in odbccp32.dll with the DLL in).
+        ("DarkDialogs", ["explorer.exe", @"System32\rundll32.exe", @"System32\SystemProperties*.exe", @"System32\msconfig.exe", @"System32\colorcpl.exe"]),
     ];
 
     /// <summary>The folder fix's switch: File Explorer only.</summary>
