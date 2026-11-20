@@ -194,9 +194,21 @@ public static partial class KosCatalog
             .With(t => { t.KosDefault = Off; t.WindowsDefault = Off; t.Source = "KOS Engine (KOS Shell)"; }),
 
         Toggle("dark-consoles", "Dark management consoles (KOS Shell)",
-                "Services, Device Manager, Computer Management and the other consoles (mmc) in dark mode: title bar, menus, trees, lists and dialogs. Parts a snap-in draws itself (Event Viewer's panes, tabs) can stay light. KOS Engine loads KOS Shell (KosShell.dll) into mmc only, when its window opens. Turning it off applies the next time a console is opened.",
+                "Services, Device Manager, Computer Management and the other consoles (mmc) in dark mode: title bar, menus, trees, lists and dialogs. Parts a snap-in draws itself (Event Viewer's panes) can stay light. KOS Engine loads KOS Shell (KosShell.dll) into mmc only, when its window opens. Turning it off applies the next time a console is opened.",
                 Pages.Windows, Pages.Visuals, "Interface")
             .Reg(CurrentUser, @"Software\TheKOS\Shell", "DarkConsoles", RegistryValueKind.DWord, "1", null)
+            .With(t => { t.KosDefault = Off; t.WindowsDefault = Off; t.Source = "KOS Engine (KOS Shell)"; }),
+
+        Toggle("dark-notepad", "Dark classic Notepad (KOS Shell)",
+                "The classic Notepad (System32\\notepad.exe, the one left when the Store Notepad is removed) in dark mode: title bar, menus, text area, scroll bars and status bar. KOS Engine loads KOS Shell (KosShell.dll) into Notepad only, when its window opens. Turning it off applies the next time Notepad is opened.",
+                Pages.Windows, Pages.Visuals, "Interface")
+            .Reg(CurrentUser, @"Software\TheKOS\Shell", "DarkNotepad", RegistryValueKind.DWord, "1", null)
+            .With(t => { t.KosDefault = Off; t.WindowsDefault = Off; t.Source = "KOS Engine (KOS Shell)"; }),
+
+        Toggle("dark-dialogs", "Dark Control Panel and Properties dialogs (KOS Shell)",
+                "Control Panel applets (Sound, Mouse, Network and the others that open as a dialog), System Properties and File Explorer's dialogs (Properties, Folder Options, Run) in dark mode. Confirmation boxes keep their light body. In File Explorer KOS Shell (KosShell.dll) is loaded once a dialog opens and touches only dialogs; its folder windows and the taskbar are left as they are. Turning it off applies to dialogs opened after Explorer restarts.",
+                Pages.Windows, Pages.Visuals, "Interface")
+            .Reg(CurrentUser, @"Software\TheKOS\Shell", "DarkDialogs", RegistryValueKind.DWord, "1", null)
             .With(t => { t.KosDefault = Off; t.WindowsDefault = Off; t.Source = "KOS Engine (KOS Shell)"; }),
 
         Choice("context-menu", "Context menu style",

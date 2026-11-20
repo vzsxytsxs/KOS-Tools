@@ -1,10 +1,14 @@
-// KOS Shell's dark mode for classic Windows tools (Registry Editor, management consoles). KOS Engine loads this DLL into such an app
-// when its window opens and the toolbox switch for it is on: a WH_CALLWNDPROC hook on that window's thread only (DarkHook), removed
-// right after one message. In the app the DLL checks its exe against its own fixed list, then:
-// - the process's app mode (uxtheme's undocumented ordinals): dark popup and context menus; dark title bars (DWM attribute 20);
-// - each window by its class, as it's created (a WinEvent hook inside this process only): tree and list views, headers, status bars,
-//   edits, combo and list boxes, buttons, scroll bars, rebars, the MDI client, dialogs (WM_CTLCOLOR*) and the menu bar (the
-//   undocumented UAH messages).
+// KOS Shell's dark mode for classic Windows tools: Registry Editor, management consoles, classic Notepad, Control Panel applets
+// (rundll32 shell32.dll,Control_RunDLL; System Properties) and File Explorer's classic dialogs (Properties, Folder Options, Run).
+// KOS Engine loads this DLL into such an app when its window opens and the toolbox switch for it is on: a WH_CALLWNDPROC hook on
+// that window's thread only (DarkHook), removed right after one message. In the app the DLL checks its exe against its own fixed
+// list, then:
+// - in an app: the process's app mode (uxtheme's undocumented ordinals: dark popup and context menus) and every window;
+// - in File Explorer: only dialogs (#32770) and the windows inside them; Explorer's own windows, its app mode and the taskbar are
+//   left alone;
+// - each window by its class, as it's created (a WinEvent hook inside this process only): title bar (DWM attribute 20), tree and
+//   list views, headers, tabs, status bars, edits, combo and list boxes, buttons, scroll bars, rebars, toolbars, the MDI client,
+//   dialogs (WM_CTLCOLOR*) and the menu bar (the undocumented UAH messages).
 // Nothing else: no API is hooked and no other process is touched. The DLL stays loaded until the app exits (its windows use it).
 #include <windows.h>
 #include <commctrl.h>
@@ -16,10 +20,12 @@
 namespace
 {
     constexpr COLORREF Back = RGB(32, 32, 32), Field = RGB(45, 45, 45), Hot = RGB(65, 65, 65), Text = RGB(240, 240, 240), Dim = RGB(150, 150, 150), Lines = RGB(90, 90, 90);
-    constexpr UINT_PTR FrameId = 0x4B4F5301, StatusId = 0x4B4F5302, EraseId = 0x4B4F5303, ListId = 0x4B4F5304;
+    constexpr UINT_PTR FrameId = 0x4B4F5301, StatusId = 0x4B4F5302, EraseId = 0x4B4F5303, ListId = 0x4B4F5304, TabId = 0x4B4F5305;
     constexpr const wchar_t* Mark = L"KosShell.Dark";
-    HBRUSH g_back, g_field, g_hot;
+    HBRUSH g_back, g_field, g_hot, g_lines;
     std::atomic<bool> g_started{ false };
+    enum class Scope { None, App, Dialogs };
+    Scope g_scope = Scope::None;
     using AllowDarkFn = BOOL(WINAPI*)(HWND, BOOL);
     AllowDarkFn g_allowDark;
 
@@ -33,18 +39,42 @@ namespace
 
     bool Is(const wchar_t* cls, const wchar_t* name) { return CompareStringOrdinal(cls, -1, name, -1, TRUE) == CSTR_EQUAL; }
 
-    /// This process is one of the apps (KOS Engine checked it too: hooked into anything else, the DLL does nothing).
-    bool Allowed()
+    bool SamePath(const wchar_t* a, const wchar_t* b) { return CompareStringOrdinal(a, -1, b, -1, TRUE) == CSTR_EQUAL; }
+
+    /// Case-insensitive "contains" (ordinal).
+    bool Contains(const wchar_t* text, const wchar_t* part)
     {
-        wchar_t exe[MAX_PATH], path[MAX_PATH];
-        const auto length = GetModuleFileNameW(nullptr, exe, MAX_PATH);
-        if (length == 0 || length >= MAX_PATH) return false;
-        for (auto name : { L"\\regedit.exe", L"\\System32\\mmc.exe" })
-        {
-            const auto windows = GetSystemWindowsDirectoryW(path, MAX_PATH);
-            if (windows != 0 && windows < MAX_PATH && wcscat_s(path, name) == 0 && CompareStringOrdinal(exe, -1, path, -1, TRUE) == CSTR_EQUAL) return true;
-        }
+        const int n = lstrlenW(text), m = lstrlenW(part);
+        for (int i = 0; i + m <= n; i++)
+            if (CompareStringOrdinal(text + i, m, part, m, TRUE) == CSTR_EQUAL) return true;
         return false;
+    }
+
+    /// What this process is, by its exe (KOS Engine checked it the same way: hooked into anything else, the DLL does nothing).
+    Scope Allowed()
+    {
+        wchar_t exe[MAX_PATH], windows[MAX_PATH], path[MAX_PATH];
+        const auto length = GetModuleFileNameW(nullptr, exe, MAX_PATH);
+        const auto folder = GetSystemWindowsDirectoryW(windows, MAX_PATH);
+        if (length == 0 || length >= MAX_PATH || folder == 0 || folder >= MAX_PATH) return Scope::None;
+        auto is = [&](const wchar_t* name) { return wcscpy_s(path, windows) == 0 && wcscat_s(path, name) == 0 && SamePath(exe, path); };
+        if (is(L"\\regedit.exe") || is(L"\\System32\\mmc.exe") || is(L"\\System32\\notepad.exe")) return Scope::App;
+        if (is(L"\\explorer.exe")) return Scope::Dialogs;
+        if (is(L"\\System32\\rundll32.exe")) return Contains(GetCommandLineW(), L"shell32.dll,Control_RunDLL") ? Scope::App : Scope::None;
+        // System32\SystemProperties*.exe (System Properties and its tabs).
+        if (wcscpy_s(path, windows) != 0 || wcscat_s(path, L"\\System32\\SystemProperties") != 0) return Scope::None;
+        const int prefix = lstrlenW(path), total = lstrlenW(exe);
+        return total > prefix + 4 && CompareStringOrdinal(exe, prefix, path, prefix, TRUE) == CSTR_EQUAL && !wcschr(exe + prefix, L'\\')
+            && SamePath(exe + total - 4, L".exe") ? Scope::App : Scope::None;
+    }
+
+    /// In File Explorer only dialogs and what's inside them.
+    bool InScope(HWND h)
+    {
+        if (g_scope != Scope::Dialogs) return true;
+        wchar_t cls[16] = {};
+        const auto root = GetAncestor(h, GA_ROOT);
+        return root && GetClassNameW(root, cls, 16) && Is(cls, L"#32770");
     }
 
     bool IsToolbar(HWND h)
@@ -225,6 +255,48 @@ namespace
         return DefSubclassProc(h, msg, w, l);
     }
 
+    /// Tab controls (property sheets) have no dark theme: drawn here, light text on dark, the selected tab lighter.
+    LRESULT CALLBACK TabProc(HWND h, UINT msg, WPARAM w, LPARAM l, UINT_PTR, DWORD_PTR)
+    {
+        if (msg == WM_ERASEBKGND) return 1;
+        if (msg == WM_PAINT)
+        {
+            PAINTSTRUCT paint;
+            auto dc = BeginPaint(h, &paint);
+            RECT client;
+            GetClientRect(h, &client);
+            FillRect(dc, &client, g_back);
+            RECT body = client;
+            SendMessageW(h, TCM_ADJUSTRECT, FALSE, reinterpret_cast<LPARAM>(&body));
+            InflateRect(&body, 2, 2);
+            FrameRect(dc, &body, g_lines);
+            auto font = SelectObject(dc, reinterpret_cast<HGDIOBJ>(SendMessageW(h, WM_GETFONT, 0, 0)));
+            SetBkMode(dc, TRANSPARENT);
+            SetTextColor(dc, IsWindowEnabled(h) ? Text : Dim);
+            const auto count = static_cast<int>(SendMessageW(h, TCM_GETITEMCOUNT, 0, 0));
+            const auto selected = static_cast<int>(SendMessageW(h, TCM_GETCURSEL, 0, 0));
+            for (int i = 0; i < count; i++)
+            {
+                RECT item;
+                if (!SendMessageW(h, TCM_GETITEMRECT, i, reinterpret_cast<LPARAM>(&item))) continue;
+                wchar_t text[128] = {};
+                TCITEMW info{};
+                info.mask = TCIF_TEXT;
+                info.pszText = text;
+                info.cchTextMax = 127;
+                SendMessageW(h, TCM_GETITEMW, i, reinterpret_cast<LPARAM>(&info));
+                FillRect(dc, &item, i == selected ? g_field : g_back);
+                FrameRect(dc, &item, g_lines);
+                DrawTextW(dc, text, -1, &item, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_HIDEPREFIX);
+            }
+            SelectObject(dc, font);
+            EndPaint(h, &paint);
+            return 0;
+        }
+        if (msg == WM_NCDESTROY) RemoveWindowSubclass(h, TabProc, TabId);
+        return DefSubclassProc(h, msg, w, l);
+    }
+
     void ParentColors(HWND h)
     {
         if (auto parent = GetParent(h)) SetWindowSubclass(parent, FrameProc, FrameId, 0);
@@ -233,9 +305,12 @@ namespace
     /// Once per window, on its own thread (subclassing works only there).
     void Darken(HWND h)
     {
-        if (!IsWindow(h) || GetPropW(h, Mark)) return;
+        if (!IsWindow(h) || GetPropW(h, Mark) || !InScope(h)) return;
         SetPropW(h, Mark, reinterpret_cast<HANDLE>(1));
         wchar_t cls[64] = {};
+        // A task dialog's buttons and links sit in DirectUI, which draws the dialog's body light whatever its theme (text colors are
+        // read when it's built): left as they are, so the dialog stays readable with only its title bar dark.
+        if (const auto parent = GetParent(h); parent && GetClassNameW(parent, cls, 64) && Is(cls, L"CtrlNotifySink")) return;
         GetClassNameW(h, cls, 64);
         const bool top = GetAncestor(h, GA_ROOT) == h;
         if (g_allowDark) g_allowDark(h, TRUE);
@@ -266,6 +341,7 @@ namespace
             if (auto header = ListView_GetHeader(h)) Darken(header);
         }
         else if (Is(cls, WC_HEADERW)) SetWindowTheme(h, L"DarkMode_ItemsView", nullptr);
+        else if (Is(cls, WC_TABCONTROLW)) SetWindowSubclass(h, TabProc, TabId, 0);
         else if (Is(cls, STATUSCLASSNAMEW)) SetWindowSubclass(h, StatusProc, StatusId, 0);
         else if (Is(cls, L"MDIClient")) SetWindowSubclass(h, EraseProc, EraseId, 0);
         else if (Is(cls, REBARCLASSNAMEW))
@@ -276,7 +352,9 @@ namespace
         }
         else if (Is(cls, WC_EDITW) || Is(cls, WC_COMBOBOXW) || Is(cls, WC_LISTBOXW) || Is(cls, L"ComboLBox"))
         {
-            SetWindowTheme(h, L"DarkMode_CFD", nullptr);
+            // A multiline edit's own scroll bars take the Explorer theme's dark ones; the other fields the dark field theme.
+            const bool multiline = Is(cls, WC_EDITW) && (GetWindowLongW(h, GWL_STYLE) & ES_MULTILINE);
+            SetWindowTheme(h, multiline || Is(cls, WC_LISTBOXW) || Is(cls, L"ComboLBox") ? L"DarkMode_Explorer" : L"DarkMode_CFD", nullptr);
             ParentColors(h);
         }
         else if (Is(cls, WC_BUTTONW))
@@ -295,7 +373,7 @@ namespace
             if (target)
             {
                 SendMessageW(h, TB_SETPARENT, reinterpret_cast<WPARAM>(target), 0);
-                if (GetWindowThreadProcessId(target, nullptr) == GetCurrentThreadId()) SetWindowSubclass(target, FrameProc, FrameId, 0);
+                if (GetWindowThreadProcessId(target, nullptr) == GetCurrentThreadId() && InScope(target)) SetWindowSubclass(target, FrameProc, FrameId, 0);
             }
         }
         else if (Is(cls, WC_STATICW)) ParentColors(h);
@@ -327,26 +405,48 @@ namespace
 
     void Start()
     {
-        if (g_started.exchange(true) || !Allowed()) return;
+        if (g_started.exchange(true)) return;
+        g_scope = Allowed();
+        if (g_scope == Scope::None) return;
         // The app's windows keep using this code until they close: never unloaded (KOS Engine removes its hook right away).
         HMODULE self;
         if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN, reinterpret_cast<LPCWSTR>(&Start), &self)) return;
         g_back = CreateSolidBrush(Back);
         g_field = CreateSolidBrush(Field);
         g_hot = CreateSolidBrush(Hot);
+        g_lines = CreateSolidBrush(Lines);
         // uxtheme by ordinal (Windows 10 1903 and later): 135 SetPreferredAppMode, 104 RefreshImmersiveColorPolicyState,
-        // 136 FlushMenuThemes, 133 AllowDarkModeForWindow.
+        // 136 FlushMenuThemes, 133 AllowDarkModeForWindow. File Explorer keeps its own app mode (it follows Windows' setting).
         if (auto ux = LoadLibraryExW(L"uxtheme.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32))
         {
             using ModeFn = int(WINAPI*)(int);
             using VoidFn = void(WINAPI*)();
             g_allowDark = reinterpret_cast<AllowDarkFn>(GetProcAddress(ux, MAKEINTRESOURCEA(133)));
-            if (auto setMode = reinterpret_cast<ModeFn>(GetProcAddress(ux, MAKEINTRESOURCEA(135)))) setMode(2); // ForceDark
-            if (auto refresh = reinterpret_cast<VoidFn>(GetProcAddress(ux, MAKEINTRESOURCEA(104)))) refresh();
-            if (auto flush = reinterpret_cast<VoidFn>(GetProcAddress(ux, MAKEINTRESOURCEA(136)))) flush();
+            if (g_scope == Scope::App)
+            {
+                if (auto setMode = reinterpret_cast<ModeFn>(GetProcAddress(ux, MAKEINTRESOURCEA(135)))) setMode(2); // ForceDark
+                if (auto refresh = reinterpret_cast<VoidFn>(GetProcAddress(ux, MAKEINTRESOURCEA(104)))) refresh();
+                if (auto flush = reinterpret_cast<VoidFn>(GetProcAddress(ux, MAKEINTRESOURCEA(136)))) flush();
+            }
         }
-        // New windows of this process, on whichever thread creates them (in context: the callback runs on that thread).
-        SetWinEventHook(EVENT_OBJECT_CREATE, EVENT_OBJECT_SHOW, self, OnWindowEvent, GetCurrentProcessId(), 0, WINEVENT_INCONTEXT);
+        // New windows of this process, on whichever thread creates them (in context: the callback runs on that thread). Installed
+        // from a thread of its own that never ends: Windows removes a hook when its thread exits, and in File Explorer the hooked
+        // thread is the first dialog's, gone when that dialog closes.
+        if (const auto ready = CreateEventW(nullptr, TRUE, FALSE, nullptr))
+        {
+            const auto owner = CreateThread(nullptr, 0, [](void* signal) -> DWORD
+            {
+                HMODULE module;
+                GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, reinterpret_cast<LPCWSTR>(&OnWindowEvent), &module);
+                SetWinEventHook(EVENT_OBJECT_CREATE, EVENT_OBJECT_SHOW, module, OnWindowEvent, GetCurrentProcessId(), 0, WINEVENT_INCONTEXT);
+                SetEvent(static_cast<HANDLE>(signal));
+                Sleep(INFINITE);
+                return 0;
+            }, ready, 0, nullptr);
+            // Windows created meanwhile on other threads would be missed. Not signalled in time: the thread still holds the event.
+            if (!owner || WaitForSingleObject(ready, 2000) == WAIT_OBJECT_0) CloseHandle(ready);
+            if (owner) CloseHandle(owner);
+        }
         // The windows already open on this thread (the one KOS Engine hooked: the app's UI thread).
         EnumWindows(DarkenOpen, 0);
     }
