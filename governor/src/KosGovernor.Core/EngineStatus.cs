@@ -68,7 +68,7 @@ public static class EngineStatus
             new("Killswitch", !f.Killswitch ? "Off" : f.KillswitchBlocksLan ? "On · every connection cut, local network too" : "On · the internet is cut", f.Killswitch),
             Line("KOS Firewall", Firewall(f), f.FirewallOn && f.FirewallFilters > 0, EngineTask.Firewall),
             Line("KOS Equalizer", Equalizer(f), f.EqualizerGamemode > 0 && !f.EqualizerBypassed, EngineTask.Equalizer),
-            Line("Transparent taskbar", f.TransparentTaskbar ?? "Off", f.TransparentTaskbar is not null, EngineTask.Shell),
+            Line("Taskbar style", f.TransparentTaskbar ?? "Off", f.TransparentTaskbar is not null, EngineTask.Shell),
             Line("Tray and this window", "Open", true, EngineTask.Tray),
         };
         // What no task accounts for: the runtime, the configuration in memory, threads waiting.

@@ -20,6 +20,27 @@ public class ShellHostTests
     }
 
     [Fact]
+    public void TaskbarStyleReadsOnlyKnownValuesAndSwapsTheTintToAbgr()
+    {
+        const uint blue = 0xFFD47800; // Windows' default accent, ABGR
+        Assert.Null(LookFor(null, null, blue, true));
+        Assert.Null(LookFor(0, "#80000000", blue, true));
+        Assert.Null(LookFor(4, null, blue, true));
+        Assert.Null(LookFor("1", null, blue, true)); // a string isn't the style
+        Assert.Equal(new Look(2, 2, 0, "Transparent"), LookFor(1, null, blue, true));
+        Assert.Equal(new Look(2, 2, 0x800000FF, "Transparent"), LookFor(1, "#80FF0000", blue, false)); // red: R and B swapped
+        Assert.Equal(new Look(4, 1, 0xC0000000, "Blur"), LookFor(2, "#C0000000", blue, true));
+        Assert.Equal(new Look(4, 1, 0x80D47800, "Blur"), LookFor(2, "accent", blue, true)); // the accent at half strength
+        Assert.Equal(new Look(4, 2, 0xFF202020, "Acrylic"), LookFor(3, null, blue, true)); // acrylic needs a tint: dark gray
+        foreach (var bad in new object[] { "80000000", "#8000000", "#GG000000", "#800000000", "Accent", 5 })
+            Assert.Equal(0u, LookFor(2, bad, blue, true)!.Color); // no tint
+        // Without Transparency effects DWM draws blur and acrylic black: transparent with the tint meanwhile.
+        var off = LookFor(3, "#80000000", blue, false)!;
+        Assert.Equal((2, 2, 0x80000000u), (off.State, off.Flags, off.Color));
+        Assert.StartsWith("Acrylic needs Transparency effects", off.Name);
+    }
+
+    [Fact]
     public void DarkModeWantsOnlyTheAppsWhoseSwitchIsADwordOne()
     {
         var values = new Dictionary<string, object?> { ["DarkRegedit"] = 1, ["DarkConsoles"] = 0 };

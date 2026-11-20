@@ -181,11 +181,19 @@ public static partial class KosCatalog
             .Reg(CurrentUser, @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "EnableTransparency", RegistryValueKind.DWord, "1", "0")
             .With(t => { t.RestartExplorer = true; t.KosDefault = Off; t.WindowsDefault = On; t.Source = "EnableTransparency; RunOnce.cmd"; }),
 
-        Toggle("transparent-taskbar", "Transparent taskbar (KOS Shell)",
-                "A fully transparent taskbar, Windows 10 or Windows 11 style. KOS Engine applies it and keeps it while it runs; for the Windows 11 taskbar it loads KOS Shell (KosShell.dll, beside the engine) into Explorer. Off gives the taskbar its own look back. If Explorer closes right after KOS Shell loads, it isn't loaded again until this is turned off and on.",
-                Pages.Windows, Pages.Visuals, "Interface")
-            .Reg(CurrentUser, @"Software\TheKOS\Shell", "TransparentTaskbar", RegistryValueKind.DWord, "1", null)
+        // The keys of the old switch (off/on) stay, so its history and backups still apply.
+        Choice("transparent-taskbar", "Taskbar style (KOS Shell)",
+                "How the taskbar is drawn, Windows 10 or Windows 11 style: Windows' own look, transparent, blurred, or acrylic (frosted and mostly the tint, like Windows' own). Blur and Acrylic need Transparency effects, which choosing them turns on (Start and menus turn translucent too; going back to another style leaves it on); while it's off the taskbar stays transparent. KOS Engine applies it and keeps it while it runs; for the Windows 11 taskbar it loads KOS Shell (KosShell.dll, beside the engine) into Explorer. Windows gives the taskbar its own look back. If Explorer closes right after KOS Shell loads, it isn't loaded again until this is set to Windows and back.",
+                Pages.Windows, Pages.Visuals, "Interface", (Off, "Windows"), (On, "Transparent"), ("blur", "Blur"), ("acrylic", "Acrylic"))
+            .Add(R(CurrentUser, @"Software\TheKOS\Shell", "TransparentTaskbar"), (Off, Del), (On, S("1")), ("blur", S("2")), ("acrylic", S("3")))
+            .Add(R(CurrentUser, @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "EnableTransparency"), (Off, Any), (On, Any), ("blur", S("1")), ("acrylic", S("1")))
             .With(t => { t.KosDefault = Off; t.WindowsDefault = Off; t.Source = "KOS Engine (KOS Shell)"; }),
+
+        Choice("taskbar-tint", "Taskbar tint (KOS Shell)",
+                "A color over the taskbar style (not over Windows' own look): black at three strengths, or Windows' accent color at half strength. Acrylic with no tint is dark gray.",
+                Pages.Windows, Pages.Visuals, "Interface", ("none", "None"), ("light", "Black, light"), ("medium", "Black, medium"), ("dark", "Black, dark"), ("accent", "Accent color"))
+            .Add(Sz(CurrentUser, @"Software\TheKOS\Shell", "TaskbarColor"), ("none", Del), ("light", S("#40000000")), ("medium", S("#80000000")), ("dark", S("#C0000000")), ("accent", S("accent")))
+            .With(t => { t.KosDefault = "none"; t.WindowsDefault = "none"; t.Source = "KOS Engine (KOS Shell)"; }),
 
         Toggle("dark-regedit", "Dark Registry Editor (KOS Shell)",
                 "Registry Editor in dark mode: title bar, menus, tree, list, status bar and its dialogs. When its window opens, KOS Engine loads KOS Shell (KosShell.dll, beside the engine) into regedit only, never into other programs. Turning it off applies the next time it's opened; an open window stays dark until it's closed.",

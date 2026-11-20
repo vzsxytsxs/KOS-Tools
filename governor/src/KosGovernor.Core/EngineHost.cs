@@ -58,7 +58,7 @@ public static class EngineHost
         engine.ConfigChanged += tray.Refresh;
         engine.SessionEnded += report => tray.Balloon("Gamemode session", $"{report.Summary}. Report on the toolbox's Stability page.",
             report.Sections.Any(s => s.Lines.Any(l => l.Warning)));
-        var shell = new ShellHost(text => tray.Balloon("Transparent taskbar", text, warning: true));
+        var shell = new ShellHost(text => tray.Balloon("Taskbar style", text, warning: true));
         var batteries = new PeripheralBatteryMonitor((title, text) => tray.Balloon(title, text, warning: true), tray.Refresh); // peripherals: tray batteries
         batteries.Start();
         engine.GamemodeSwitched += on => { batteries.Gamemode = on; batteries.Poke(); }; // after mice.Switch: the dock's gamemode battery choice
