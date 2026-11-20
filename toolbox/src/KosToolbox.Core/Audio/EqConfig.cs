@@ -44,14 +44,47 @@ public sealed class EqConfig
     /// <summary>
     /// The master switch. Off (<paramref name="bypass"/>): every device KOS Equalizer is on for is written flat at once (the effect
     /// reloads its file: no audio restart, the registration stays); on: each plays its profile again. The marker goes first, so a
-    /// failure halfway leaves the next write (Play, Apply) doing the same. Returns the devices written.
+    /// failure halfway leaves the next write (Play, Apply) doing the same. Returns the devices whose file doesn't hold what they
+    /// should play (read back); empty when every one does. The gamemode marker is KOS Engine's: left as it is.
     /// </summary>
-    public static int SetBypass(bool bypass)
+    public static List<string> SetBypass(bool bypass) => Locked(() =>
     {
         GpuTuner.PrepareDirectory(EqSettingsFile.AudioDirectory); // refuses a link or someone else's folder
         if (bypass) File.WriteAllText(BypassMarker, "");
         else File.Delete(BypassMarker);
-        return Apply(GamemodeOn);
+        var gamemode = GamemodeOn;
+        Switch(gamemode);
+        return Load().Devices.Where(d => EqSettingsFile.Read(d.EndpointId) is { } now
+                && now != (!bypass && d.Playing(gamemode) is { } p ? EqSettingsFile.Format(p) : EqSettingsFile.FlatText))
+            .Select(d => d.Name).ToList();
+    });
+
+    /// <summary>
+    /// KOS Equalizer and KOS Engine both write the settings files and the markers: one at a time, with the markers read inside, so
+    /// a gamemode switch can't land between reading them and writing. Any user can create a Global\ mutex, so one that can't be
+    /// opened or is held past 10 s is gone around rather than waited on.
+    /// </summary>
+    static T Locked<T>(Func<T> work)
+    {
+        Mutex? mutex = null;
+        var taken = false;
+        try
+        {
+            mutex = new Mutex(false, @"Global\KosEqualizer.Switch");
+            try { taken = mutex.WaitOne(TimeSpan.FromSeconds(10)); }
+            catch (AbandonedMutexException) { taken = true; } // its holder died: ours now
+            if (!taken) Log.Warn("Equalizer: another change held the lock for 10 s; going ahead without it.");
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or WaitHandleCannotBeOpenedException)
+        {
+            Log.Warn($"Equalizer: the change lock can't be used ({ex.Message}); going ahead without it.");
+        }
+        try { return work(); }
+        finally
+        {
+            if (taken) mutex!.ReleaseMutex();
+            mutex?.Dispose();
+        }
     }
 
     /// <summary>The config (empty when there's none); throws when it can't be trusted or read, so a save never replaces it with an empty one.</summary>
@@ -86,18 +119,29 @@ public sealed class EqConfig
     /// KOS Equalizer isn't on for the device. Throws when the profile can't be played (<see cref="EqSettingsFile.Problem"/>) or the
     /// file can't be written.
     /// </summary>
-    public static void Play(EqDevice device)
+    public static void Play(EqDevice device) => Locked(() =>
     {
-        if (EqSettingsFile.Read(device.EndpointId) is null) return;
-        EqSettingsFile.Write(device.EndpointId, Bypassed ? null : device.Playing(GamemodeOn));
-    }
+        if (EqSettingsFile.Read(device.EndpointId) is not null) EqSettingsFile.Write(device.EndpointId, Bypassed ? null : device.Playing(GamemodeOn));
+        return 0;
+    });
 
     /// <summary>
     /// KOS Engine at a gamemode switch (and at its start, with off: a gamemode it didn't end): every device KOS Equalizer is on for
-    /// (it has a settings file) gets what it should play now (flat while the master switch is off); only a file whose text differs
-    /// is written. Returns the devices written; one that fails is logged and skipped.
+    /// (it has a settings file) gets what it should play now (flat while the master switch is off), then the gamemode marker.
+    /// Returns the devices written; one that fails is logged and skipped.
     /// </summary>
-    public static int Apply(bool gamemode)
+    public static int Apply(bool gamemode) => Locked(() =>
+    {
+        var written = Switch(gamemode);
+        if (!Directory.Exists(EqSettingsFile.AudioDirectory)) return written; // KOS Equalizer never ran: nothing to mark
+        GpuTuner.PrepareDirectory(EqSettingsFile.AudioDirectory); // refuses a link or someone else's folder
+        if (gamemode) File.WriteAllText(GamemodeMarker, "");
+        else File.Delete(GamemodeMarker);
+        return written;
+    });
+
+    /// <summary>Writes each device what it plays now; only a file whose text differs. Inside <see cref="Locked"/>.</summary>
+    static int Switch(bool gamemode)
     {
         var written = 0;
         var bypassed = Bypassed;
@@ -120,10 +164,6 @@ public sealed class EqConfig
                     catch (Exception flat) when (flat is IOException or UnauthorizedAccessException or InvalidOperationException) { Log.Warn($"Equalizer: {d.Name} couldn't go flat either: {flat.Message}"); }
             }
         }
-        if (!Directory.Exists(EqSettingsFile.AudioDirectory)) return written; // KOS Equalizer never ran: nothing to mark
-        GpuTuner.PrepareDirectory(EqSettingsFile.AudioDirectory); // refuses a link or someone else's folder
-        if (gamemode) File.WriteAllText(GamemodeMarker, "");
-        else File.Delete(GamemodeMarker);
         return written;
     }
 }

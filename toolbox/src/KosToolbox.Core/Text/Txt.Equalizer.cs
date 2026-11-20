@@ -66,6 +66,8 @@ public static partial class Txt
         on ? $"{device} plays {profile ?? "flat"}." : $"Saved; it plays once KOS Equalizer is on for {device}.";
     public static string EqApplyFailed(string device, string error) => $"{device}: saving or playing the profile failed: {error}";
     public static string EqMasterFailed(string error) => $"The switch didn't take: {error}";
+    public static string EqMasterNotAll(bool off, IEnumerable<string> devices) =>
+        $"KOS Equalizer is {(off ? "off" : "on")}, but these devices don't play {(off ? "flat" : "their profile")} (details in the log): {string.Join(", ", devices)}";
 
     // ---------- editor ----------
     public const string EqEditorTitle = "Editor", EqParametric = "Parametric", EqPreamp = "Preamp",

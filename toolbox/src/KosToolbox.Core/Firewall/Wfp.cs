@@ -22,9 +22,12 @@ public sealed record WfpCondition(Guid Field, uint Match, uint Type, object Valu
     public static WfpCondition RemotePorts(ushort from, ushort to) => new(Wfp.ConditionRemotePort, Wfp.MatchRange, Wfp.TypeRange, (from, to));
     public static WfpCondition LocalPorts(ushort from, ushort to) => new(Wfp.ConditionLocalPort, Wfp.MatchRange, Wfp.TypeRange, (from, to));
     /// <summary>The remote address inside this network (an IPv4 or IPv6 address and its prefix length).</summary>
-    public static WfpCondition RemoteNetwork(IPAddress address, int prefix) => address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork
-        ? new(Wfp.ConditionRemoteAddress, Wfp.MatchEqual, Wfp.TypeV4AddrMask, (address, prefix))
-        : new(Wfp.ConditionRemoteAddress, Wfp.MatchEqual, Wfp.TypeV6AddrMask, (address, prefix));
+    public static WfpCondition RemoteNetwork(IPAddress address, int prefix) => Network(Wfp.ConditionRemoteAddress, address, prefix);
+    /// <summary>A forwarded packet's destination inside this network (the IP forward layers have no remote address).</summary>
+    public static WfpCondition DestinationNetwork(IPAddress address, int prefix) => Network(Wfp.ConditionDestinationAddress, address, prefix);
+    static WfpCondition Network(Guid field, IPAddress address, int prefix) => address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork
+        ? new(field, Wfp.MatchEqual, Wfp.TypeV4AddrMask, (address, prefix))
+        : new(field, Wfp.MatchEqual, Wfp.TypeV6AddrMask, (address, prefix));
     /// <summary>A process whose token carries this SID (a service's S-1-5-80-... SID): ALE_USER_ID with a security descriptor granting it.</summary>
     public static WfpCondition UserSid(string sid) => new(Wfp.ConditionUserId, Wfp.MatchEqual, Wfp.TypeSecurityDescriptor, sid);
     /// <summary>A Store app (its package SID, S-1-15-2-...).</summary>
@@ -400,6 +403,9 @@ public static class Wfp
     // Every packet sent or received (established connections too), per IP version (fwpmu.h, 10.0.26100)
     public static readonly Guid LayerOutboundTransportV4 = new("09e61aea-d214-46e2-9b21-b26b0b2f28c8"), LayerOutboundTransportV6 = new("e1735bde-013f-4655-b351-a49e15762df0"),
         LayerInboundTransportV4 = new("5926dfc8-e3cf-4426-a283-dc393f5d0f9d"), LayerInboundTransportV6 = new("634a869f-fc23-4b90-b0c1-bf620a36ae6f");
+    // Packets this PC forwards for others (WSL, Hyper-V and Docker networks, a mobile hotspot)
+    public static readonly Guid LayerIpForwardV4 = new("a82acc24-4ee1-4ee1-b465-fd1d25cb10a4"), LayerIpForwardV6 = new("7b964818-19c7-493a-b71f-832c3684d28c");
+    public static readonly Guid ConditionDestinationAddress = new("2d79133b-b390-45c6-8699-acaceaafed33");
     public static readonly Guid ConditionAppId = new("d78e1e87-8644-4ea5-9437-d809ecefc971"), ConditionUserId = new("af043a0a-b34d-4f86-979c-c90371af6e66"),
         ConditionPackageId = new("71bc78fa-f17c-4997-a602-6abb261f351c"), ConditionRemoteAddress = new("b235ae9a-1d64-49b8-a44c-5ff3d9095045"),
         ConditionLocalAddress = new("d9ee00de-c1ef-4617-bfe3-ffd8f5a08957"), ConditionRemotePort = new("c35a604d-d22b-4e1a-91b4-68f674ee674b"),

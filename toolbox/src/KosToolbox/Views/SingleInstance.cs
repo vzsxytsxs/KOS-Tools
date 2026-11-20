@@ -32,9 +32,16 @@ static class SingleInstance
             using var show = EventWaitHandle.OpenExisting($@"Local\{app}.ShowUi");
             show.Set();
         }
-        catch (UnauthorizedAccessException) { Core.Execution.KosApps.Focus(app + ".exe"); } // its event is the administrator's: focus its window from here
+        catch (UnauthorizedAccessException) { Core.Execution.KosApps.Focus(app + ".exe", Environment.ProcessPath); } // its event is the administrator's: focus its window from here
         catch (WaitHandleCannotBeOpenedException) { } // it's closing
         return false;
+    }
+
+    /// <summary>Lets a new copy start while this one closes (restarting as administrator).</summary>
+    public static void Release()
+    {
+        _running?.Dispose();
+        _running = null;
     }
 
     /// <summary>Brings the window to the front whenever another start asks.</summary>

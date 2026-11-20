@@ -434,6 +434,7 @@ public sealed class SettingsViewModel : PageViewModel
         try
         {
             Process.Start(new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = true, Verb = "runas" });
+            Views.SingleInstance.Release(); // the new copy may start before this one has closed
             System.Windows.Application.Current.Shutdown();
         }
         catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223) { /* UAC cancelled: stays as it is */ }

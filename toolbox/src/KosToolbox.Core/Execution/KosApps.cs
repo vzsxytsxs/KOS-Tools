@@ -29,7 +29,7 @@ public static class KosApps
     /// </summary>
     public static void Start(string folder, string exe)
     {
-        if (Focus(exe)) return;
+        if (Focus(exe, Installed(folder, exe), Find(folder, exe))) return;
         if (Elevation.IsAdmin)
         {
             var path = Installed(folder, exe);
@@ -44,24 +44,49 @@ public static class KosApps
     }
 
     /// <summary>
-    /// Brings the app's window to the front when it already runs (no second copy, and no UAC prompt just to show it); false when
-    /// it isn't running or has no window. The caller is in front (the user just clicked it), so Windows lets it hand the focus over.
+    /// Brings the app's window to the front when it already runs from one of <paramref name="paths"/> (no second copy, and no UAC
+    /// prompt just to show it); false when it isn't running, has no window, or its minimized window didn't come back (then starting
+    /// it again makes the running copy show itself). The caller is in front (the user just clicked it), so Windows lets it hand the
+    /// focus over.
     /// </summary>
-    public static bool Focus(string exe)
+    public static bool Focus(string exe, params string?[] paths)
     {
         foreach (var p in Process.GetProcessesByName(Path.GetFileNameWithoutExtension(exe)))
             using (p)
             {
                 var hwnd = p.MainWindowHandle; // a visible top-level window; the engine's hidden one doesn't count
                 if (hwnd == IntPtr.Zero) continue;
-                if (IsIconic(hwnd)) ShowWindow(hwnd, 9); // SW_RESTORE
+                if (paths.Length > 0 && !paths.Any(x => x is not null && string.Equals(ImagePath(p.Id), Path.GetFullPath(x), StringComparison.OrdinalIgnoreCase)))
+                    continue; // another program with the same name
+                if (IsIconic(hwnd))
+                {
+                    ShowWindow(hwnd, 9); // SW_RESTORE
+                    if (IsIconic(hwnd)) continue;
+                }
                 SetForegroundWindow(hwnd);
                 return true;
             }
         return false;
     }
 
+    /// <summary>The process's executable (also for a process running as administrator); null when it can't be read.</summary>
+    static string? ImagePath(int pid)
+    {
+        var h = OpenProcess(0x1000, false, pid); // PROCESS_QUERY_LIMITED_INFORMATION
+        if (h == IntPtr.Zero) return null;
+        try
+        {
+            var path = new char[1024];
+            var size = path.Length;
+            return QueryFullProcessImageName(h, 0, path, ref size) ? new string(path, 0, size) : null;
+        }
+        finally { CloseHandle(h); }
+    }
+
     [DllImport("user32.dll")] static extern bool IsIconic(IntPtr hwnd);
     [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr hwnd, int cmd);
     [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hwnd);
+    [DllImport("kernel32.dll")] static extern IntPtr OpenProcess(uint access, bool inherit, int pid);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern bool QueryFullProcessImageName(IntPtr process, int flags, char[] path, ref int size);
+    [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
 }

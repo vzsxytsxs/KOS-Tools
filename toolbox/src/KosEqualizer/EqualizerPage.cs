@@ -603,14 +603,16 @@ public sealed class EqualizerPageViewModel : PageViewModel
     {
         var bypass = !_bypassed;
         string? error = null;
-        try { await RunExclusiveAsync(() => EqConfig.SetBypass(bypass)); }
+        List<string> differ = [];
+        try { differ = await RunExclusiveAsync(() => EqConfig.SetBypass(bypass)); } // the devices whose file reads back otherwise
         catch (Exception ex)
         {
             Log.Error($"Equalizer: turning every device {(bypass ? "off" : "on")} failed", ex);
             error = ex.Message;
         }
         await ListAsync(readSelected: false, profiles: false); // the switch and every device as read now
-        if (error is null && _bypassed == bypass) Toasts.Show(bypass ? Txt.EqMasterTurnedOff : Txt.EqMasterTurnedOn);
+        if (error is null && _bypassed == bypass && differ.Count == 0) Toasts.Show(bypass ? Txt.EqMasterTurnedOff : Txt.EqMasterTurnedOn);
+        else if (error is null && _bypassed == bypass) Toasts.Show(Txt.EqMasterNotAll(bypass, differ), ToastKind.Warning);
         else Toasts.Show(Txt.EqMasterFailed(error ?? MasterText!), error is null ? ToastKind.Warning : ToastKind.Error);
     }
     public ICommand SelectCommand { get; }

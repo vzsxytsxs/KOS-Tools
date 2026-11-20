@@ -396,7 +396,10 @@ internal sealed class Tray : IDisposable
         (mods, key) = (hk.Modifiers, hk.Key);
         registered = RegisterHotKey(_hwnd, id, hk.Modifiers | 0x4000, hk.Key); // MOD_NOREPEAT
         if (!registered && changed)
+        {
             Log.Warn($"The {what} hotkey couldn't be registered (another program may use it): {Native.Win32Message(Marshal.GetLastWin32Error())}");
+            Balloon($"{HotkeyText(hk)} doesn't work", $"Another program uses it, so the {what} hotkey does nothing. Choose another in KOS Governor.", warning: true);
+        }
     }
 
     // ---------- the network killswitch: KosToolbox.Core.Firewall.Killswitch, its filters held by this process ----------

@@ -429,28 +429,48 @@ public class FirewallRulesTests
     {
         var layers = new[] { Wfp.LayerOutboundTransportV4, Wfp.LayerInboundTransportV4, Wfp.LayerOutboundTransportV6, Wfp.LayerInboundTransportV6 };
         var plan = Killswitch.Plan(blockLan: false);
-        Assert.Equal(12, plan.Count);
+        Assert.Equal(20, plan.Count);
         foreach (var layer in layers)
         {
             var here = plan.Where(f => f.Layer == layer).ToList();
-            // An unconditioned block under the permits: the loopback permit and the local one outweigh it.
+            // An unconditioned block at the bottom; above it the local permit, over that DNS's block (the router would forward it),
+            // and loopback on top.
+            Assert.Equal([Killswitch.WeightLoopback, Killswitch.WeightDns, Killswitch.WeightLocal, Killswitch.WeightBlock], here.Select(f => f.Weight).ToArray());
             Assert.Single(here, f => f.Action == WfpAction.Block && f.Conditions.Count == 0 && f.Weight == Killswitch.WeightBlock);
             Assert.Single(here, f => f.Action == WfpAction.Permit && f.Weight == Killswitch.WeightLoopback && f.Conditions.Single().Field == Wfp.ConditionFlags);
-            var local = here.Single(f => f.Weight == Killswitch.WeightLocal);
-            Assert.All(local.Conditions, c => Assert.Equal(Wfp.ConditionRemoteAddress, c.Field));
+            Assert.All(here.Single(f => f.Weight == Killswitch.WeightLocal).Conditions, c => Assert.Equal(Wfp.ConditionRemoteAddress, c.Field));
+            var dns = here.Single(f => f.Weight == Killswitch.WeightDns);
+            Assert.Equal(WfpAction.Block, dns.Action);
+            Assert.Equal([(ushort)53, (ushort)853], dns.Conditions.Select(c => (ushort)c.Value).ToArray());
         }
         var v4 = plan.First(f => f.Layer == Wfp.LayerOutboundTransportV4 && f.Weight == Killswitch.WeightLocal).Conditions;
         Assert.Contains(v4, c => c.Value is (IPAddress a, 16) && a.Equals(IPAddress.Parse("192.168.0.0")));
         Assert.DoesNotContain(v4, c => c.Type == Wfp.TypeV6AddrMask);
         Assert.All(plan.Where(f => f.Layer == Wfp.LayerInboundTransportV6 && f.Weight == Killswitch.WeightLocal).Single().Conditions,
             c => Assert.Equal(Wfp.TypeV6AddrMask, c.Type));
+        // Forwarded packets (WSL, Hyper-V, a hotspot): to the local network by destination, everything else blocked.
+        foreach (var forward in new[] { Wfp.LayerIpForwardV4, Wfp.LayerIpForwardV6 })
+        {
+            var here = plan.Where(f => f.Layer == forward).ToList();
+            Assert.Equal(2, here.Count);
+            Assert.All(here.Single(f => f.Action == WfpAction.Permit).Conditions, c => Assert.Equal(Wfp.ConditionDestinationAddress, c.Field));
+            Assert.Empty(here.Single(f => f.Action == WfpAction.Block).Conditions);
+        }
 
-        // Cutting the local network too: no local permit, loopback still passes.
+        // Cutting the local network too: no local permit and no separate DNS block, loopback still passes.
         var strict = Killswitch.Plan(blockLan: true);
-        Assert.Equal(8, strict.Count);
-        Assert.DoesNotContain(strict, f => f.Weight == Killswitch.WeightLocal);
-        // A scoped (test) plan conditions only the blocks.
-        var scoped = Killswitch.Plan(false, WfpCondition.RemotePort(9));
-        Assert.All(scoped.Where(f => f.Action == WfpAction.Block), f => Assert.Equal(Wfp.ConditionRemotePort, f.Conditions.Single().Field));
+        Assert.Equal(10, strict.Count);
+        Assert.DoesNotContain(strict, f => f.Weight is Killswitch.WeightLocal or Killswitch.WeightDns);
+        // A scoped (test) plan conditions only the blocks, each kind with its own condition.
+        var scope = new Killswitch.Scope(WfpCondition.RemotePort(9),
+            WfpCondition.DestinationNetwork(IPAddress.Parse("192.0.2.0"), 24), WfpCondition.DestinationNetwork(IPAddress.Parse("2001:db8::"), 32),
+            WfpCondition.RemoteNetwork(IPAddress.Parse("192.168.1.253"), 32), WfpCondition.RemoteNetwork(IPAddress.Parse("2001:db8::53"), 128));
+        var scoped = Killswitch.Plan(false, scope);
+        Assert.All(scoped.Where(f => f.Action == WfpAction.Block && f.Weight == Killswitch.WeightBlock), f => Assert.Single(f.Conditions));
+        Assert.All(scoped.Where(f => f.Weight == Killswitch.WeightDns), f => Assert.Equal(Wfp.ConditionRemoteAddress, f.Conditions[^1].Field));
+        // An address condition never lands on the other IP version's layers (the filter engine refuses the type).
+        var v6Layers = new[] { Wfp.LayerOutboundTransportV6, Wfp.LayerInboundTransportV6, Wfp.LayerIpForwardV6 };
+        Assert.All(scoped.SelectMany(f => f.Conditions.Select(c => (v6: v6Layers.Contains(f.Layer), c.Type))).Where(x => x.Type is Wfp.TypeV4AddrMask or Wfp.TypeV6AddrMask),
+            x => Assert.Equal(x.v6 ? Wfp.TypeV6AddrMask : Wfp.TypeV4AddrMask, x.Type));
     }
 }
