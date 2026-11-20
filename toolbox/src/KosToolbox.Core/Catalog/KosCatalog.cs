@@ -206,7 +206,7 @@ public static partial class KosCatalog
             .With(t => { t.KosDefault = Off; t.WindowsDefault = Off; t.Source = "KOS Engine (KOS Shell)"; }),
 
         Toggle("dark-dialogs", "Dark Control Panel and Properties dialogs (KOS Shell)",
-                "Control Panel applets (Sound, Mouse, Network and the others that open as a dialog), System Properties, System Configuration (msconfig), Color Management and File Explorer's dialogs (Properties, Folder Options) in dark mode. Confirmation boxes keep their light body and the Run box stays as it is (it paints its own light body). In File Explorer KOS Shell (KosShell.dll) is loaded once a dialog opens and touches only dialogs; its folder windows and the taskbar are left as they are. Turning it off applies to dialogs opened after Explorer restarts.",
+                "Control Panel applets (Sound, Mouse, Network and the others that open as a dialog), System Properties, System Configuration (msconfig), Color Management, ODBC Data Sources and File Explorer's dialogs (Properties, Folder Options) in dark mode. Confirmation boxes keep their light body and the Run box stays as it is (it paints its own light body). In File Explorer KOS Shell (KosShell.dll) is loaded once a dialog opens and touches only dialogs; its folder windows and the taskbar are left as they are. Turning it off applies to dialogs opened after Explorer restarts.",
                 Pages.Windows, Pages.Visuals, "Interface")
             .Reg(CurrentUser, @"Software\TheKOS\Shell", "DarkDialogs", RegistryValueKind.DWord, "1", null)
             .With(t => { t.KosDefault = Off; t.WindowsDefault = Off; t.Source = "KOS Engine (KOS Shell)"; }),

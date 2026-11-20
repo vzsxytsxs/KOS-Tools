@@ -1,5 +1,5 @@
 // KOS Shell's dark mode for classic Windows tools: Registry Editor, management consoles, classic Notepad, Control Panel applets
-// (rundll32 shell32.dll,Control_RunDLL; System Properties; System Configuration, Color Management) and File Explorer's classic dialogs (Properties, Folder Options; not the
+// (rundll32 shell32.dll,Control_RunDLL; System Properties; System Configuration, Color Management, ODBC Data Sources) and File Explorer's classic dialogs (Properties, Folder Options; not the
 // Run box, which paints its own light body).
 // KOS Engine loads this DLL into such an app when its window opens and the toolbox switch for it is on: a WH_CALLWNDPROC hook on
 // that window's thread only (DarkHook), removed right after one message. In the app the DLL checks its exe against its own fixed
@@ -16,7 +16,7 @@
 #include <uxtheme.h>
 #include <dwmapi.h>
 #include <atomic>
-#include <initializer_list>
+#include <cstdio>
 
 namespace
 {
@@ -60,8 +60,12 @@ namespace
         if (length == 0 || length >= MAX_PATH || folder == 0 || folder >= MAX_PATH) return Scope::None;
         auto is = [&](const wchar_t* name) { return wcscpy_s(path, windows) == 0 && wcscat_s(path, name) == 0 && SamePath(exe, path); };
         if (is(L"\\regedit.exe") || is(L"\\System32\\mmc.exe") || is(L"\\System32\\notepad.exe")) return Scope::App;
-        // DarkDialogs' tools: System Configuration, Color Management (KOS Engine's DarkApps.Apps has the same list).
-        if (is(L"\\System32\\msconfig.exe") || is(L"\\System32\\colorcpl.exe")) return Scope::App;
+        // DarkDialogs' tools: System Configuration, Color Management, ODBC Data Sources (KOS Engine's DarkApps.Apps has the same list).
+        if (is(L"\\System32\\msconfig.exe") || is(L"\\System32\\colorcpl.exe") || is(L"\\System32\\odbcad32.exe")) return Scope::App;
+#ifdef KOS_SHELL_PROBE // test build: one more System32 exe, named in the environment of the process it's loaded into
+        wchar_t extra[MAX_PATH] = L"\\System32\\";
+        if (GetEnvironmentVariableW(L"KOS_SHELL_PROBE_APP", extra + 10, MAX_PATH - 10) && is(extra)) return Scope::App;
+#endif
         if (is(L"\\explorer.exe")) return Scope::Dialogs;
         if (is(L"\\System32\\rundll32.exe")) return Contains(GetCommandLineW(), L"shell32.dll,Control_RunDLL") ? Scope::App : Scope::None;
         // System32\SystemProperties*.exe (System Properties and its tabs).
@@ -311,6 +315,24 @@ namespace
         return DefSubclassProc(h, msg, w, l);
     }
 
+#ifdef KOS_SHELL_PROBE // test build: each step to %TEMP%\KosShell-probe.txt, opened per line so a crash keeps what came before it
+    void Probe(const char* what, HWND h)
+    {
+        char path[MAX_PATH], cls[64] = {}, line[200];
+        if (!GetTempPathA(MAX_PATH, path) || strcat_s(path, "KosShell-probe.txt") != 0) return;
+        GetClassNameA(h, cls, 64);
+        const int n = sprintf_s(line, "%lu/%lu %llu %s %p %s\r\n", GetCurrentProcessId(), GetCurrentThreadId(), GetTickCount64(), what, static_cast<void*>(h), cls);
+        if (const auto file = CreateFileA(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS, 0, nullptr); file != INVALID_HANDLE_VALUE)
+        {
+            DWORD written;
+            if (n > 0) WriteFile(file, line, static_cast<DWORD>(n), &written, nullptr);
+            CloseHandle(file);
+        }
+    }
+#else
+    void Probe(const char*, HWND) {}
+#endif
+
     void ParentColors(HWND h)
     {
         if (auto parent = GetParent(h)) SetWindowSubclass(parent, FrameProc, FrameId, 0);
@@ -325,6 +347,7 @@ namespace
         // thread can still take it.
         if (!IsWindow(h) || GetWindowThreadProcessId(h, nullptr) != GetCurrentThreadId() || GetPropW(h, Mark) || !InScope(h)) return;
         SetPropW(h, Mark, reinterpret_cast<HANDLE>(1));
+        Probe(IsWindowVisible(h) ? "darken (visible)" : "darken (hidden)", h);
         wchar_t cls[64] = {};
         // A task dialog's buttons and links sit in DirectUI, which draws the dialog's body light whatever its theme (text colors are
         // read when it's built): left as they are, so the dialog stays readable with only its title bar dark.
@@ -468,13 +491,16 @@ namespace
             if (owner) CloseHandle(owner);
         }
         // The windows already open on this thread (the one KOS Engine hooked: the app's UI thread).
+        Probe("open windows", nullptr);
         EnumWindows(DarkenOpen, 0);
     }
 }
 
-/// KOS Engine's thread hook: the first message starts dark mode in this process (once).
+/// KOS Engine's thread hook: its WM_NULL starts dark mode in this process (once). Only that one: the hook also sees every message
+/// the app sends its own windows, and starting in the middle of the app's setup darkened controls it hadn't finished (the ODBC
+/// administrator crashed in odbccp32.dll). A message from another thread arrives only where the app takes messages.
 extern "C" LRESULT CALLBACK DarkHook(int code, WPARAM w, LPARAM l)
 {
-    if (code == HC_ACTION) Start();
+    if (code == HC_ACTION && reinterpret_cast<const CWPSTRUCT*>(l)->message == WM_NULL) Start();
     return CallNextHookEx(nullptr, code, w, l);
 }

@@ -138,9 +138,9 @@ namespace
     }
 }
 
-/// KOS Engine's thread hook: the first message starts the folder fix in this process (once).
+/// KOS Engine's thread hook: its WM_NULL starts the folder fix in this process (once), not a message Explorer sends itself.
 extern "C" LRESULT CALLBACK FolderHook(int code, WPARAM w, LPARAM l)
 {
-    if (code == HC_ACTION) Start();
+    if (code == HC_ACTION && reinterpret_cast<const CWPSTRUCT*>(l)->message == WM_NULL) Start();
     return CallNextHookEx(nullptr, code, w, l);
 }
