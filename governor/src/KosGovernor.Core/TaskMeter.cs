@@ -10,8 +10,9 @@ public enum EngineTask { Rules, FanCurve, GpuProfile, Peripherals, Rtss, Firewal
 /// thread's cycle counter and the process's private bytes before and after, and books the difference to the task (a scope inside
 /// another one is taken out of the outer one). With the window closed (<see cref="On"/> false) a scope costs one flag read, except
 /// a task's first run, which is always measured: that is the memory its start-up took.
-/// The CPU figure is exact (cycles). The memory figure is an estimate: private bytes are per process, so what other threads
-/// allocate during a scope lands in it too, and memory a task took and gave back still counts; the status lines scale the
+/// The CPU figure is exact (cycles). The memory figure is an estimate: private bytes are per process, so a scope takes out what
+/// scopes on any thread booked while it ran (the battery scan's first, slow round overlaps the worker's first cycle, which opens
+/// NVML), but unmeasured work still lands in it, and memory a task took and gave back still counts; the status lines scale the
 /// estimates down to what the process really holds above its base.
 /// </summary>
 public sealed class TaskMeter
@@ -19,7 +20,9 @@ public sealed class TaskMeter
     static readonly int Count = Enum.GetValues<EngineTask>().Length;
     static readonly long[] Cycles = new long[Count], Bytes = new long[Count];
     static readonly bool[] Seen = new bool[Count];
-    [ThreadStatic] static long t_childCycles, t_childBytes;
+    [ThreadStatic] static long t_childCycles;
+    /// <summary>Bytes booked by every scope so far, on any thread.</summary>
+    static long _booked;
 
     /// <summary>The status window is open.</summary>
     public static volatile bool On;
@@ -33,28 +36,30 @@ public sealed class TaskMeter
         var i = (int)task;
         if (!On && Seen[i]) return default;
         Seen[i] = true;
-        var scope = new Scope(i, ThreadCycles(), PrivateBytes(), t_childCycles, t_childBytes);
-        (t_childCycles, t_childBytes) = (0, 0);
+        var scope = new Scope(i, ThreadCycles(), PrivateBytes(), Interlocked.Read(ref _booked), t_childCycles);
+        t_childCycles = 0;
         return scope;
     }
 
     public readonly struct Scope : IDisposable
     {
         readonly int _task;
-        readonly long _cycles, _bytes, _outerCycles, _outerBytes;
+        readonly long _cycles, _bytes, _booked, _outerCycles;
         readonly bool _active;
 
-        internal Scope(int task, long cycles, long bytes, long outerCycles, long outerBytes) =>
-            (_task, _cycles, _bytes, _outerCycles, _outerBytes, _active) = (task, cycles, bytes, outerCycles, outerBytes, true);
+        internal Scope(int task, long cycles, long bytes, long booked, long outerCycles) =>
+            (_task, _cycles, _bytes, _booked, _outerCycles, _active) = (task, cycles, bytes, booked, outerCycles, true);
 
         public void Dispose()
         {
             if (!_active) return;
-            long cycles = ThreadCycles() - _cycles, bytes = PrivateBytes() - _bytes;
+            var cycles = ThreadCycles() - _cycles;
+            // Inner scopes and other threads' scopes booked their own growth meanwhile
+            var bytes = PrivateBytes() - _bytes - (Interlocked.Read(ref TaskMeter._booked) - _booked);
             Interlocked.Add(ref Cycles[_task], cycles - t_childCycles);
-            Interlocked.Add(ref Bytes[_task], bytes - t_childBytes);
-            // What this scope took counts as a child of the scope around it
-            (t_childCycles, t_childBytes) = (_outerCycles + cycles, _outerBytes + bytes);
+            Interlocked.Add(ref Bytes[_task], bytes);
+            Interlocked.Add(ref TaskMeter._booked, bytes);
+            t_childCycles = _outerCycles + cycles; // what this scope ran counts as a child of the scope around it
         }
     }
 
@@ -110,7 +115,7 @@ public sealed class TaskMeter
         Array.Clear(Cycles);
         Array.Clear(Bytes);
         Array.Clear(Seen);
-        (t_childCycles, t_childBytes) = (0, 0);
+        (t_childCycles, _booked) = (0, 0);
     }
 
     internal static long TaskCycles(EngineTask t) => Interlocked.Read(ref Cycles[(int)t]);

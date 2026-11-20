@@ -88,9 +88,13 @@ internal static class Nvml
                 NativeLibrary.Free(lib);
                 return message;
             }
+            Persistence.Log.Info("NVML opened.");
             return null;
         }
     }
+
+    /// <summary>A session is open in this process.</summary>
+    public static bool Loaded => _lib != IntPtr.Zero;
 
     /// <summary>
     /// Closes and reopens NVML. After the video driver restarts (Restart Driver, update), the old session only

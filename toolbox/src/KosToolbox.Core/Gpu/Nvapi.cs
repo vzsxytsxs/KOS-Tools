@@ -147,13 +147,15 @@ internal static partial class Nvapi
         return data;
     }
 
-    static void Call(IntPtr gpu, uint id, byte[] data)
+    static void Call(IntPtr gpu, uint id, byte[] data) => Call(data, $"NVAPI 0x{id:X8}", p => Function<GpuBuffer>(id)(gpu, p));
+
+    static void Call(byte[] data, string action, Func<IntPtr, int> invoke)
     {
         var p = Marshal.AllocHGlobal(data.Length);
         try
         {
             Marshal.Copy(data, 0, p, data.Length);
-            Check(Function<GpuBuffer>(id)(gpu, p), $"NVAPI 0x{id:X8}");
+            Check(invoke(p), action);
             Marshal.Copy(p, data, 0, data.Length);
         }
         finally { Marshal.FreeHGlobal(p); }
@@ -191,6 +193,84 @@ internal static partial class Nvapi
                 return (Sensor(1), Sensor(9));
             }
             catch { return (null, null); }
+        }
+    }
+
+    const uint GetThermalSettings = 0xE3640A56; // NvAPI_GPU_GetThermalSettings
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate int GpuIndexBuffer(IntPtr gpu, uint index, IntPtr buffer);
+
+    /// <summary>GPU core temperature in °C (NV_GPU_THERMAL_SETTINGS_V2, the sensor whose target is the GPU); null if none reports it.</summary>
+    public static int? ReadCoreTemperature(string busId)
+    {
+        lock (Gate)
+        {
+            var gpu = Open(busId);
+            var data = new byte[68];
+            Put(data, 0, 68 | 0x20000);
+            Call(data, "NvAPI_GPU_GetThermalSettings", p => Function<GpuIndexBuffer>(GetThermalSettings)(gpu, 15, p)); // 15 = every sensor
+            for (var i = 0; i < Math.Min(I(data, 4), 3); i++)
+                if (I(data, 24 + i * 20) == 1 && I(data, 20 + i * 20) is var t and > 0 and < 150) return t;
+            return null;
+        }
+    }
+
+    // NvAPI_GPU_ClientFanCoolers* (undocumented; on an RTX card they reported the same fans, range, level and mode as NVML).
+    // The size in the version field is checked by the driver, which refuses any other layout.
+    const uint GetFanStatus = 0x35AED5E8, GetFanControl = 0x814B209F, SetFanControl = 0xA58971A5;
+    const int FanStatusSize = 1704, FanStatusAt = 40, FanStatusStride = 52, FanControlSize = 1452, FanControlAt = 44, FanControlStride = 44;
+
+    /// <summary>The % range every fan accepts. Throws when NVAPI has no fan coolers to control on this card.</summary>
+    public static (uint Min, uint Max) ReadFanRange(string busId)
+    {
+        lock (Gate)
+        {
+            var gpu = Open(busId);
+            var status = Read(gpu, GetFanStatus, FanStatusSize);
+            var control = Read(gpu, GetFanControl, FanControlSize);
+            var count = I(status, 4);
+            if (count is < 1 or > 32 || I(control, 8) != count) throw new NotSupportedException($"NVAPI reports {count} fans for status and {I(control, 8)} for control.");
+            int min = 0, max = 100;
+            for (var i = 0; i < count; i++)
+            {
+                var at = FanStatusAt + i * FanStatusStride;
+                if (I(status, at) != I(control, FanControlAt + i * FanControlStride)) throw new NotSupportedException("NVAPI's fan lists don't match.");
+                (min, max) = (Math.Max(min, I(status, at + 8)), Math.Min(max, I(status, at + 12)));
+            }
+            if (min > max) throw new NotSupportedException($"NVAPI fan range {min}-{max}% is invalid.");
+            return ((uint)min, (uint)max);
+        }
+    }
+
+    /// <summary>Every fan at <paramref name="percent"/> (manual), or back to the driver's automatic mode with null.</summary>
+    public static void SetFans(string busId, uint? percent)
+    {
+        lock (Gate)
+        {
+            var gpu = Open(busId);
+            var control = Read(gpu, GetFanControl, FanControlSize); // fresh, so every cooler id is the driver's own
+            var count = I(control, 8);
+            if (count is < 1 or > 32) throw new NotSupportedException($"NVAPI reports {count} fans.");
+            for (var i = 0; i < count; i++)
+            {
+                var at = FanControlAt + i * FanControlStride;
+                Put(control, at + 4, (int)(percent ?? 0));
+                Put(control, at + 8, percent is null ? 0 : 1); // 0 = automatic, 1 = manual
+            }
+            Call(gpu, SetFanControl, control);
+        }
+    }
+
+    /// <summary>Every fan reads back as manual at <paramref name="percent"/>.</summary>
+    public static bool FansAt(string busId, uint percent)
+    {
+        lock (Gate)
+        {
+            var control = Read(Open(busId), GetFanControl, FanControlSize);
+            var count = I(control, 8);
+            if (count is < 1 or > 32) return false;
+            for (var i = 0; i < count; i++)
+                if (I(control, FanControlAt + i * FanControlStride + 4) != percent || I(control, FanControlAt + i * FanControlStride + 8) != 1) return false;
+            return true;
         }
     }
 

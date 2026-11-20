@@ -70,7 +70,7 @@ public static class FanCurve
 }
 
 /// <summary>
-/// Runs the curve (in KOS Engine, as administrator, to write the fan through NVML): reads the
+/// Runs the curve (in KOS Engine, as administrator, through NVAPI or else NVML): reads the
 /// temperature every second and adjusts the %. On stop, on closing the engine or on any read/write failure,
 /// returns the fans to the driver's automatic mode.
 /// </summary>
@@ -80,6 +80,8 @@ public sealed class FanCurveController
     readonly object _gate = new();
     CancellationTokenSource? _cts;
     Task? _loop;
+    /// <summary>An NVAPI write didn't read back on this card: NVML from then on.</summary>
+    volatile bool _nvapiRefused;
 
     public bool Running { get { lock (_gate) return _cts is not null; } }
     public string? BusId { get; private set; }
@@ -92,9 +94,8 @@ public sealed class FanCurveController
     public void Start(string busId, IReadOnlyList<FanPoint> points, int hysteresis)
     {
         if (!Elevation.IsAdmin) throw new InvalidOperationException(Txt.FanCurveNeedsAdmin);
-        var s = GpuTuner.ReadState(busId);
-        if (s.FanProblem is { } fanProblem) throw new InvalidOperationException(fanProblem);
-        if (FanCurve.Problem(points, hysteresis, s.FanMin, s.FanMax) is { } problem) throw new InvalidOperationException(problem);
+        var (min, max, nvapi) = GpuTuner.FanCurveRange(busId, !_nvapiRefused);
+        if (FanCurve.Problem(points, hysteresis, min, max) is { } problem) throw new InvalidOperationException(problem);
         Stop();
         lock (_gate)
         {
@@ -102,9 +103,9 @@ public sealed class FanCurveController
             BusId = busId;
             LastError = null;
             var copy = points.ToList();
-            _loop = Task.Run(() => LoopAsync(busId, copy, hysteresis, cts));
+            _loop = Task.Run(() => LoopAsync(busId, copy, hysteresis, nvapi, cts));
         }
-        Log.Info($"Fan curve started on {busId}: {string.Join(", ", points.Select(p => $"{p.TempC}°C={p.Percent}%"))}, hysteresis {hysteresis}°C");
+        Log.Info($"Fan curve started on {busId} through {(nvapi ? "NVAPI" : "NVML")}: {string.Join(", ", points.Select(p => $"{p.TempC}°C={p.Percent}%"))}, hysteresis {hysteresis}°C");
     }
 
     /// <summary>Stops the loop and waits for it to return the fans to automatic.</summary>
@@ -119,7 +120,7 @@ public sealed class FanCurveController
         try { loop?.Wait(TimeSpan.FromSeconds(5)); } catch (AggregateException) { }
     }
 
-    async Task LoopAsync(string busId, List<FanPoint> points, int hysteresis, CancellationTokenSource cts)
+    async Task LoopAsync(string busId, List<FanPoint> points, int hysteresis, bool nvapi, CancellationTokenSource cts)
     {
         var ct = cts.Token;
         int? current = null;
@@ -128,11 +129,16 @@ public sealed class FanCurveController
         {
             while (!ct.IsCancellationRequested)
             {
-                var temp = (int)(GpuTuner.ReadTemperature(busId) ?? throw new InvalidOperationException(Txt.FanCurveNoTemperature));
+                var temp = (int)(GpuTuner.ReadTemperature(busId, nvapi) ?? throw new InvalidOperationException(Txt.FanCurveNoTemperature));
                 var (next, nextRef) = FanCurve.Step(current, refTemp, temp, points, hysteresis);
                 // Writes on every reading, not only when the % changes: if something returns the fans to the driver's automatic mode
                 // (another write to the card, the driver, another program), the curve takes control back the next second.
-                GpuTuner.SetFans(busId, (uint)next);
+                GpuTuner.SetFans(busId, (uint)next, nvapi);
+                if (nvapi && current is null && !Nvapi.FansAt(busId, (uint)next))
+                {
+                    _nvapiRefused = true; // the host's next start (10 s) uses NVML
+                    throw new InvalidOperationException($"NVAPI didn't keep the fans at {next}%; the curve switches to NVML.");
+                }
                 (current, refTemp) = (next, nextRef);
                 Temperature = temp;
                 Percent = current;
@@ -148,7 +154,7 @@ public sealed class FanCurveController
         }
         finally
         {
-            try { GpuTuner.SetFans(busId, null); Log.Info("Fan curve: fans back to automatic."); }
+            try { GpuTuner.SetFans(busId, null, nvapi); Log.Info("Fan curve: fans back to automatic."); }
             catch (Exception ex) { Log.Error("Fan curve: couldn't put the fans back to automatic", ex); LastError ??= ex.Message; }
             lock (_gate) { if (ReferenceEquals(_cts, cts)) { _cts = null; _loop = null; } } // a new loop may have already started
             cts.Dispose();

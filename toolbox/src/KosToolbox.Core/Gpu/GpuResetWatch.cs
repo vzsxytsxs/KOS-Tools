@@ -14,10 +14,11 @@ public sealed class GpuResetWatch
     uint _lastRecord = DisplayEvents.Newest();
 
     /// <param name="probeBusId">Card to check the session now (callers that do not read the card themselves pass the bus id).</param>
-    public bool Poll(string? probeBusId = null)
+    /// <param name="nvml">Probe through NVML too even if nothing opened it yet (see <see cref="GpuTuner.Probe"/>).</param>
+    public bool Poll(string? probeBusId = null, bool nvml = true)
     {
         if (probeBusId is not null)
-            try { GpuTuner.Probe(probeBusId); } catch { /* the reopening counts through the generation; the failure itself does not matter here */ }
+            try { GpuTuner.Probe(probeBusId, nvml); } catch { /* the reopening counts through the generation; the failure itself does not matter here */ }
         var reset = false;
         if (GpuTuner.Generation != _generation) { _generation = GpuTuner.Generation; reset = true; }
         if (DisplayEvents.RecoveredSince(ref _lastRecord)) reset = true;

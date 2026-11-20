@@ -44,6 +44,22 @@ public class EngineStatusTests
     });
 
     [Fact]
+    public void AnotherThreadsScopeIsTakenOutOfAnOverlappingOne() => WithFakeClock(work =>
+    {
+        TaskMeter.On = true;
+        using (TaskMeter.Measure(EngineTask.Peripherals)) // the battery scan's slow first round
+        {
+            work(0, 3);
+            var worker = new Thread(() => { using (TaskMeter.Measure(EngineTask.FanCurve)) work(0, 20_000); }); // NVML opening meanwhile
+            worker.Start();
+            worker.Join();
+            work(0, 2);
+        }
+        Assert.Equal(20_000, TaskMeter.TaskBytes(EngineTask.FanCurve));
+        Assert.Equal(5, TaskMeter.TaskBytes(EngineTask.Peripherals));
+    });
+
+    [Fact]
     public void ClosedWindowMeasuresOnlyATasksFirstRun() => WithFakeClock(work =>
     {
         using (TaskMeter.Measure(EngineTask.FanCurve)) work(50, 5000); // first run: what starting it took

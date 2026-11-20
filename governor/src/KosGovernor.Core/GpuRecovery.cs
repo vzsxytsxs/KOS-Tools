@@ -22,8 +22,11 @@ internal sealed class GpuRecovery
         var now = DateTime.UtcNow;
         // Only checks the card's session when there is something to redo; the event log is always read (it's cheap).
         var curve = GovernorFanCurve.Load();
-        var bus = curve is { Enabled: true, BusId: { } b } ? b : File.Exists(GpuTuner.SignInFile) ? GpuTuner.SavedTuning()?.PciBusId : null;
-        if (_watch.Poll(bus))
+        var signIn = File.Exists(GpuTuner.SignInFile);
+        var bus = curve is { Enabled: true, BusId: { } b } ? b : signIn ? GpuTuner.SavedTuning()?.PciBusId : null;
+        // The fan curve rewrites the fans every second, so NVAPI's probe is enough for it; reapplying the overclock needs NVML's,
+        // which notices every driver restart (NVAPI may just hand out fresh handles) but keeps ~20 MB in the engine.
+        if (_watch.Poll(bus, nvml: signIn))
         {
             Log.Warn("The display driver restarted or recovered from a hang: restarting the fan curve and reapplying the saved GPU tuning.");
             fans.Restart();

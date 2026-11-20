@@ -240,11 +240,15 @@ public static class GpuTuner
     public static int Generation => Nvml.Generation + Nvapi.Generation;
 
     /// <summary>Checks the card on both APIs (reopens the session if the driver dropped it).</summary>
-    public static void Probe(string busId)
+    /// <param name="nvml">
+    /// Also opens NVML when nothing in this process has yet: NVML notices every driver restart, but its session costs ~20 MB that
+    /// stay until the process exits. NVAPI alone hands out fresh handles after a restart, so a restart may go unnoticed there.
+    /// </param>
+    public static void Probe(string busId, bool nvml = true)
     {
         lock (Gate)
         {
-            Open(busId);
+            if (nvml || Nvml.Loaded) Open(busId);
             Nvapi.ReadVoltage(busId);
         }
     }
@@ -325,15 +329,32 @@ public static class GpuTuner
         lock (Gate) return ReadState(Open(busId), busId);
     }
 
-    /// <summary>Core temperature in °C (null if the read fails). Used by the fan curve.</summary>
-    internal static uint? ReadTemperature(string busId)
+    /// <summary>
+    /// The fan curve's range and API: NVAPI when the card's fan coolers answer there (NVML's session costs KOS Engine ~20 MB of
+    /// private memory it keeps until it exits; NVAPI's ~2 MB), otherwise NVML, which refuses cards without manual fan control.
+    /// </summary>
+    internal static (uint Min, uint Max, bool Nvapi) FanCurveRange(string busId, bool allowNvapi)
     {
+        if (!IsBusId(busId)) throw new InvalidOperationException(Txt.GpuInvalidDevice(busId));
+        if (allowNvapi)
+            try { var (min, max) = Nvapi.ReadFanRange(busId); return (min, max, true); }
+            catch (Exception ex) { Log.Info($"Fan curve through NVML: NVAPI fan control unavailable ({ex.Message})."); }
+        var s = ReadState(busId);
+        if (s.FanProblem is { } problem) throw new InvalidOperationException(problem);
+        return (s.FanMin, s.FanMax, false);
+    }
+
+    /// <summary>Core temperature in °C (null if the read fails). Used by the fan curve.</summary>
+    internal static uint? ReadTemperature(string busId, bool nvapi)
+    {
+        if (nvapi) return (uint?)Nvapi.ReadCoreTemperature(busId);
         lock (Gate) return U(Open(busId), "nvmlDeviceGetTemperature", Nvml.TemperatureGpu);
     }
 
     /// <summary>All fans at the requested %, or back to the driver's automatic mode with null. Throws if any fails.</summary>
-    internal static void SetFans(string busId, uint? percent)
+    internal static void SetFans(string busId, uint? percent, bool nvapi)
     {
+        if (nvapi) { Nvapi.SetFans(busId, percent); return; }
         lock (Gate)
         {
             var d = Open(busId);
