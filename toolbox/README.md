@@ -346,7 +346,7 @@ The three DirectX settings are `name=value` pairs of one text value (`HKCU\Softw
 |---|---|---|---|---|---|
 | Windows Update | Enabled / Manual, no drivers / Paused until 2038 / Microsoft Store only / Disabled | script | yes | Disabled | Setup\3-Support\Windows Features\Windows Update Enable-Disable.cmd; RunOnce.cmd |
 | Driver updates through Windows Update (`wu-drivers`; also on GPU › Driver) | Disabled / Enabled (`ExcludeWUDriversInQualityUpdate`, `SearchOrderConfig` policy and setting) | C# | no | Disabled | RunOnce.cmd; Windows Update Enable-Disable.cmd (Manual and Off modes) |
-| Stay on this Windows version | Disabled / Enabled | C# | no | Enabled | RunOnce.cmd (`TargetReleaseVersion` 1, `ProductVersion`, `TargetReleaseVersionInfo` = this DisplayVersion; read as Enabled only when it pins the installed version) |
+| Stay on this Windows version | Disabled / Enabled | C# | no | Enabled | RunOnce.cmd (`TargetReleaseVersion` 1, `ProductVersion`, `TargetReleaseVersionInfo` = this DisplayVersion; read as Enabled only when it pins the installed version; Windows Update Enable-Disable.cmd keeps it when it resets the policies) |
 | Background apps | Disabled / Enabled | C# | yes | Disabled | building\ntlite.xml (`GlobalUserDisabled`); bin\2\DeviceProfile.cmd (bam: off on desktops, on on laptops); bin\2\TheKOS_reg.reg (`LetAppsRunInBackground` 2) |
 | System usage and diagnostics | Disabled / Enabled | C# | yes | Disabled | RunOnce.cmd (DPS, diagsvc, WdiServiceHost, WdiSystemHost); bin\2\TheKOS_reg.reg (`SleepStudyDisabled`) |
 | Windows Search | Enabled / No indexing / Disabled | script | yes | Disabled | Setup\3-Support\Windows Features\Windows Search Enable-Disable.cmd; RunOnce.cmd (WSearch, SearchHost.old); bin\2\TheKOS_reg.reg (IFEO) |

@@ -326,13 +326,13 @@ public static partial class KosCatalog
             }),
 
         Toggle("background-apps", "Background apps",
-                "Lets Store apps keep running in the background for notifications and live updates; messaging apps from the Store need it. Desktop programs aren't affected. Disabling denies it to every app (LetAppsRunInBackground policy), turns off the per-user switch and the Background Activity Moderator driver (bam).",
+                "Lets Store apps keep running in the background for notifications and live updates; messaging apps from the Store need it. Desktop programs aren't affected. Disabling denies it to every app (LetAppsRunInBackground policy), turns off the per-user switch; on desktops KOS also turns off the Background Activity Moderator driver (bam), which On turns back on and Off leaves as the device profile set it.",
                 Pages.Windows, Pages.SystemTab, "Windows features")
             .Add(R(LocalMachine, @"SOFTWARE\Policies\Microsoft\Windows\AppPrivacy", "LetAppsRunInBackground"), (On, Del), (Off, S("2")))
             .With(t => { foreach (var list in new[] { "UserInControlOfTheseApps", "ForceAllowTheseApps", "ForceDenyTheseApps" })
                 t.Add(R(LocalMachine, @"SOFTWARE\Policies\Microsoft\Windows\AppPrivacy", "LetAppsRunInBackground_" + list, RegistryValueKind.MultiString), (On, Any), (Off, Del)); })
             .Add(R(CurrentUser, @"Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications", "GlobalUserDisabled"), (On, Target.SetOrAbsent("0")), (Off, S("1")))
-            .Svc("bam", "1", "4", optional: true)
+            .AddSpec(RegistrySetting.ServiceStart("bam"), true, (On, S("1")), (Off, Any))
             .With(t => { t.RequiresReboot = true; t.KosDefault = Off; t.WindowsDefault = On; t.Source = @"building\ntlite.xml (GlobalUserDisabled); bin\2\DeviceProfile.cmd (bam: off on desktops, on on laptops); bin\2\TheKOS_reg.reg (LetAppsRunInBackground)"; }),
 
         Toggle("diagnostics-services", "System usage and diagnostics",
@@ -488,7 +488,7 @@ public static partial class KosCatalog
                 "Some FiveM and Minecraft servers check that these Windows services run before letting you in: Program Compatibility Assistant, Diagnostic Policy, Connected User Experiences (DiagTrack), SysMain with prefetch, Data Usage and the Background Activity Moderator. Event Log, DNS Client and Application Information are only turned on, never off.",
                 Pages.Windows, Pages.Gaming, "Game servers")
             .Svc("PcaSvc", "2", "4").Svc("DPS", "2", "4").Svc("DiagTrack", "2", "4", optional: true).Svc("SysMain", "2", "4")
-            .Svc("DusmSvc", "2", "4", optional: true).Svc("bam", "1", "4", optional: true)
+            .Svc("DusmSvc", "2", "4", optional: true).AddSpec(RegistrySetting.ServiceStart("bam"), true, (On, S("1")), (Off, Any))
             .Add(R(LocalMachine, MemMgmt + @"\PrefetchParameters", "EnablePrefetcher"), (On, S("1")), (Off, S("0")))
             .AddSpec(RegistrySetting.ServiceStart("EventLog"), false, (On, S("2")), (Off, Any))
             .AddSpec(RegistrySetting.ServiceStart("Dnscache"), false, (On, S("2")), (Off, Any))
@@ -1065,8 +1065,8 @@ public static partial class KosCatalog
                 ("desktop", S("0")), ("laptop", S("1")))
             .Add(new PowerSetting(new Guid("0012ee47-9041-4b5d-9b77-535fba8b1442"), new Guid("d639518a-e56d-4345-8af2-b9f32fb26109"), "Primary NVMe idle timeout"),
                 ("desktop", S("0")), ("laptop", Any))
-            .Script("desktop", new ScriptRef(Bats + "Configure Powersavings.bat", "E87BC81790D81AE2F83E204D2F34A6ED363393F6DA717C6477A44A48983BE5C0") { Args = "desktop" })
-            .Script("laptop", new ScriptRef(Bats + "Configure Powersavings.bat", "E87BC81790D81AE2F83E204D2F34A6ED363393F6DA717C6477A44A48983BE5C0") { Args = "laptop" })
+            .Script("desktop", new ScriptRef(Bats + "Configure Powersavings.bat", "1D8B233A3DBE6E3E4202DA2700307E98AA56C796FE5DCA17E3E662EF277E87E1") { Args = "desktop" })
+            .Script("laptop", new ScriptRef(Bats + "Configure Powersavings.bat", "1D8B233A3DBE6E3E4202DA2700307E98AA56C796FE5DCA17E3E662EF277E87E1") { Args = "laptop" })
             .With(t => { t.RequiresReboot = true; t.Source = Bats + "Configure Powersavings.bat; bin\\2\\DeviceProfile.cmd"; }),
 
         Toggle("processor-idle", "Processor idle states",
@@ -1078,7 +1078,7 @@ public static partial class KosCatalog
 
 
         Toggle("core-parking", "Core parking",
-                "Windows parks idle cores (no threads scheduled on them) and unparks them as load rises, in the active power plan (plugged in; minimum unparked cores 0%). Off keeps every core unparked (100%), as the KOS plan does. Ryzen X3D with two CCDs needs it on: AMD's driver keeps games on the V-Cache CCD by parking the other one. On Intel hybrid CPUs it only covers the P-cores.",
+                "Windows parks idle cores (no threads scheduled on them) and unparks them as load rises, in the active power plan (plugged in; minimum unparked cores 0%). Off keeps every core unparked (100%), as the KOS plan does. AMD's V-Cache driver for Ryzen X3D with two CCDs keeps games on the cache CCD by parking the other one, so it needs this on (and Game Bar, which KOS removes; KOS Governor's V-Cache affinity does the same job without it). On Intel hybrid CPUs it only covers the P-cores.",
                 Pages.Power, null, "KOS profiles")
             .Add(new PowerSetting(new Guid("54533251-82be-4824-96c1-47b60b740d00"), new Guid("0cc5b647-c1df-4637-891a-dec35c318583"), "Processor performance core parking min cores"),
                 (On, S("0")), (Off, S("100")))
@@ -1094,7 +1094,7 @@ public static partial class KosCatalog
     };
 
     static ScriptRef WuScript(string arg) =>
-        new(WinFeatures + "Windows Update Enable-Disable.cmd", "040CD611B3D2505C724F69A04E1CBCD6C040B71C317DC78A27A583AC1AC610FA") { Args = arg };
+        new(WinFeatures + "Windows Update Enable-Disable.cmd", "C72AFFA4170454A7351E57C630EBDF4B509D786DE7B5AC1B1BBAFBD331A40FA9") { Args = arg };
 
     static ScriptRef StartMenuScript(string arg) =>
         new(WinFeatures + "Start Menu Enable-Disable.bat", "CC3288D9A1EA660860E15AFB3D169EC523A99AA1860C0D66837F9695B363D039") { Args = arg };
