@@ -120,6 +120,18 @@ public class ShellHostTests
     }
 
     [Fact]
+    public void TheMenuIconsWaitForAMenuInExplorerOnly()
+    {
+        var wanted = DarkApps.Paths(DarkApps.MenuApps, n => n == "MenuIcons" ? 1 : null, @"C:\Windows");
+        Assert.Equal([@"C:\Windows\explorer.exe"], wanted);
+        Assert.Empty(DarkApps.Paths(DarkApps.MenuApps, n => n == "NoBlankFolders" ? 1 : null, @"C:\Windows"));
+        string? Never() => throw new InvalidOperationException("command line read");
+        Assert.True(DarkApps.Wants(wanted, @"C:\Windows\explorer.exe", "#32768", Never, @"C:\Windows", "#32768"));
+        Assert.Null(DarkApps.Wants(wanted, @"C:\Windows\explorer.exe", "CabinetWClass", Never, @"C:\Windows", "#32768"));
+        Assert.False(DarkApps.Wants(wanted, @"C:\Windows\notepad.exe", "#32768", Never, @"C:\Windows", "#32768")); // a menu in another app
+    }
+
+    [Fact]
     public void DarkModeReadsAPeHeadersLinkTimeAndSize()
     {
         var header = new byte[0x200];

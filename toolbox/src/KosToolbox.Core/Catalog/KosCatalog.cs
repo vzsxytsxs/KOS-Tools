@@ -237,6 +237,12 @@ public static partial class KosCatalog
             .Reg(CurrentUser, @"Software\TheKOS\Shell", "NoBlankFolders", RegistryValueKind.DWord, "1", null)
             .With(t => { t.KosDefault = Off; t.WindowsDefault = Off; t.Source = "KOS Engine (KOS Shell)"; }),
 
+        Toggle("menu-icons", "Context menu icons (KOS Shell)",
+                "A monochrome icon on the common commands of File Explorer's classic context menus that have none (Cut, Copy, Paste, Delete, Rename, Properties, Refresh, Sort by and others), in the menu's text color. English command names only. KOS Shell (KosShell.dll) is loaded into File Explorer at its first menu and only draws into its menus; the first menu after Explorer starts has no icons yet. Turning it off works at once.",
+                Pages.Windows, Pages.Visuals, "Interface")
+            .Reg(CurrentUser, @"Software\TheKOS\Shell", "MenuIcons", RegistryValueKind.DWord, "1", null)
+            .With(t => { t.KosDefault = Off; t.WindowsDefault = Off; t.Source = "KOS Engine (KOS Shell)"; }),
+
         Choice("context-menu", "Context menu style",
                 "Windows 11 menu or the classic full menu without \"Show more options\". Classic blocks the Windows 11 menu's COM class for this user.",
                 Pages.Windows, Pages.Visuals, "Interface", ("modern", "Windows 11"), ("classic", "Classic"))

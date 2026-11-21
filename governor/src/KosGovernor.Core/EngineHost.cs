@@ -76,7 +76,7 @@ public static class EngineHost
                 try { using (TaskMeter.Measure(EngineTask.GpuProfile)) recovery.Tick(fans); }
                 catch (Exception ex) { Log.Error("Checking for a display driver reset failed", ex); }
                 SyncFirewall();
-                try { using (TaskMeter.Measure(EngineTask.Shell)) { tray.SetDarkApps(DarkApps.Wanted(), DarkApps.Wanted(DarkApps.FolderApps)); shell.Sync(); } } // the switches first: neither throws
+                try { using (TaskMeter.Measure(EngineTask.Shell)) { tray.SetDarkApps(DarkApps.Wanted(), DarkApps.Wanted(DarkApps.FolderApps), DarkApps.Wanted(DarkApps.MenuApps)); shell.Sync(); } } // the switches first: neither throws
                 catch (Exception ex) { Log.Error("KOS Shell check failed", ex); }
                 tray.Refresh();
                 // Once, after the first cycle: the pages used only at startup (config, game list, the ~12 MB that
@@ -248,8 +248,9 @@ internal sealed class Tray : IDisposable
     readonly StatusWindow _status;
     readonly FirewallPopup _popup;
     readonly System.Collections.Concurrent.ConcurrentQueue<FirewallAsk> _asks = new();
-    readonly DarkApps _dark = new(), _folders = new("FolderHook", "No blank between folders", "CabinetWClass");
-    volatile string[] _darkWanted = [], _folderWanted = [];
+    readonly DarkApps _dark = new(), _folders = new("FolderHook", "No blank between folders", "CabinetWClass"),
+        _menus = new("MenuHook", "Context menu icons", "#32768");
+    volatile string[] _darkWanted = [], _folderWanted = [], _menuWanted = [];
     IntPtr _hwnd, _icon;
     bool _hotkey;
 
@@ -293,11 +294,11 @@ internal sealed class Tray : IDisposable
     /// <summary>Opens the status window (any thread).</summary>
     public void ShowStatus() => PostMessage(_hwnd, WmStatus, IntPtr.Zero, IntPtr.Zero);
 
-    /// <summary>The dark-mode and folder-fix switches (the worker, every tick); the tray thread watches windows only while one is on.</summary>
-    public void SetDarkApps(string[] dark, string[] folders)
+    /// <summary>The dark-mode, folder-fix and menu-icon switches (the worker, every tick); the tray thread watches windows only while one is on.</summary>
+    public void SetDarkApps(string[] dark, string[] folders, string[] menus)
     {
-        if (dark.SequenceEqual(_darkWanted) && folders.SequenceEqual(_folderWanted)) return;
-        (_darkWanted, _folderWanted) = (dark, folders);
+        if (dark.SequenceEqual(_darkWanted) && folders.SequenceEqual(_folderWanted) && menus.SequenceEqual(_menuWanted)) return;
+        (_darkWanted, _folderWanted, _menuWanted) = (dark, folders, menus);
         PostMessage(_hwnd, WmDark, IntPtr.Zero, IntPtr.Zero);
     }
 
@@ -383,6 +384,7 @@ internal sealed class Tray : IDisposable
             case WmDark:
                 _dark.Sync(_darkWanted);
                 _folders.Sync(_folderWanted);
+                _menus.Sync(_menuWanted);
                 return IntPtr.Zero;
             case WmFirewall:
                 while (_asks.TryDequeue(out var ask)) _popup.Add(ask);
