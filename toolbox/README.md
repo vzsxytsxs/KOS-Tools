@@ -269,6 +269,7 @@ The page explains the difference: the snapshot stores only the startup type of s
 | Variable refresh rate (windowed games) | Disabled / Enabled | C# | no | Disabled | `VRROptimizeEnable` pair; RunOnce.cmd; NTLite (new users) |
 | Auto HDR | Disabled / Enabled | C# | no | — | `AutoHDREnable` pair |
 | Hardware-accelerated GPU scheduling | Disabled / Enabled | C# | yes | — | Registry (`HwSchMode` 1/2) |
+| GPU hang recovery (TDR) | Disabled / Enabled | C# | yes | Enabled | RunOnce.cmd (`TdrDelay` 8; Disabled = `TdrLevel` 0, no recovery) |
 | HAGS experimental features | Disabled / Enabled | C# | yes | — | Registry (`GraphicsDrivers\HwSchTreatExperimentalAsStable` absent / 1) |
 | Multi-Plane Overlay (MPO) | Disabled / Enabled | C# | yes | — | Setup\4-Tweaking\Bats\MultiPlane Overlay.bat (reimplemented: the script's Enable option has a missing quote and fails) |
 
@@ -345,7 +346,8 @@ The three DirectX settings are `name=value` pairs of one text value (`HKCU\Softw
 |---|---|---|---|---|---|
 | Windows Update | Enabled / Manual, no drivers / Paused until 2038 / Microsoft Store only / Disabled | script | yes | Disabled | Setup\3-Support\Windows Features\Windows Update Enable-Disable.cmd; RunOnce.cmd |
 | Driver updates through Windows Update (`wu-drivers`; also on GPU › Driver) | Disabled / Enabled (`ExcludeWUDriversInQualityUpdate`, `SearchOrderConfig` policy and setting) | C# | no | Disabled | RunOnce.cmd; Windows Update Enable-Disable.cmd (Manual and Off modes) |
-| Background apps | Disabled / Enabled | C# | yes | Disabled | building\ntlite.xml (`GlobalUserDisabled`); RunOnce.cmd (bam); bin\2\TheKOS_reg.reg (`LetAppsRunInBackground` 2) |
+| Stay on this Windows version | Disabled / Enabled | C# | no | Enabled | RunOnce.cmd (`TargetReleaseVersion` 1, `ProductVersion`, `TargetReleaseVersionInfo` = this DisplayVersion; read as Enabled only when it pins the installed version) |
+| Background apps | Disabled / Enabled | C# | yes | Disabled | building\ntlite.xml (`GlobalUserDisabled`); bin\2\DeviceProfile.cmd (bam: off on desktops, on on laptops); bin\2\TheKOS_reg.reg (`LetAppsRunInBackground` 2) |
 | System usage and diagnostics | Disabled / Enabled | C# | yes | Disabled | RunOnce.cmd (DPS, diagsvc, WdiServiceHost, WdiSystemHost); bin\2\TheKOS_reg.reg (`SleepStudyDisabled`) |
 | Windows Search | Enabled / No indexing / Disabled | script | yes | Disabled | Setup\3-Support\Windows Features\Windows Search Enable-Disable.cmd; RunOnce.cmd (WSearch, SearchHost.old); bin\2\TheKOS_reg.reg (IFEO) |
 | Microsoft Store (`store-services`: InstallService, PushToInstall) | Disabled / Enabled | C# | yes | Enabled | Setup\3-Support\Windows Features\MS-Store Enable-Disable.cmd |
@@ -426,6 +428,8 @@ Re-enabling the firewall rules runs `netsh advfirewall reset` and deletes custom
 | Network throttling (MMCSS) | Disabled / Enabled | C# | yes | — | Registry (`NetworkThrottlingIndex` 10 / 0xFFFFFFFF) |
 | Nagle's algorithm | Disabled / Enabled | C# | yes | — | Setup\4-Tweaking\Bats\Nagle Algorithm.bat (`TcpAckFrequency`, `TCPNoDelay`, `TcpDelAckTicks` on every TCP/IP interface) |
 | Network power management | Disabled / Enabled | C# | yes | — | Registry (`fDisablePowerManagement` policies of WcmSvc, Dnscache `DisableCoalescing`) |
+| Proxy auto-discovery (WPAD) | Disabled / Enabled | C# | yes | Disabled | RunOnce.cmd (WinHttp `DisableWpad` 1) |
+| Short cache for failed DNS lookups | Disabled / Enabled | C# | no | Enabled | RunOnce.cmd (Dnscache `MaxNegativeCacheTtl` 5) |
 | VPN services | Disabled / Enabled | C# | yes | Disabled | RunOnce.cmd (RasMan, RasAuto, IKEEXT, PolicyAgent, SstpSvc, RASSSTP; enabling also turns on BFE, mpssvc, Dhcp, Dnscache, NlaSvc and netprofm) |
 | Teredo and IP Helper | Disabled / Enabled | C# | yes | Disabled | RunOnce.cmd (iphlpsvc); Setup\4-Tweaking\Network\Advanced\1-Basics.bat (Teredo) |
 
@@ -439,8 +443,9 @@ Offloads are now Recommended **on**: checksum offloads (`*IPChecksumOffloadIPv4`
 
 | Setting | Options | Applied by | Restart | KOS default | Source |
 |---|---|---|---|---|---|
-| Power saving profile | Desktop / Laptop | script | yes | — | Setup\4-Tweaking\Bats\Configure Powersavings.bat; bin\2\DeviceProfile.cmd |
+| Power saving profile | Desktop / Laptop | script | yes | — | Setup\4-Tweaking\Bats\Configure Powersavings.bat; bin\2\DeviceProfile.cmd (Desktop also: NVMe idle timeouts 0, `MSPower_DeviceEnable` off, sound devices' `PowerSettings` idle values 0, the driver's kept as `Kos*` for Laptop) |
 | Processor idle states | Disabled / Enabled | C# | no | — | Setup\4-Tweaking\PowerPlan\enable-idle.bat, disable-idle.bat |
+| Core parking | Disabled / Enabled | C# | no | Disabled | KOS plan co.pow (`CPMINCORES` 100); Enabled = 0, which Ryzen X3D with two CCDs needs for AMD's V-Cache steering |
 
 #### Power › Sleep and hibernation
 

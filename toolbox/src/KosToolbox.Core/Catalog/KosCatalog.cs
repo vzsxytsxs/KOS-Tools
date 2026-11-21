@@ -88,6 +88,12 @@ public static partial class KosCatalog
             .Add(R(LocalMachine, @"SOFTWARE\Microsoft\Windows\CurrentVersion\DriverSearching", "SearchOrderConfig"), (On, Target.SetOrAbsent("1")), (Off, S("0")))
             .With(t => { t.KosDefault = Off; t.Source = "RunOnce.cmd; " + WinFeatures + "Windows Update Enable-Disable.cmd (Manual and Off modes)"; }),
 
+        Toggle("release-pin", "Stay on this Windows version",
+                "Windows Update installs security and quality updates but no feature update to the next Windows version (TargetReleaseVersion policy at this version, e.g. 26H2), which would undo the KOS changes. Off lets Windows Update offer the next version. Only matters with Windows Update on.",
+                Pages.Windows, Pages.SystemTab, "Updates")
+            .Add(new ReleasePinSetting(), (On, S("1")), (Off, Del))
+            .With(t => { t.KosDefault = On; t.WindowsDefault = Off; t.Source = "RunOnce.cmd (TargetReleaseVersion)"; }),
+
         Toggle("teredo", "Teredo and IP Helper",
                 "The IP Helper service (iphlpsvc) and Teredo, which tunnels IPv6 over IPv4. Xbox party chat, its network check and some peer-to-peer games use Teredo: with it off they may report a strict NAT. KOS turns both off.",
                 Pages.Windows, Pages.Connectivity, "Network")
@@ -327,7 +333,7 @@ public static partial class KosCatalog
                 t.Add(R(LocalMachine, @"SOFTWARE\Policies\Microsoft\Windows\AppPrivacy", "LetAppsRunInBackground_" + list, RegistryValueKind.MultiString), (On, Any), (Off, Del)); })
             .Add(R(CurrentUser, @"Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications", "GlobalUserDisabled"), (On, Target.SetOrAbsent("0")), (Off, S("1")))
             .Svc("bam", "1", "4", optional: true)
-            .With(t => { t.RequiresReboot = true; t.KosDefault = Off; t.WindowsDefault = On; t.Source = @"building\ntlite.xml (GlobalUserDisabled); RunOnce.cmd (bam); bin\2\TheKOS_reg.reg (LetAppsRunInBackground)"; }),
+            .With(t => { t.RequiresReboot = true; t.KosDefault = Off; t.WindowsDefault = On; t.Source = @"building\ntlite.xml (GlobalUserDisabled); bin\2\DeviceProfile.cmd (bam: off on desktops, on on laptops); bin\2\TheKOS_reg.reg (LetAppsRunInBackground)"; }),
 
         Toggle("diagnostics-services", "System usage and diagnostics",
                 "The Diagnostic Policy service and its hosts (problem detection, troubleshooters, the app history in Task Manager) and sleep study logging. Windows keeps working without them.",
@@ -494,6 +500,13 @@ public static partial class KosCatalog
                 Pages.Windows, Pages.Gaming, "Game Bar and Xbox")
             .SvcList(new[] { "XboxNetApiSvc", "XblGameSave", "XblAuthManager", "xbgm", "XboxGipSvc" }, "3", "4")
             .With(t => { t.RequiresReboot = true; t.Source = WinFeatures + "Xbox Services Enable-Disable.cmd (reimplemented: the script uses the ControlSet\\Services path and the name XblAuthManage)"; }),
+
+        Toggle("gpu-tdr", "GPU hang recovery (TDR)",
+                "When the GPU stops responding, Windows restarts its driver (the screen flickers, the game may close) instead of the whole PC freezing. KOS keeps it on and waits 8 s instead of 2 before a busy GPU counts as hung (TdrDelay). Off (TdrLevel 0) turns recovery off: a driver hang then freezes the PC.",
+                Pages.Windows, Pages.Gaming, "Graphics")
+            .Add(R(LocalMachine, @"SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "TdrLevel"), (On, Del), (Off, S("0")))
+            .Add(R(LocalMachine, @"SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "TdrDelay"), (On, Target.SetOrAbsent("8")), (Off, Any))
+            .With(t => { t.RequiresReboot = true; t.KosDefault = On; t.WindowsDefault = On; t.Source = "RunOnce.cmd (TdrDelay)"; }),
 
         Toggle("hags", "Hardware-accelerated GPU scheduling",
                 "The GPU schedules its own work instead of Windows (Settings › Display › Graphics). Needs a supported GPU and driver; NVIDIA DLSS Frame Generation requires it.",
@@ -1021,6 +1034,18 @@ public static partial class KosCatalog
             .Add(R(LocalMachine, @"SYSTEM\CurrentControlSet\Services\Dnscache\Parameters", "DisableCoalescing"), (On, Del), (Off, S("1")))
             .With(t => { t.RequiresReboot = true; t.WindowsDefault = On; t.Source = "fDisablePowerManagement; DisableCoalescing"; }),
 
+
+        Toggle("wpad", "Proxy auto-discovery (WPAD)",
+                "Windows looks for a proxy configuration on the local network (WinHTTP auto-proxy). Off stops those lookups and closes the known spoofed-proxy attack; only company networks that hand out their proxy this way need it.",
+                Pages.Windows, Pages.Connectivity, "Network")
+            .Reg(LocalMachine, @"SOFTWARE\Microsoft\Windows\CurrentVersion\Internet Settings\WinHttp", "DisableWpad", RegistryValueKind.DWord, null, "1")
+            .With(t => { t.RequiresReboot = true; t.KosDefault = Off; t.WindowsDefault = On; t.Source = "RunOnce.cmd (DisableWpad)"; }),
+
+        Toggle("dns-negative-cache", "Short cache for failed DNS lookups",
+                "A name that failed to resolve is remembered for 5 s instead of minutes (MaxNegativeCacheTtl), so a site or game server that was briefly unreachable works again right away. Off = the Windows default.",
+                Pages.Windows, Pages.Connectivity, "Network")
+            .Reg(LocalMachine, @"SYSTEM\CurrentControlSet\Services\Dnscache\Parameters", "MaxNegativeCacheTtl", RegistryValueKind.DWord, "5", null)
+            .With(t => { t.KosDefault = On; t.WindowsDefault = Off; t.Source = "RunOnce.cmd (MaxNegativeCacheTtl)"; }),
         Toggle("vpn-services", "VPN services",
                 "The Windows VPN stack (Remote Access, IKE and AuthIP, IPsec Policy Agent, SSTP) that the built-in VPN client and some VPN apps need. Enabling also turns on the firewall, DHCP, DNS and network awareness services they depend on; disabling leaves those alone.",
                 Pages.Windows, Pages.Connectivity, "Network")
@@ -1031,15 +1056,17 @@ public static partial class KosCatalog
 
         // ======================= POWER =======================
         Choice("power-savings", "Power saving profile",
-                "Desktop turns off USB/PCI device power saving, PCIe link power management, the disk idle timeout, AHCI link power management, hibernation and Power Throttling, and activates the KOS plan (co.pow). Laptop turns power saving back on and activates the Balanced plan.",
+                "Desktop turns off USB/PCI device power saving, \"Allow the computer to turn off this device\", sound devices powering down when silent, PCIe link power management, the disk and NVMe idle timeouts, AHCI link power management, hibernation and Power Throttling, and activates the KOS plan (co.pow). Laptop turns power saving back on (sound devices get their driver's values back) and activates the Balanced plan.",
                 Pages.Power, null, "KOS profiles", ("desktop", "Desktop"), ("laptop", "Laptop"))
             .Add(R(LocalMachine, @"SYSTEM\CurrentControlSet\Services\USBHUB3\Parameters", "DisableLPM"), ("desktop", S("1")), ("laptop", Del))
             .Add(R(LocalMachine, @"SYSTEM\CurrentControlSet\Services\pci\Parameters", "D3ColdSupported"), ("desktop", S("0")), ("laptop", Del))
             .Add(R(LocalMachine, @"SYSTEM\CurrentControlSet\Control\Power", "EnergyEstimationEnabled"), ("desktop", S("0")), ("laptop", S("1")))
             .Add(new PowerSetting(new Guid("501a4d13-42af-4429-9fd1-a8218c268e20"), new Guid("ee12f906-d277-404b-b6da-e5fa1a576df5"), "PCI Express link state power management"),
                 ("desktop", S("0")), ("laptop", S("1")))
-            .Script("desktop", new ScriptRef(Bats + "Configure Powersavings.bat", "5D506DBB86531AAB77A7F95541DB2543F3CF9C4BCA6ED31BFDBC7EE5A6C22608") { Args = "desktop" })
-            .Script("laptop", new ScriptRef(Bats + "Configure Powersavings.bat", "5D506DBB86531AAB77A7F95541DB2543F3CF9C4BCA6ED31BFDBC7EE5A6C22608") { Args = "laptop" })
+            .Add(new PowerSetting(new Guid("0012ee47-9041-4b5d-9b77-535fba8b1442"), new Guid("d639518a-e56d-4345-8af2-b9f32fb26109"), "Primary NVMe idle timeout"),
+                ("desktop", S("0")), ("laptop", Any))
+            .Script("desktop", new ScriptRef(Bats + "Configure Powersavings.bat", "E87BC81790D81AE2F83E204D2F34A6ED363393F6DA717C6477A44A48983BE5C0") { Args = "desktop" })
+            .Script("laptop", new ScriptRef(Bats + "Configure Powersavings.bat", "E87BC81790D81AE2F83E204D2F34A6ED363393F6DA717C6477A44A48983BE5C0") { Args = "laptop" })
             .With(t => { t.RequiresReboot = true; t.Source = Bats + "Configure Powersavings.bat; bin\\2\\DeviceProfile.cmd"; }),
 
         Toggle("processor-idle", "Processor idle states",
@@ -1049,6 +1076,13 @@ public static partial class KosCatalog
                 (On, S("0")), (Off, S("1")))
             .With(t => { t.Source = @"Setup\4-Tweaking\PowerPlan\enable-idle.bat, disable-idle.bat"; }),
 
+
+        Toggle("core-parking", "Core parking",
+                "Windows parks idle cores (no threads scheduled on them) and unparks them as load rises, in the active power plan (plugged in; minimum unparked cores 0%). Off keeps every core unparked (100%), as the KOS plan does. Ryzen X3D with two CCDs needs it on: AMD's driver keeps games on the V-Cache CCD by parking the other one. On Intel hybrid CPUs it only covers the P-cores.",
+                Pages.Power, null, "KOS profiles")
+            .Add(new PowerSetting(new Guid("54533251-82be-4824-96c1-47b60b740d00"), new Guid("0cc5b647-c1df-4637-891a-dec35c318583"), "Processor performance core parking min cores"),
+                (On, S("0")), (Off, S("100")))
+            .With(t => { t.KosDefault = Off; t.Source = @"Setup\4-Tweaking\PowerPlan (co.pow: CPMINCORES 100)"; }),
         // Missing policies hold for both options: HibernateEnabled decides (the Desktop/Laptop profile only runs powercfg).
         Toggle("hibernation", "Hibernation",
                 "Hibernate, with its hibernation file hiberfil.sys (powercfg /hibernate; enabling makes it the full size Hibernate needs), the AllowHibernate policy and the Hibernate entry in the power menu (ShowHibernateOption policy). Hybrid sleep and fast startup also need it. The Desktop/Laptop profile turns it off or on too.",

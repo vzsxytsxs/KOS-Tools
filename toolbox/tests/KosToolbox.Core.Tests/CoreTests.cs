@@ -420,6 +420,17 @@ public class CatalogTests
     public void NagleStateParsed(int? ack, int? noDelay, string expected) => Assert.Equal(expected, NagleSetting.State(ack, noDelay));
 
     [Theory]
+    [InlineData(1, "Windows 11", "26H2", "26H2", "1")]
+    [InlineData(1, "Windows 11", "26h2", "26H2", "1")]
+    [InlineData(1, "Windows 11", "25H2", "26H2", null)]   // a pin left at an older version
+    [InlineData(0, "Windows 11", "26H2", "26H2", null)]
+    [InlineData(1, null, "26H2", "26H2", null)]
+    [InlineData(null, null, null, "26H2", null)]
+    [InlineData(1, "Windows 11", "26H2", null, null)]
+    public void ReleasePinState(int? target, string? product, string? info, string? current, string? expected) =>
+        Assert.Equal(expected, ReleasePinSetting.State(target, product, info, current));
+
+    [Theory]
     [InlineData("1", "1", "0")]
     [InlineData(null, null, "1")]
     [InlineData("1", null, "mixed")]

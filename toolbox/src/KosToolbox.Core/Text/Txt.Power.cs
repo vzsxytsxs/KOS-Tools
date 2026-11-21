@@ -12,6 +12,7 @@ public static partial class Txt
     public static string PowerOutOfRange(uint min, uint max, string units) => $"Enter a value from {min} to {max}{(units.Length == 0 ? "" : " " + units)}.";
     public static string PowerNotAStep(uint step, uint min) => $"The value must go in steps of {step} starting at {min}.";
     public const string PowerAccessDenied = "Windows denied access to the power plan.";
+    public const string ReleasePinNoVersion = "This Windows doesn't report its version (DisplayVersion).";
     public static string HibernateFailed(string arg, int code, string output) => $"powercfg /hibernate {arg} failed (exit code {code}): {output}";
 
     // ---------- Manage plans ----------
