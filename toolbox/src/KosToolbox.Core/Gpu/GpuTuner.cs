@@ -329,6 +329,16 @@ public static class GpuTuner
         }
     }
 
+    /// <summary>
+    /// KOS Engine's gamemode readers: NVAPI (no ~20 MB NVML session) unless board power is wanted or NVML is already open, then
+    /// the full NVML reading (power and power limit only come from NVML).
+    /// </summary>
+    public static GpuSensors ReadSensorsLight(string busId, bool power = false) =>
+        power || Nvml.Loaded ? ReadSensors(busId, throughput: false) : Nvapi.ReadLight(busId);
+
+    /// <summary>The first NVIDIA card through NVAPI, NVML only when it's already open; null when there's none.</summary>
+    public static GpuDevice? FirstLight() => Nvml.Loaded ? List().FirstOrDefault() : Nvapi.List().FirstOrDefault();
+
     public static GpuBus ReadBus(string busId)
     {
         lock (Gate)

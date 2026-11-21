@@ -248,4 +248,30 @@ public class GpuTests
         Assert.Matches("^[0-9A-F]+:[0-9A-F]+(,[0-9A-F]+:[0-9A-F]+)*$", first); // at least the basic render adapter
         Assert.Equal(first, DisplayAdapters.Luids());
     }
+
+    [Fact]
+    public void NvapiDecreaseReasonsMapToTheNvmlBitsTheSessionReportNames()
+    {
+        Assert.Equal(0UL, Nvapi.ReasonsAsNvml(0));
+        Assert.Equal(0x20UL, Nvapi.ReasonsAsNvml(0x1)); // thermal protection: driver thermal limit
+        Assert.Equal(0x4UL, Nvapi.ReasonsAsNvml(0x2)); // power control: power limit
+        Assert.Equal(0x80UL, Nvapi.ReasonsAsNvml(0x10)); // insufficient power: power brake
+        Assert.Equal(0x2UL, Nvapi.ReasonsAsNvml(0x8)); // API triggered: application clock setting
+        Assert.Equal(0UL, Nvapi.ReasonsAsNvml(0x4)); // AC/battery: not reported
+        Assert.Equal(0xA6UL, Nvapi.ReasonsAsNvml(0x1F));
+    }
+
+    [Fact]
+    public void NvapiCardsUseTheBusIdFormThatOpensThem()
+    {
+        try
+        {
+            foreach (var g in Nvapi.List())
+            {
+                Assert.Matches(@"^00000000:[0-9A-F]{2}:[0-9A-F]{2}\.0$", g.BusId);
+                Nvapi.ReadLight(g.BusId); // the same id opens it (Find)
+            }
+        }
+        catch (NotSupportedException) { } // no NVIDIA driver here
+    }
 }

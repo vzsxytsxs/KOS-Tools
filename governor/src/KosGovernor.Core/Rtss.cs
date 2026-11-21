@@ -365,7 +365,7 @@ internal sealed class RtssOsd : IDisposable
     public RtssOsd(Func<RtssOsdItems> items)
     {
         _items = items;
-        try { _bus = GpuTuner.List().FirstOrDefault()?.BusId; }
+        try { _bus = GpuTuner.FirstLight()?.BusId; }
         catch (Exception ex) { Log.Info($"RTSS on-screen display: no GPU line ({ex.Message})."); }
         _load.CpuPercent(); // baseline
         _timer = new Timer(_ => Tick(), null, 1000, 1000);
@@ -381,7 +381,7 @@ internal sealed class RtssOsd : IDisposable
             if (_disposed) return;
             GpuSensors? gpu = null;
             if (_bus is not null)
-                try { gpu = GpuTuner.ReadSensors(_bus, throughput: false); }
+                try { gpu = GpuTuner.ReadSensorsLight(_bus, power: (_items() & RtssOsdItems.GpuPower) != 0); } // NVML only for board power
                 catch { } // a driver reset makes the card unreadable for a moment
             var (_, used, total) = SystemLoad.Memory();
             var shown = Rtss.ShowOsd(Rtss.OsdText(_items(), _load.CpuPercent(), used, total, gpu));

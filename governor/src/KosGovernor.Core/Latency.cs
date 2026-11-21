@@ -114,14 +114,18 @@ public static class WifiLatency
     {
         if (_handle != IntPtr.Zero) return _handle;
         var error = WlanOpenHandle(2, IntPtr.Zero, out _, out var h);
-        if (error != 0) throw new InvalidOperationException(error == 1062 ? "the WLAN AutoConfig service isn't running." : Native.Win32Message((int)error));
+        if (error == 1062) return IntPtr.Zero; // ERROR_SERVICE_NOT_ACTIVE: WLAN AutoConfig doesn't run without a Wi-Fi adapter
+        if (error != 0) throw new InvalidOperationException(Native.Win32Message((int)error));
         return _handle = h;
     }
 
+    /// <summary>The Wi-Fi interfaces; none when WLAN AutoConfig isn't running (a PC without Wi-Fi).</summary>
     static List<Guid> Interfaces(bool connectedOnly)
     {
         var list = new List<Guid>();
-        var error = WlanEnumInterfaces(Handle(), IntPtr.Zero, out var p);
+        var handle = Handle();
+        if (handle == IntPtr.Zero) return list;
+        var error = WlanEnumInterfaces(handle, IntPtr.Zero, out var p);
         if (error != 0) throw new InvalidOperationException(Native.Win32Message((int)error));
         try
         {

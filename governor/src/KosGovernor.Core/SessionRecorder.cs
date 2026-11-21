@@ -111,7 +111,7 @@ internal sealed class SessionRecorder : IDisposable
                 _cpuSensors = null;
             }
         }
-        try { if (GpuTuner.List().FirstOrDefault() is { } g) (_bus, GpuName) = (g.BusId, g.Name); }
+        try { if (GpuTuner.FirstLight() is { } g) (_bus, GpuName) = (g.BusId, g.Name); } // NVAPI: no NVML session for the report
         catch (Exception ex) { GpuProblem = ex.Message; }
         try
         {
@@ -211,7 +211,7 @@ internal sealed class SessionRecorder : IDisposable
     {
         if (_bus is null) return;
         GpuSensors s;
-        try { s = GpuTuner.ReadSensors(_bus, throughput: false); }
+        try { s = GpuTuner.ReadSensorsLight(_bus); }
         catch (Exception ex)
         {
             if (GpuFailures++ == 0) Log.Warn($"Session report: reading the GPU failed ({ex.Message}).");
