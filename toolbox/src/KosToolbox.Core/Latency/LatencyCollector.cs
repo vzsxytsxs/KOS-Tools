@@ -38,6 +38,7 @@ public sealed class LatencyCollector(KernelModules modules, long frequency)
     readonly object _gate = new();
     readonly Dictionary<string, Pair> _drivers = new(StringComparer.OrdinalIgnoreCase);
     readonly Dictionary<int, Pair> _cpus = new();
+    readonly Dictionary<string, HashSet<int>> _driverCpus = new(StringComparer.OrdinalIgnoreCase);
     readonly Dictionary<int, long> _faults = new();
     RunStats _timer;
 
@@ -60,6 +61,8 @@ public sealed class LatencyCollector(KernelModules modules, long frequency)
             {
                 if (!_drivers.TryGetValue(driver, out var d)) _drivers[driver] = d = new();
                 if (!_cpus.TryGetValue(cpu, out var c)) _cpus[cpu] = c = new();
+                if (!_driverCpus.TryGetValue(driver, out var on)) _driverCpus[driver] = on = new();
+                on.Add(cpu);
                 if (opcode == Isr) { d.Isr.Add(ticks); c.Isr.Add(ticks); }
                 else { d.Dpc.Add(ticks); c.Dpc.Add(ticks); }
             }
@@ -92,6 +95,15 @@ public sealed class LatencyCollector(KernelModules modules, long frequency)
         return new LatencyReport(elapsed, timer.Count, timer.Max / 10.0, timer.Count == 0 ? 0 : timer.Total / 10.0 / timer.Count,
             drivers, cpus, faults.Sum(f => f.Value), byName);
     }
+
+    /// <summary>The processors any of <paramref name="drivers"/> ran an ISR or DPC on (names with or without ".sys").</summary>
+    public HashSet<int> CpusOf(IEnumerable<string> drivers)
+    {
+        var names = new HashSet<string>(drivers.Select(Bare), StringComparer.OrdinalIgnoreCase);
+        lock (_gate) return _driverCpus.Where(d => names.Contains(Bare(d.Key))).SelectMany(d => d.Value).ToHashSet();
+    }
+
+    static string Bare(string driver) => driver.EndsWith(".sys", StringComparison.OrdinalIgnoreCase) ? driver[..^4] : driver;
 
     /// <summary>ISR and DPC time per processor so far, in ms (the governor's thread director avoids the busiest ones).</summary>
     public Dictionary<int, double> CpuMs()

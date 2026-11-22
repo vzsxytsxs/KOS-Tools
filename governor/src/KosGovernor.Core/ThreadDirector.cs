@@ -28,18 +28,24 @@ public sealed class PlacedProcess
 
 /// <summary>
 /// Thread director, while gamemode is on and a listed game runs (the busiest of this session without a CPU rule of its own). The game runs
-/// on the game cores (CPU sets it already has, else the V-Cache CCD, the P-cores or all). Every few seconds its threads' CPU cycles are
-/// measured and the busiest (<see cref="GamemodeSystemSettings.HeavyThreads"/>) get a core of their own that the rest of the game stays
-/// off, picked away from the processors where the last interrupt trace saw the most DPC/ISR work. Left alone: worker and pool threads (by
-/// description), threads the game pinned itself and threads with a rule. Optionally other programs move off the game cores, and other
+/// on the game cores (CPU sets it already has, else the V-Cache CCD, the P-cores, the CCD with Windows' best-rated core or all). Every
+/// second its threads' CPU use is measured (smoothed) and the busiest (<see cref="GamemodeSystemSettings.HeavyThreads"/>) get a core of
+/// their own that the rest of the game stays off, picked away from the processors where the last interrupt trace saw the input stack or the
+/// most DPC/ISR work. Left alone: worker and pool threads (by description), spin-waiting threads, threads the game pinned itself and threads
+/// with a rule. A game that keeps its cores busy widens to the others and narrows back once it calms down. Optionally other programs move off the game cores, and other
 /// programs' Realtime priority and time-critical threads are lowered. Every change is journaled in the gamemode state and undone when the
 /// game closes, gamemode turns off or, after a crash, at the next start; only what is still as the director left it.
 /// </summary>
 public sealed class ThreadDirector(CpuTopology topo)
 {
-    const long WindowMs = 5_000;
-    /// <summary>Share of one core a thread must use to get a core of its own, and to keep it.</summary>
+    const long WindowMs = 1_000;
+    /// <summary>Share of one core a thread must use to get a core of its own, and to keep it (released after <see cref="ReleaseSamples"/> low samples in a row).</summary>
     internal const double HeavyShare = 0.4, KeepShare = 0.2;
+    internal const int ReleaseSamples = 5;
+    /// <summary>A thread busier than this with fewer context switches per second spins on a wait: a core of its own would be wasted on it.</summary>
+    internal const double SpinShare = 0.5, SpinSwitches = 200;
+    /// <summary>Game load (CPU used / its cores) that widens it to the other cores after <see cref="WidenSeconds"/>, and narrows it back after <see cref="NarrowSeconds"/>.</summary>
+    internal const double WidenAt = 0.85, NarrowAt = 0.6, WidenSeconds = 10, NarrowSeconds = 30;
     const uint Realtime = 0x100, High = 0x80;
     const int TimeCritical = 15, Highest = 2;
     static readonly string[] PoolWords = { "worker", "pool", "taskgraph", "job" };
@@ -55,8 +61,12 @@ public sealed class ThreadDirector(CpuTopology topo)
     ulong _gameCores, _gameMask;
     List<ulong> _cores = new();
     long _windowStart;
-    bool _refusedLogged, _dirty;
+    bool _refusedLogged, _dirty, _widened;
+    double _hot, _cool;
     Dictionary<(int, long), (ulong Cycles, long Cpu)> _last = new();
+    Dictionary<(int, long), double> _smooth = new();
+    Dictionary<(int, long), uint> _switches = new();
+    readonly Dictionary<(int, long), int> _low = new();
     readonly HashSet<(int, long)> _moved = new(), _classChecked = new(), _threadsChecked = new(), _refused = new();
     readonly Dictionary<(int, long), bool> _leftAlone = new();
 
@@ -115,6 +125,11 @@ public sealed class ThreadDirector(CpuTopology topo)
         _game = null;
         _cores = new();
         _last = new();
+        _smooth = new();
+        _switches = new();
+        _low.Clear();
+        _widened = false;
+        _hot = _cool = 0;
         _moved.Clear(); _classChecked.Clear(); _threadsChecked.Clear(); _refused.Clear(); _leftAlone.Clear();
         _refusedLogged = false;
     }
@@ -144,7 +159,7 @@ public sealed class ThreadDirector(CpuTopology topo)
             return false;
         }
         _gameCores = GameCores(topo, current == topo.AllMask ? 0 : current);
-        _cores = Reserve(topo, _gameCores, heavy, interrupts?.CpuMs);
+        _cores = Reserve(topo, _gameCores, heavy, interrupts?.CpuMs, interrupts?.InputCpus);
         var reserved = _cores.Aggregate(0UL, (m, c) => m | c);
         _gameMask = _gameCores & ~reserved;
         if (_gameMask == topo.AllMask) _gameMask = 0;
@@ -156,25 +171,28 @@ public sealed class ThreadDirector(CpuTopology topo)
         return changed;
     }
 
-    /// <summary>The game's cores: CPU sets it already has (its own, or Cores for games), else the V-Cache CCD, the P-cores or all.</summary>
+    /// <summary>The game's cores: CPU sets it already has (its own, or Cores for games), else the V-Cache CCD, the P-cores, the CCD with
+    /// Windows' best-rated core (several equal CCDs) or all.</summary>
     internal static ulong GameCores(CpuTopology topo, ulong current) =>
-        current != 0 ? current : topo.VCacheMask ?? (topo.IsHybrid ? topo.PCoreMask : topo.AllMask);
+        current != 0 ? current : topo.VCacheMask ?? (topo.IsHybrid ? topo.PCoreMask : topo.BestRankedCcdMask ?? topo.AllMask);
 
     /// <summary>
     /// Cores for the busiest threads, one mask per physical core with all its processors among <paramref name="game"/>: at most
-    /// <paramref name="heavy"/>, leaving at least two to the rest of the game. Cores with no real interrupt work (under 1 ms in the
-    /// trace, about 0.5 ms/s) come first, then Windows' best-rated cores (scheduling class), then the least interrupt work, then any but
-    /// the core of CPU 0, which takes most interrupts by default.
+    /// <paramref name="heavy"/>, leaving at least two to the rest of the game. Cores where the input stack ran come last, whatever their
+    /// load; then cores with no real interrupt work (under 1 ms in the trace, about 0.5 ms/s) first, then Windows' best-rated cores
+    /// (scheduling class), then the least interrupt work, then any but the core of CPU 0, which takes most interrupts by default.
     /// </summary>
     const double QuietInterruptMs = 1;
 
-    internal static List<ulong> Reserve(CpuTopology topo, ulong game, int heavy, IReadOnlyDictionary<int, double>? interrupts)
+    internal static List<ulong> Reserve(CpuTopology topo, ulong game, int heavy, IReadOnlyDictionary<int, double>? interrupts,
+        IReadOnlySet<int>? inputCpus = null)
     {
         var cores = topo.Cores.Where(c => c.All(l => (game >> l.Index & 1) == 1)).ToList();
         var count = Math.Min(heavy, cores.Count - 2);
         if (count <= 0) return new();
         double Work(IReadOnlyList<LogicalCpu> c) => interrupts is null ? 0 : c.Sum(l => interrupts.GetValueOrDefault(l.Index));
-        return cores.OrderBy(c => Work(c) >= QuietInterruptMs ? 1 : 0).ThenByDescending(c => c.Max(l => l.SchedulingClass)).ThenBy(Work)
+        return cores.OrderBy(c => inputCpus is not null && c.Any(l => inputCpus.Contains(l.Index)) ? 1 : 0)
+            .ThenBy(c => Work(c) >= QuietInterruptMs ? 1 : 0).ThenByDescending(c => c.Max(l => l.SchedulingClass)).ThenBy(Work)
             .ThenBy(c => c.Any(l => l.Index == 0) ? 1 : 0).ThenBy(c => c[0].Index)
             .Take(count).Select(c => c.Aggregate(0UL, (m, l) => m | 1UL << l.Index)).ToList();
     }
@@ -201,6 +219,27 @@ public sealed class ThreadDirector(CpuTopology topo)
         return (release, add);
     }
 
+    /// <summary>A spin-waiting thread: busy, yet it barely waits (few context switches). Unknown switches = not a spinner.</summary>
+    internal static bool IsSpinner(double busy, double? switchesPerSecond) => busy >= SpinShare && switchesPerSecond is { } s && s < SpinSwitches;
+
+    /// <summary>
+    /// Whether the game should be wide (on every core but the busiest threads') after a sample of <paramref name="seconds"/> at
+    /// <paramref name="load"/>: it widens after <see cref="WidenSeconds"/> at <see cref="WidenAt"/> or more, and narrows after
+    /// <see cref="NarrowSeconds"/> under <see cref="NarrowAt"/>.
+    /// </summary>
+    internal static bool Widen(bool wide, double load, double seconds, ref double hot, ref double cool)
+    {
+        if (!wide)
+        {
+            cool = 0;
+            hot = load >= WidenAt ? hot + seconds : 0;
+            return hot >= WidenSeconds;
+        }
+        hot = 0;
+        cool = load < NarrowAt ? cool + seconds : 0;
+        return cool < NarrowSeconds;
+    }
+
     /// <summary>Cycles (ranking) and CPU time (share of a core) of the game's threads since the last call.</summary>
     List<((int Tid, long Create) Key, double Busy, ulong Cycles)> Measure(ProcessEntry game, double seconds)
     {
@@ -223,14 +262,34 @@ public sealed class ThreadDirector(CpuTopology topo)
     bool Rebalance(GamemodeSystemState state, ProcessEntry game, Func<int, long, bool> threadHasRule, long nowMs)
     {
         var changed = KeepPlacement(state, game);
-        var measured = Measure(game, (nowMs - _windowStart) / 1000.0);
+        var seconds = (nowMs - _windowStart) / 1000.0;
+        var raw = Measure(game, seconds);
         _windowStart = nowMs;
+        var switches = new Dictionary<(int, long), uint>();
+        var rates = new Dictionary<(int, long), double>();
+        foreach (var t in game.Threads)
+        {
+            var key = (t.Tid, t.CreateTime);
+            switches[key] = t.ContextSwitches;
+            if (seconds > 0 && _switches.TryGetValue(key, out var before)) rates[key] = (t.ContextSwitches - before) / seconds;
+        }
+        _switches = switches;
+        // Smoothed share of a core: half the new sample, half the old (a new thread starts at its first sample).
+        var smooth = new Dictionary<(int, long), double>();
+        var measured = raw.Select(m => (m.Key, Busy: smooth[m.Key] = _smooth.TryGetValue(m.Key, out var old) ? (old + m.Busy) / 2 : m.Busy, m.Cycles)).ToList();
+        _smooth = smooth;
+        changed |= WidenOrNarrow(state, game, raw.Sum(m => m.Busy), seconds);
         if (_cores.Count == 0) return changed;
         var isolated = state.Isolated.Where(t => t.Pid == game.Pid).ToList();
         var ids = isolated.Select(t => (t.Tid, t.Create)).ToHashSet();
+        // An isolated thread keeps its core until it has been under the keep share ReleaseSamples times in a row.
+        foreach (var key in ids) _low[key] = measured.Any(m => m.Key == key && m.Busy >= KeepShare) ? 0 : _low.GetValueOrDefault(key) + 1;
+        foreach (var key in _low.Keys.Where(k => !ids.Contains(k)).ToList()) _low.Remove(key);
+        measured = measured.Select(m => ids.Contains(m.Key) && _low.GetValueOrDefault(m.Key) < ReleaseSamples ? (m.Key, Math.Max(m.Busy, KeepShare), m.Cycles) : m).ToList();
         var processAffinity = Affinity.Read(game.Pid, game.CreateTime);
         var candidates = measured.Where(m => ids.Contains(m.Key)
-            || m.Busy >= HeavyShare && !_refused.Contains(m.Key) && processAffinity is { } a && Eligible(m.Key.Tid, m.Key.Create, a, threadHasRule)).ToList();
+            || m.Busy >= HeavyShare && !_refused.Contains(m.Key) && !IsSpinner(m.Busy, rates.TryGetValue(m.Key, out var r) ? r : null)
+               && processAffinity is { } a && Eligible(m.Key.Tid, m.Key.Create, a, threadHasRule)).ToList();
         var (release, add) = Choose(candidates, ids, _cores.Count);
         foreach (var key in release)
         {
@@ -250,6 +309,26 @@ public sealed class ThreadDirector(CpuTopology topo)
             changed = true;
         }
         return changed;
+    }
+
+    /// <summary>The game keeps its cores busy (<see cref="Widen"/>): its CPU sets go to every core but the busiest threads'; back once it calms down.</summary>
+    bool WidenOrNarrow(GamemodeSystemState state, ProcessEntry game, double used, double seconds)
+    {
+        var reserved = _cores.Aggregate(0UL, (m, c) => m | c);
+        var wideMask = topo.AllMask & ~reserved;
+        if (wideMask == topo.AllMask) wideMask = 0;
+        if (wideMask == _gameMask || seconds <= 0) return false; // already on every core it could get
+        var load = used / Math.Max(1, BitOperations.PopCount(_gameCores & ~reserved));
+        var wide = Widen(_widened, load, seconds, ref _hot, ref _cool);
+        if (wide == _widened) return false;
+        using var h = ProcessControl.Open(game.Pid, Native.ProcessQueryLimited | Native.ProcessSetLimited);
+        if (h is null || !Affinity.Same(h, game.CreateTime) || ProcessControl.ReadCpuSets(h, topo) is not { } current) return false;
+        var previous = state.Placed.Find(p => p.Pid == game.Pid && p.Create == game.CreateTime)?.Previous ?? current;
+        if (!Place(state, h, game.Pid, game.CreateTime, wide ? wideMask : _gameMask, previous)) return false;
+        _widened = wide;
+        Log.Info(wide ? $"Thread director: {game.Name} kept its cores {load:P0} busy for {WidenSeconds:0} s; widened to CPUs {CpuSpec.FormatList(wideMask == 0 ? topo.AllMask : wideMask)}."
+                      : $"Thread director: {game.Name} calmed down; back to CPUs {CpuSpec.FormatList(_gameMask == 0 ? topo.AllMask : _gameMask)}.");
+        return true;
     }
 
     /// <summary>A candidate for a core of its own: no thread rule, not a worker or pool thread, not pinned by the game (CPU sets or a narrower affinity).</summary>

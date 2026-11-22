@@ -76,4 +76,51 @@ public class ThreadDirectorTests
         Assert.Equal(30, back.LoweredRealtime.Single().Pid);
         Assert.Equal(-1, back.LoweredThreads.Single().Ideal);
     }
+    // Two equal CCDs of 4 cores without SMT; core 5 (CCD 1) is Windows' best-rated.
+    static readonly CpuTopology Ranked = new(Enumerable.Range(0, 8).Select(i => new LogicalCpu(i, (uint)(256 + i), i, 0, i < 4 ? 0 : 4, i == 5 ? 3 : 1)),
+        new Dictionary<int, long> { [0] = 32L << 20, [4] = 32L << 20 });
+
+    [Fact]
+    public void EqualCcdsGiveTheGameTheBestRatedOne()
+    {
+        Assert.Equal(0xF0UL, Ranked.BestRankedCcdMask);
+        Assert.Equal(0xF0UL, ThreadDirector.GameCores(Ranked, 0));
+        Assert.Null(X3d.BestRankedCcdMask);                       // the V-Cache CCD decides there
+        var flat = new CpuTopology(Enumerable.Range(0, 8).Select(i => new LogicalCpu(i, (uint)(256 + i), i, 0, i < 4 ? 0 : 4)),
+            new Dictionary<int, long> { [0] = 32L << 20, [4] = 32L << 20 });
+        Assert.Equal(0xFFUL, ThreadDirector.GameCores(flat, 0)); // all rated the same: every core, as before
+    }
+
+    [Fact]
+    public void InputCoresComeLastForTheBusiestThreads()
+    {
+        // CPU 2 ran the USB/input stack: its core is avoided even though the trace saw nothing else there.
+        Assert.Equal(new[] { 0x08UL, 0x10UL }, ThreadDirector.Reserve(Plain6, 0x3F, 2, null, new HashSet<int> { 1, 2 }));
+    }
+
+    static readonly CpuTopology Plain6 = new(Enumerable.Range(0, 6).Select(i => new LogicalCpu(i, (uint)(256 + i), i, 0)));
+
+    [Theory]
+    [InlineData(0.9, 50.0, true)]     // busy and barely switching: spins
+    [InlineData(0.9, 2000.0, false)]  // busy but waits a lot: real work
+    [InlineData(0.3, 10.0, false)]    // not busy enough
+    [InlineData(0.9, null, false)]    // first sample: unknown
+    public void SpinnersAreBusyThreadsThatBarelySwitch(double busy, double? switches, bool spinner) =>
+        Assert.Equal(spinner, ThreadDirector.IsSpinner(busy, switches));
+
+    [Fact]
+    public void TheGameWidensAfterTenBusySecondsAndNarrowsAfterThirtyCalmOnes()
+    {
+        double hot = 0, cool = 0;
+        var wide = false;
+        for (var s = 0; s < 9; s++) wide = ThreadDirector.Widen(wide, 0.9, 1, ref hot, ref cool);
+        Assert.False(wide);
+        wide = ThreadDirector.Widen(wide, 0.5, 1, ref hot, ref cool);    // a dip starts over
+        for (var s = 0; s < 10; s++) wide = ThreadDirector.Widen(wide, 0.9, 1, ref hot, ref cool);
+        Assert.True(wide);
+        for (var s = 0; s < 29; s++) wide = ThreadDirector.Widen(wide, 0.4, 1, ref hot, ref cool);
+        Assert.True(wide);
+        wide = ThreadDirector.Widen(wide, 0.4, 1, ref hot, ref cool);
+        Assert.False(wide);
+    }
 }

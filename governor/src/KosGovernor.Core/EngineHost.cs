@@ -83,7 +83,8 @@ public static class EngineHost
                 // NVML zeroes on init) leave the working set; the ones used again come back on their own.
                 if (!trimmed) trimmed = EmptyWorkingSet((IntPtr)(-1));
                 // A blocked connection wakes only the firewall's part; the rest keeps its interval.
-                var due = Environment.TickCount64 + Math.Clamp(engine.Config.General.EngineIntervalMs, Validation.MinEngineMs, Validation.MaxEngineMs);
+                var interval = Math.Clamp(engine.Config.General.EngineIntervalMs, Validation.MinEngineMs, Validation.MaxEngineMs);
+                var due = Environment.TickCount64 + (engine.Directing ? Math.Min(interval, 1000) : interval);
                 int i;
                 while ((i = WaitHandle.WaitAny(handles, (int)Math.Max(0, due - Environment.TickCount64))) == 5) SyncFirewall();
                 if (i == 0) break;

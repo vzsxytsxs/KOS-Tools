@@ -26,6 +26,8 @@ public sealed class Engine
     readonly CpuLimiter _limiter = new();
     readonly Restraint _restraint = new();
     readonly ThreadDirector _director = new(CpuTopology.Current);
+    /// <summary>The thread director has a game: the engine samples every second (its measurements need it).</summary>
+    public bool Directing => _director.Game is not null;
     /// <summary>The last interrupt trace (thread director), written by its own thread.</summary>
     volatile InterruptLoad? _interrupts;
     volatile bool _tracing;

@@ -6,7 +6,9 @@ using KosToolbox.Core.Latency;
 namespace KosGovernor.Core;
 
 /// <summary>Interrupt work seen by a short trace: ISR + DPC ms per processor (logical index) and the drivers with the most.</summary>
-public sealed record InterruptLoad(IReadOnlyDictionary<int, double> CpuMs, IReadOnlyList<(string Driver, double Ms)> Drivers, TimeSpan Length)
+/// <param name="InputCpus">Processors where the USB and input stack (mouse and keyboard) ran: kept clear of the game's busiest threads.</param>
+public sealed record InterruptLoad(IReadOnlyDictionary<int, double> CpuMs, IReadOnlyList<(string Driver, double Ms)> Drivers, TimeSpan Length,
+    IReadOnlySet<int>? InputCpus = null)
 {
     /// <summary>"0 (dxgkrnl.sys, ndis.sys)": the processors with the most, for the log.</summary>
     public string Busiest(int count = 2) => string.Join(", ", CpuMs.OrderByDescending(c => c.Value).Take(count).Select(c => $"CPU {c.Key} {c.Value / Length.TotalSeconds:0.0} ms/s"))
@@ -21,6 +23,8 @@ public sealed record InterruptLoad(IReadOnlyDictionary<int, double> CpuMs, IRead
 public static class EtwDriverTrace
 {
     public const string SessionName = "KOS Governor Interrupts";
+    /// <summary>The USB host and input drivers that carry mouse and keyboard input.</summary>
+    static readonly string[] InputDrivers = { "usbxhci", "ucx01000", "usbhub3", "hidclass", "hidusb", "mouhid", "kbdhid", "mouclass", "kbdclass", "i8042prt" };
 
     static readonly object Gate = new();
     static readonly EventRecordCallback Callback = OnEvent; // kept alive for ETW (a static: Native AOT, no closure)
@@ -73,7 +77,7 @@ public static class EtwDriverTrace
             }
             var drivers = collector.Report(length, _ => "").Drivers
                 .Select(d => (d.Name, Ms: d.Isr.TotalMs + d.Dpc.TotalMs)).Where(d => d.Ms > 0).OrderByDescending(d => d.Ms).ToList();
-            return new InterruptLoad(collector.CpuMs(), drivers, length);
+            return new InterruptLoad(collector.CpuMs(), drivers, length, collector.CpusOf(InputDrivers));
         }
     }
 

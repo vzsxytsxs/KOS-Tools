@@ -40,6 +40,12 @@ public sealed class CpuTopology
 
     /// <summary>Several CCDs (not a hybrid CPU, whose second cache group is the LP E-cores).</summary>
     public bool HasCcds => !IsHybrid && CacheGroups.Count > 1;
+
+    /// <summary>Several CCDs without a V-Cache one: the CCD holding Windows' best-rated core (scheduling class); null when they all rate the same.</summary>
+    public ulong? BestRankedCcdMask =>
+        HasCcds && VCacheMask is null && Cpus.Select(c => c.SchedulingClass).Distinct().Count() > 1
+            ? CacheGroups.First(g => (g >> Cpus.MaxBy(c => c.SchedulingClass)!.Index & 1) == 1)
+            : null;
     /// <summary>The CCD(s) without the V-Cache: higher clocks.</summary>
     public ulong? FrequencyMask => VCacheMask is { } v ? AllMask & ~v : null;
     /// <summary>Every logical processor but the first core's, where Windows sends most interrupts and DPCs.</summary>

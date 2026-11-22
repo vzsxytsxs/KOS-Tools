@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 
 namespace KosGovernor.Core;
 
-public sealed record ThreadEntry(int Tid, long CreateTime, int Priority, int BasePriority, int State, int WaitReason)
+public sealed record ThreadEntry(int Tid, long CreateTime, int Priority, int BasePriority, int State, int WaitReason, uint ContextSwitches = 0)
 {
     /// <summary>State 5 (Waiting) with reason 5 (Suspended).</summary>
     public bool Suspended => State == 5 && WaitReason == 5;
@@ -25,7 +25,7 @@ public static class Snapshot
     // x64 layout of SYSTEM_PROCESS_INFORMATION (256 bytes) and SYSTEM_THREAD_INFORMATION (80 bytes).
     const int ProcThreads = 4, ProcPrivateWs = 8, ProcCreate = 32, ProcUser = 40, ProcKernel = 48, ProcName = 56, ProcBasePriority = 72, ProcPid = 80, ProcParent = 88, ProcHandles = 96,
         ProcSession = 100, ProcWorkingSet = 144, ProcSize = 256;
-    const int ThrCreate = 16, ThrTid = 48, ThrPriority = 56, ThrBase = 60, ThrState = 68, ThrWait = 72, ThrSize = 80;
+    const int ThrCreate = 16, ThrTid = 48, ThrPriority = 56, ThrBase = 60, ThrSwitches = 64, ThrState = 68, ThrWait = 72, ThrSize = 80;
 
     static readonly object Gate = new();
     static IntPtr _buffer;
@@ -67,7 +67,7 @@ public static class Snapshot
             {
                 var t = p + ProcSize + i * ThrSize;
                 threads[i] = new ThreadEntry((int)Marshal.ReadInt64(t, ThrTid), Marshal.ReadInt64(t, ThrCreate), Marshal.ReadInt32(t, ThrPriority),
-                    Marshal.ReadInt32(t, ThrBase), Marshal.ReadInt32(t, ThrState), Marshal.ReadInt32(t, ThrWait));
+                    Marshal.ReadInt32(t, ThrBase), Marshal.ReadInt32(t, ThrState), Marshal.ReadInt32(t, ThrWait), (uint)Marshal.ReadInt32(t, ThrSwitches));
             }
             list.Add(new ProcessEntry(pid, (int)Marshal.ReadInt64(p, ProcParent), name, Marshal.ReadInt64(p, ProcCreate), Marshal.ReadInt32(p, ProcBasePriority),
                 Marshal.ReadInt32(p, ProcHandles), Marshal.ReadInt32(p, ProcSession), Marshal.ReadInt64(p, ProcWorkingSet), threads,
