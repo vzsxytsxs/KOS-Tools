@@ -685,6 +685,9 @@ public sealed class ConfigViewModel : ObservableObject
         set { if (value != Sys.DwmMmcss) SetSystem(s => s.DwmMmcss = value, "Saved."); }
     }
 
+    /// <summary>Why the DWM switch can't work on this PC (MMCSS off); null when it can. Read when the page is built.</summary>
+    public string? DwmMmcssProblem { get; } = Mmcss.Problem() is { } why ? $"No effect on this PC: {why}. Change it on KOS Toolbox's Windows page." : null;
+
     public bool SysRtssOsd
     {
         get => Sys.RtssOsd;

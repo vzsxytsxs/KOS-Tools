@@ -545,7 +545,7 @@ public static partial class KosCatalog
             .With(t => { t.RequiresReboot = true; t.WindowsDefault = On; t.Source = Bats + "MultiPlane Overlay.bat (reimplemented: the script's Enable option has a missing quote and fails)"; }),
 
         Choice("system-responsiveness", "SystemResponsiveness (MMCSS)",
-                "Percentage of CPU the multimedia scheduler reserves for low-priority tasks. 100 turns off the MMCSS reservation.",
+                "Percentage of CPU the multimedia scheduler reserves for low-priority tasks. 100 turns MMCSS off altogether (Microsoft's documentation): audio, NDIS and KOS Governor's \"Desktop compositor in MMCSS\" gamemode step then get no MMCSS priority.",
                 Pages.Windows, Pages.Performance, "MMCSS", ("20", "20 (Windows)"), ("10", "10 (KOS)"), ("100", "100"))
             .Add(R(LocalMachine, Mm, "SystemResponsiveness"), ("20", S("20")), ("10", S("10")), ("100", S("100")))
             .With(t => { t.KosDefault = "10"; t.WindowsDefault = "20"; t.Source = Bats + "SystemResponsiveness.cmd; bin\\2\\TheKOS_reg.reg"; }),
@@ -562,7 +562,7 @@ public static partial class KosCatalog
             .Add(R(LocalMachine, Mm, "LazyModeTimeout"), ("default", Del), ("10000", S("10000")), ("25000", S("25000")), ("150000", S("150000")))
             .With(t => { t.RequiresReboot = true; t.WindowsDefault = "default"; t.Source = Bats + "LazyModeTimeout.bat"; }),
 
-        Toggle("mmcss", "MMCSS service", "Multimedia Class Scheduler. Disabling it can change latency in games and audio; test before keeping it.",
+        Toggle("mmcss", "MMCSS service", "Multimedia Class Scheduler. Disabling it can change latency in games and audio; test before keeping it. With it off, KOS Governor's \"Desktop compositor in MMCSS\" gamemode step has no effect.",
                 Pages.Windows, Pages.Performance, "MMCSS")
             .Svc("MMCSS", "2", "4")
             .With(t => { t.RequiresReboot = true; t.Source = Bats + "MMCSS.bat (the toolbox doesn't force a restart like the script)"; }),

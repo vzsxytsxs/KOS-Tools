@@ -453,6 +453,7 @@ public sealed class Engine
         _dwmMmcss = on;
         var hr = Native.DwmEnableMMCSS(on ? 1 : 0);
         if (hr < 0) Log.Warn($"Gamemode: DWM MMCSS {(on ? "on" : "off")} failed (0x{hr:X8}).");
+        else if (on && Mmcss.Problem() is { } why) Log.Warn($"Gamemode: DWM was put in the MMCSS class, but it has no effect: {why} (Windows page in KOS Toolbox).");
         else Log.Info($"Gamemode: DWM {(on ? "in" : "out of")} the MMCSS scheduling class.");
     }
 

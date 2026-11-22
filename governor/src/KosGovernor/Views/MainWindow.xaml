@@ -739,6 +739,8 @@
                                                             <StackPanel>
                                                                 <TextBlock Style="{StaticResource ActionName}" Text="Desktop compositor in MMCSS" />
                                                                 <TextBlock Style="{StaticResource ActionDesc}" Text="DWM (the desktop compositor) runs in the multimedia scheduling class while gamemode is on, for steadier frame pacing in windowed and borderless games." />
+                                                                <TextBlock Text="{Binding DwmMmcssProblem}" Style="{StaticResource ActionDesc}" Foreground="{StaticResource WarningBrush}"
+                                                                           Visibility="{Binding DwmMmcssProblem, Converter={StaticResource VisibleIf}, ConverterParameter=text}" />
                                                             </StackPanel>
                                                         </CheckBox>
                                                     </DockPanel>
