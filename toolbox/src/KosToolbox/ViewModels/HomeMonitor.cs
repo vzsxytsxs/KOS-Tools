@@ -272,6 +272,7 @@ public sealed partial class HomeViewModel
             if (plan is not null) rows.Add(new StatusRow("Power plan", plan.Name));
         }
         catch (Exception ex) { Log.Warn($"Home: reading the power plan failed: {ex.Message}"); }
+        if (CpuPowerControl.Read() is { } cpu) rows.Add(new StatusRow(Txt.StatusCpuFrequency, cpu.Describe()));
         Checks(rows);
         foreach (var (id, name) in StatusTweaks)
         {

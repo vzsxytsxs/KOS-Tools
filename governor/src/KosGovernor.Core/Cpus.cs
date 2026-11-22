@@ -3,7 +3,8 @@ using System.Runtime.InteropServices;
 namespace KosGovernor.Core;
 
 /// <param name="Cache">LastLevelCacheIndex: the same for every logical processor that shares the last-level cache.</param>
-public sealed record LogicalCpu(int Index, uint CpuSetId, int Core, int EfficiencyClass, int Cache = 0);
+/// <param name="SchedulingClass">The CPU set's scheduling class: higher = a core Windows prefers (its best-rated, e.g. by CPPC). Equal on CPUs that don't rank cores.</param>
+public sealed record LogicalCpu(int Index, uint CpuSetId, int Core, int EfficiencyClass, int Cache = 0, int SchedulingClass = 0);
 
 /// <summary>
 /// Logical processors with the CPU set id, the core, the efficiency class and the last-level cache (GetSystemCpuSetInformation).
@@ -92,10 +93,10 @@ public sealed class CpuTopology
                         var p = buffer + offset;
                         var size = Marshal.ReadInt32(p);
                         // Type 0 = CpuSetInformation: Id @8, Group @12, LogicalProcessorIndex @14, CoreIndex @15, LastLevelCacheIndex @16,
-                        // EfficiencyClass @18.
+                        // EfficiencyClass @18, SchedulingClass @20.
                         if (Marshal.ReadInt32(p, 4) == 0 && Marshal.ReadInt16(p, 12) == 0)
                             list.Add(new LogicalCpu(Marshal.ReadByte(p, 14), (uint)Marshal.ReadInt32(p, 8), Marshal.ReadByte(p, 15), Marshal.ReadByte(p, 18),
-                                Marshal.ReadByte(p, 16)));
+                                Marshal.ReadByte(p, 16), Marshal.ReadByte(p, 20)));
                         if (size <= 0) break;
                         offset += size;
                     }

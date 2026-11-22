@@ -10,10 +10,13 @@ using KosToolbox.Views;
 
 namespace KosToolbox.ViewModels;
 
-public sealed class IrqRowViewModel(PnpDevice device, InterruptConfig config)
+public sealed class IrqRowViewModel(PnpDevice device, InterruptConfig config, IrqState? effective, bool input)
 {
     public PnpDevice Device { get; } = device;
     public InterruptConfig Config { get; } = config;
+    public IrqDevice Irq { get; } = new(device.InstanceId, device.Name, IrqLayout.RoleOf(device, input), device.InterruptSupport, config, effective);
+    public bool Pending => IrqResources.Pending(Config, Irq.Effective, Device.InterruptSupport, Cpus.AllMask);
+    public string InEffect => Txt.IrqInEffect(Irq.Effective, Pending, Cpus.AllMask);
     public string Name => Device.Name;
     public string Class => Device.Class;
     public string Support => Txt.IrqSupport(Device.InterruptSupport);
@@ -59,6 +62,9 @@ public sealed class DevicesPageViewModel : PageViewModel
     string _limit = "", _cpus = "", _search = "";
     string? _loadError, _message;
     bool _msiOnly = true, _loading, _busy, _isError, _hasOriginal; // without the filter, the list fills with chipset functions that have no interrupt
+    List<IrqRowViewModel> _rows = new();
+    IReadOnlyList<string> _advice = Array.Empty<string>();
+    List<IrqPick> _picks = new();
 
     readonly bool _ghostsOnly;
 
@@ -84,6 +90,9 @@ public sealed class DevicesPageViewModel : PageViewModel
         UncheckAllCommand = new RelayCommand(() => Check(false));
         RemoveCommand = new AsyncCommand(RemoveAsync, () => !_busy && !_loading);
         ClearSearchCommand = new RelayCommand(() => SearchText = "");
+        ApplyLayoutCommand = new AsyncCommand(ApplyLayoutAsync, () => !_busy && !_loading && _picks.Any(p => !p.Kept));
+        EnableMsiAllCommand = new AsyncCommand(EnableMsiAllAsync, () => !_busy && !_loading);
+        RestartDeviceCommand = new AsyncCommand(RestartDeviceAsync, () => !_busy && _selected is not null);
     }
 
     static IReadOnlyList<OptionItem> Options(params (string Key, string Label)[] o) => o.Select(x => new OptionItem(x.Key, x.Label)).ToArray();
@@ -100,6 +109,13 @@ public sealed class DevicesPageViewModel : PageViewModel
     public ICommand UncheckAllCommand { get; }
     public ICommand RemoveCommand { get; }
     public ICommand ClearSearchCommand { get; }
+    public ICommand ApplyLayoutCommand { get; }
+    public ICommand EnableMsiAllCommand { get; }
+    public ICommand RestartDeviceCommand { get; }
+
+    // ---------- advice and suggested layout (from the last read) ----------
+    public IReadOnlyList<string> Advice { get => _advice; private set => Set(ref _advice, value); }
+    public IReadOnlyList<string> LayoutRows => _picks.Count == 0 ? new[] { Txt.LayoutEmpty } : _picks.Select(p => Txt.LayoutRow(p.Device.Name, p.Mask, p.Kept)).ToArray();
 
     public ListCollectionView IrqView { get => _irqView; private set => Set(ref _irqView, value); }
     public ListCollectionView GhostView { get => _ghostView; private set => Set(ref _ghostView, value); }
@@ -171,8 +187,17 @@ public sealed class DevicesPageViewModel : PageViewModel
         try
         {
             var (irq, ghosts) = await Task.Run(() =>
-                (_ghostsOnly ? new List<IrqRowViewModel>() : Interrupts.PciDevices().Select(d => new IrqRowViewModel(d, Interrupts.Read(d.InstanceId))).OrderBy(r => r.Class).ThenBy(r => r.Name).ToList(),
+                (_ghostsOnly ? new List<IrqRowViewModel>() : ReadIrqRows(),
                  _ghostsOnly ? GhostDevices.List().OrderBy(d => d.Class).ThenBy(d => d.Name).Select(d => new GhostRowViewModel(d)).ToList() : new List<GhostRowViewModel>()));
+            _rows = irq;
+            if (!_ghostsOnly)
+            {
+                var devices = irq.Select(r => r.Irq).ToList();
+                var cores = IrqLayout.Cores;
+                Advice = IrqAdvice.Find(devices, cores.FirstOrDefault(c => (c.Mask & 1) == 1)?.Mask ?? 1, Cpus.AllMask) is { Count: > 0 } found ? found : new[] { Txt.AdviceNone };
+                _picks = IrqLayout.Suggest(devices, cores);
+                Raise(nameof(LayoutRows));
+            }
             IrqView = new ListCollectionView(irq) { Filter = o => o is IrqRowViewModel r && (!_msiOnly || r.SupportsMsi) && Matches(r.SearchText) };
             var view = new ListCollectionView(ghosts) { Filter = o => o is GhostRowViewModel r && Matches(r.SearchText) };
             view.GroupDescriptions.Add(new PropertyGroupDescription(nameof(GhostRowViewModel.Class)));
@@ -190,6 +215,103 @@ public sealed class DevicesPageViewModel : PageViewModel
     }
 
     bool Matches(string text) => _search.Trim() is not { Length: > 0 } q || MainViewModel.Matches(text, q);
+
+    static List<IrqRowViewModel> ReadIrqRows()
+    {
+        HashSet<string> input;
+        try { input = IrqResources.InputControllers(); }
+        catch (Exception ex)
+        {
+            Log.Warn($"Input controllers couldn't be read: {ex.Message}");
+            input = new();
+        }
+        return Interrupts.PciDevices().Select(d => new IrqRowViewModel(d, Interrupts.Read(d.InstanceId), IrqResources.Read(d.InstanceId), input.Contains(d.InstanceId)))
+            .OrderBy(r => r.Class).ThenBy(r => r.Name).ToList();
+    }
+
+    // ---------- suggested layout, MSI on all, device restart ----------
+    async Task ApplyLayoutAsync()
+    {
+        var changes = _picks.Where(p => !p.Kept).Select(p =>
+        {
+            var c = p.Device.Config.Copy(); // MSI, message limit and priority stay as they are
+            c.Policy = Interrupts.PolicySpecified;
+            c.Mask = p.Mask;
+            return (Row: _rows.First(r => r.Device.InstanceId == p.Device.InstanceId), Config: c);
+        }).Where(x => !x.Config.SameValues(x.Row.Config)).ToList();
+        if (changes.Count == 0) { Report(Txt.LayoutNothingToDo, false); return; }
+        var batch = new InterruptBatch
+        {
+            Configs = changes.Select(x => x.Config).ToList(),
+            Restart = changes.Where(x => DeviceRestart.Allowed(x.Row.Class)).Select(x => x.Row.Device.InstanceId).ToList(),
+        };
+        if (await RunBatchAsync(batch) is { } result) ReportBatch(batch, result.Unconfirmed, result.RestartFailed);
+    }
+
+    async Task EnableMsiAllAsync()
+    {
+        var configs = _rows.Where(r => r.SupportsMsi && r.Config.Msi != 1 && !Interrupts.IsStorage(r.Device.Class)).Select(r => { var c = r.Config.Copy(); c.Msi = 1; return c; }).ToList();
+        if (configs.Count == 0) { Report(Txt.MsiAllNone, false); return; }
+        if (await RunBatchAsync(new InterruptBatch { Configs = configs }) is not { Unconfirmed: var failed }) return;
+        foreach (var c in configs.Where(c => !failed.Contains(c.InstanceId))) TweakEngine.Instance.Pending.Mark(Txt.IrqPendingName(NameOf(c.InstanceId)));
+        Report(Txt.MsiAllApplied(configs.Count - failed.Count, configs.Count), failed.Count > 0);
+        if (failed.Count < configs.Count) Toasts.Show(Txt.MsiAllWarning, ToastKind.Warning);
+    }
+
+    async Task RestartDeviceAsync()
+    {
+        if (_selected is not { } row) return;
+        if (!DeviceRestart.Allowed(row.Class)) { Report(Txt.RestartNeedsWindows, false); return; }
+        var id = row.Device.InstanceId;
+        if (await RunBatchAsync(new InterruptBatch { Restart = { id } }) is not { } result) return;
+        if (result.RestartFailed) Fail(Txt.DeviceRestartFailed);
+        else Report(_rows.FirstOrDefault(r => r.Device.InstanceId == id)?.Pending == false ? Txt.RestartInEffect : Txt.RestartNotYet, false);
+    }
+
+    /// <summary>Runs the batch, then reads everything again. Null when it didn't run (cancelled or failed; the message says so).</summary>
+    async Task<(List<string> Unconfirmed, bool RestartFailed)?> RunBatchAsync(InterruptBatch batch)
+    {
+        _busy = true;
+        Report(Txt.Applying, false);
+        CommandManager.InvalidateRequerySuggested();
+        (List<string>, bool)? failed = null;
+        try { failed = await Interrupts.ApplyBatchAsync(batch); }
+        catch (ElevationCancelledException ex) { Report(ex.Message, false); }
+        catch (Exception ex)
+        {
+            Log.Error("Interrupt batch failed", ex);
+            Fail(ex.Message);
+        }
+        finally { _busy = false; }
+        var (message, error) = (_message, _isError);
+        await RefreshAsync(); // results come from a fresh read
+        Report(message, error);
+        return failed;
+    }
+
+    /// <summary>
+    /// Per device: in effect now only when it was restarted, every restart worked and the fresh read shows no difference;
+    /// everything else (graphics and audio always) after a Windows restart, marked pending.
+    /// </summary>
+    void ReportBatch(InterruptBatch batch, List<string> failed, bool restartFailed)
+    {
+        var now = new List<string>();
+        var later = new List<string>();
+        foreach (var c in batch.Configs.Where(c => !failed.Contains(c.InstanceId)))
+        {
+            var name = NameOf(c.InstanceId);
+            if (!restartFailed && batch.Restart.Contains(c.InstanceId) && _rows.FirstOrDefault(r => r.Device.InstanceId == c.InstanceId) is { Pending: false })
+                now.Add(name);
+            else
+            {
+                later.Add(name);
+                TweakEngine.Instance.Pending.Mark(Txt.IrqPendingName(name));
+            }
+        }
+        Report(Txt.IrqBatchResult(now, later, failed.Select(NameOf).ToList()) + (restartFailed ? "\n" + Txt.DeviceRestartFailed : ""), failed.Count > 0 || restartFailed);
+    }
+
+    string NameOf(string id) => _rows.FirstOrDefault(r => r.Device.InstanceId == id)?.Name ?? id;
 
     async Task ApplyAsync()
     {

@@ -581,13 +581,6 @@ public static partial class KosCatalog
             .Add(R(LocalMachine, @"SYSTEM\CurrentControlSet\Services\NDIS\Parameters", "ReceiveWorkerThreadPriority"), ("default", Del), ("low-latency", S("16")), ("background", Del))
             .With(t => { t.RequiresReboot = true; t.WindowsDefault = "default"; t.Source = Mm + @" (SchedulerPeriod, IdleDetectionCycles, SchedulerTimerResolution, Tasks\Audio); NDIS ReceiveWorkerThreadPriority"; }),
 
-        Choice("csrss-priority", "CSRSS CPU priority", "Priority of the process that handles raw input.",
-                Pages.Windows, Pages.Performance, "CPU and scheduling",
-                ("unset", Txt.NotConfiguredOption), ("4", "Realtime"), ("3", "High"), ("6", "Above normal"), ("2", "Normal"), ("5", "Below normal"))
-            .Add(R(LocalMachine, @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\csrss.exe\PerfOptions", "CpuPriorityClass"),
-                ("unset", Del), ("4", S("4")), ("3", S("3")), ("6", S("6")), ("2", S("2")), ("5", S("5")))
-            .With(t => { t.RequiresReboot = true; t.KosDefault = "unset"; t.Source = Bats + "CSRSS Priority.bat; RunOnce.cmd (commented-out block)"; }),
-
         Toggle("power-throttling", "Power Throttling",
                 "Power limiting for background processes. Disabling it can improve performance at the cost of more power use and heat.",
                 Pages.Windows, Pages.Performance, "CPU and scheduling")

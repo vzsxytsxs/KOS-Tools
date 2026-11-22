@@ -45,6 +45,9 @@ public static partial class Txt
     public static string StatusGpuLinkValue(uint? linkGen, uint? width, uint? cardGen) =>
         $"Up to Gen {linkGen?.ToString() ?? "?"} x{width?.ToString() ?? "?"}" + (cardGen > linkGen ? $" (the card supports Gen {cardGen}: the slot or the BIOS limits it)" : "");
     public const string StatusStability = "Crashes (30 days)";
+    public const string StatusCpuFrequency = "CPU frequency";
+    public static string CpuFreqFixed(int nominalMhz) => $"Fixed by the BIOS (EIST and Speed Shift off: no P-states for Windows; nominal {nominalMhz} MHz). The power plan's processor settings, EPP and the IntelPPM/AmdPPM drivers don't change it.";
+    public const string CpuFreqCppc = "Windows (CPPC / Speed Shift)", CpuFreqPStates = "Windows (ACPI P-states)";
 
     public static string StatusBypassIo(string drive) => $"BypassIO (DirectStorage) · {drive}";
     public static string StatusBypassIoValue(bool supported, string? driver, string? reason) => supported ? "Supported"

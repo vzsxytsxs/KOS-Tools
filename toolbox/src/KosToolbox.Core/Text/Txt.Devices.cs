@@ -32,6 +32,49 @@ public static partial class Txt
         : string.Join(", ", new[] { (1u, "Line"), (2u, "MSI"), (4u, "MSI-X") }.Where(x => (b & x.Item1) != 0).Select(x => x.Item2)) is { Length: > 0 } s ? s : Unknown;
     public static string IrqDetail(string id, string support, uint? max) =>
         $"{id}\nSupports: {support}" + (max is { } m ? $" · up to {m} messages" : "");
+    // ---------- interrupts in effect, advice, suggested layout ----------
+    public const string ColInEffect = "In effect";
+    public static string IrqInEffect(Devices.IrqState? s, bool pending, ulong allMask)
+    {
+        if (s is not { Count: > 0 }) return NotSetShort;
+        var a = s.Affinity & allMask;
+        var cpus = a == 0 ? "" : a == allMask ? " · all CPUs" : $" · {(System.Numerics.BitOperations.PopCount(a) == 1 ? "CPU" : "CPUs")} {SystemInfo.Cpus.Format(a)}";
+        var mode = s.MessageSignaled ? $"MSI ×{s.Count}" : s.Lines.Count > 0 ? $"Line IRQ {string.Join(",", s.Lines)}" : $"Mixed ×{s.Count}";
+        return mode + cpus + (pending ? " · pending restart" : "");
+    }
+
+    public const string AdviceTitle = "Advice", AdviceNone = "Nothing to point out in the interrupts in effect.";
+    public static string AdviceLineBased(string device) => $"{device}: runs on a line-based interrupt; MSI mode gives it its own.";
+    public static string AdviceSharedLine(uint irq, IEnumerable<string> devices) => $"{string.Join(" and ", devices)} share line IRQ {irq}.";
+    public static string AdviceOverlap(string a, string b, string cpus) => $"{a} and {b} take interrupts on the same CPU(s) {cpus}: one waits behind the other.";
+    public static string AdviceInputOnCore0(string device) => $"{device} has mouse or keyboard input and is pinned to CPU 0's core, where Windows handles most other interrupts and DPCs.";
+
+    public const string LayoutTitle = "Suggested layout", ApplyLayout = "Apply suggested layout", LayoutKept = "already set",
+        LayoutNote = "P-cores only, never CPU 0's core (nor the game CCD on CPUs with several). Applying pins each device (Specified processors) and restarts the USB controllers and network adapters: input and network drop for a moment. The graphics card and audio take it after a Windows restart.",
+        LayoutShortNote = "USB and network restart at once (a short drop); graphics and audio after a Windows restart.",
+        LayoutEmpty ="No suggestion: this CPU has no core to spare besides CPU 0's.", LayoutNothingToDo = "The suggested layout is already set.";
+    public static string LayoutRow(string device, ulong mask, bool kept) => $"{device} → CPU {SystemInfo.Cpus.Format(mask)}" + (kept ? $" ({LayoutKept})" : "");
+
+    public const string EnableMsiAll = "Enable MSI on all supported devices",
+        EnableMsiAllTooltip = "Sets MSISupported = 1 on every connected PCI device that reports MSI or MSI-X support; others are never touched. Storage controllers (NVMe, SATA) are left out: if the boot drive's controller misbehaves Windows may not start; set them one by one.",
+        MsiAllNone = "Every device that supports MSI already has it on.",
+        MsiAllWarning = "MSI takes effect after a restart; if a device misbehaves, select it and use Restore original.";
+    public static string MsiAllApplied(int done, int total) => done == total ? $"MSI turned on for {done} devices and read back." : $"MSI turned on for {done} of {total} devices; the rest didn't read back as written.";
+
+    public const string RestartDevice = "Restart device", RestartDeviceTooltip = "Restarts a USB controller or network adapter so its interrupt settings take effect now (it drops for a moment).",
+        RestartNeedsWindows = "Graphics, audio and storage controllers aren't restarted here: their interrupt settings take effect after a Windows restart.",
+        DeviceRestartFailed = "A device restart failed; details are in the log. Its settings take effect after a Windows restart.",
+        RestartInEffect ="Restarted: the settings are in effect now.", RestartNotYet = "Restarted, but the settings take effect after a Windows restart.";
+
+    /// <summary>Result of applying several devices: which read back, which are in effect now and which wait for Windows.</summary>
+    public static string IrqBatchResult(IReadOnlyCollection<string> now, IReadOnlyCollection<string> later, IReadOnlyCollection<string> failed) =>
+        string.Join("\n", new[]
+        {
+            now.Count > 0 ? $"In effect now: {string.Join(", ", now)}." : null,
+            later.Count > 0 ? $"After a Windows restart: {string.Join(", ", later)}." : null,
+            failed.Count > 0 ? $"Didn't read back as written: {string.Join(", ", failed)}." : null,
+        }.Where(s => s is not null));
+
     public static string DevicesReadFailed(string message) => $"The devices couldn't be read: {message}";
 
     public const string GhostNote = "Devices installed before but not connected now (Device Manager › Show hidden devices). Removing one deletes its entry and settings, like \"Uninstall device\"; drivers stay installed and Windows adds the device again when it's connected. Connected devices are never removed. Check all skips devices with an interrupt affinity set (marked), so they keep it if they come back.";

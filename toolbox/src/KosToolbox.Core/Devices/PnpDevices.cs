@@ -12,6 +12,8 @@ public sealed record PnpDevice(string InstanceId, string Name, string Class, boo
     /// <summary>Bits of DEVPKEY_PciDevice_InterruptSupport: 1 = line (INTx), 2 = MSI, 4 = MSI-X. Null outside PCI or without data.</summary>
     public uint? InterruptSupport { get; init; }
     public uint? MessageMaximum { get; init; }
+    /// <summary>PCI base class code (DEVPKEY_PciDevice_BaseClass): 2 network, 3 display, 4 multimedia, 0x0C serial bus. Null outside PCI.</summary>
+    public uint? PciBaseClass { get; init; }
     /// <summary>Ghost devices only: an interrupt affinity was set for it (Check all leaves it unchecked).</summary>
     public bool HasAffinity { get; init; }
 }
@@ -34,6 +36,7 @@ public static class PnpDevices
     static readonly DevPropKey LastArrivalDate = new("83da6326-97a6-4088-9453-a1923f573b29", 102);
     static readonly DevPropKey PciInterruptSupport = new("3ab22e31-8264-4b4e-9af5-a8d2d8e33e62", 14);
     static readonly DevPropKey PciMessageMaximum = new("3ab22e31-8264-4b4e-9af5-a8d2d8e33e62", 15);
+    static readonly DevPropKey PciBaseClassKey = new("3ab22e31-8264-4b4e-9af5-a8d2d8e33e62", 3);
 
     [DllImport("setupapi.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "SetupDiGetClassDevsW")]
     static extern IntPtr SetupDiGetClassDevs(IntPtr classGuid, string? enumerator, IntPtr parent, uint flags);
@@ -118,6 +121,7 @@ public static class PnpDevices
                 LastArrival = Bytes(set, ref d, LastArrivalDate) is { Length: 8 } ft ? DateTime.FromFileTime(BitConverter.ToInt64(ft)) : null,
                 InterruptSupport = UInt(set, ref d, PciInterruptSupport),
                 MessageMaximum = UInt(set, ref d, PciMessageMaximum),
+                PciBaseClass = Bytes(set, ref d, PciBaseClassKey) is { Length: >= 1 } bc ? bc[0] : null,
             });
             return true;
         });

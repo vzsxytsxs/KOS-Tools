@@ -162,15 +162,19 @@ public sealed class ThreadDirector(CpuTopology topo)
 
     /// <summary>
     /// Cores for the busiest threads, one mask per physical core with all its processors among <paramref name="game"/>: at most
-    /// <paramref name="heavy"/>, leaving at least two to the rest of the game. Least interrupt work first; without a trace, any but the
-    /// core of CPU 0, which takes most interrupts by default.
+    /// <paramref name="heavy"/>, leaving at least two to the rest of the game. Cores with no real interrupt work (under 1 ms in the
+    /// trace, about 0.5 ms/s) come first, then Windows' best-rated cores (scheduling class), then the least interrupt work, then any but
+    /// the core of CPU 0, which takes most interrupts by default.
     /// </summary>
+    const double QuietInterruptMs = 1;
+
     internal static List<ulong> Reserve(CpuTopology topo, ulong game, int heavy, IReadOnlyDictionary<int, double>? interrupts)
     {
         var cores = topo.Cores.Where(c => c.All(l => (game >> l.Index & 1) == 1)).ToList();
         var count = Math.Min(heavy, cores.Count - 2);
         if (count <= 0) return new();
-        return cores.OrderBy(c => interrupts is null ? 0 : c.Sum(l => interrupts.GetValueOrDefault(l.Index)))
+        double Work(IReadOnlyList<LogicalCpu> c) => interrupts is null ? 0 : c.Sum(l => interrupts.GetValueOrDefault(l.Index));
+        return cores.OrderBy(c => Work(c) >= QuietInterruptMs ? 1 : 0).ThenByDescending(c => c.Max(l => l.SchedulingClass)).ThenBy(Work)
             .ThenBy(c => c.Any(l => l.Index == 0) ? 1 : 0).ThenBy(c => c[0].Index)
             .Take(count).Select(c => c.Aggregate(0UL, (m, l) => m | 1UL << l.Index)).ToList();
     }

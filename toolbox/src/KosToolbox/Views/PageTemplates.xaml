@@ -626,13 +626,14 @@
     <DataTemplate DataType="{x:Type vm:IrqRowViewModel}">
         <Grid>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="2.6*" />
-                <ColumnDefinition Width="1.1*" />
-                <ColumnDefinition Width="1.1*" />
-                <ColumnDefinition Width="0.6*" />
-                <ColumnDefinition Width="0.6*" />
-                <ColumnDefinition Width="0.8*" />
-                <ColumnDefinition Width="1.8*" />
+                <ColumnDefinition Width="2.2*" />
+                <ColumnDefinition Width="0.9*" />
+                <ColumnDefinition Width="1*" />
+                <ColumnDefinition Width="0.5*" />
+                <ColumnDefinition Width="0.5*" />
+                <ColumnDefinition Width="0.7*" />
+                <ColumnDefinition Width="1.5*" />
+                <ColumnDefinition Width="2*" />
             </Grid.ColumnDefinitions>
             <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Device.InstanceId}" Margin="0,0,10,0" VerticalAlignment="Center" />
             <TextBlock Grid.Column="1" Text="{Binding Class}" TextTrimming="CharacterEllipsis" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,10,0" VerticalAlignment="Center" />
@@ -640,7 +641,8 @@
             <TextBlock Grid.Column="3" Text="{Binding Msi}" Margin="0,0,10,0" VerticalAlignment="Center" />
             <TextBlock Grid.Column="4" Text="{Binding Limit}" Margin="0,0,10,0" VerticalAlignment="Center" />
             <TextBlock Grid.Column="5" Text="{Binding Priority}" TextTrimming="CharacterEllipsis" Margin="0,0,10,0" VerticalAlignment="Center" />
-            <TextBlock Grid.Column="6" Text="{Binding Policy}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Policy}" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="6" Text="{Binding Policy}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Policy}" Margin="0,0,10,0" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="7" Text="{Binding InEffect}" TextTrimming="CharacterEllipsis" ToolTip="{Binding InEffect}" VerticalAlignment="Center" />
         </Grid>
     </DataTemplate>
 
@@ -680,24 +682,74 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <StackPanel Margin="0,0,0,6">
                     <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.IrqNote}" />
-                    <CheckBox Content="{x:Static t:Txt.MsiOnlyFilter}" IsChecked="{Binding MsiOnly}" Margin="0,8,0,0" />
+                    <DockPanel LastChildFill="False" Margin="0,8,0,0">
+                        <CheckBox Content="{x:Static t:Txt.MsiOnlyFilter}" IsChecked="{Binding MsiOnly}" VerticalAlignment="Center" />
+                        <Button DockPanel.Dock="Right" Content="{x:Static t:Txt.EnableMsiAll}" ToolTip="{x:Static t:Txt.EnableMsiAllTooltip}" Command="{Binding EnableMsiAllCommand}" />
+                    </DockPanel>
                     <TextBlock Style="{StaticResource Secondary}" Text="{Binding LoadError}" Foreground="{StaticResource ErrorBrush}" Margin="0,6,0,0"
                                Visibility="{Binding LoadError, Converter={StaticResource NotEmptyToVis}}" />
+                    <TextBlock Style="{StaticResource PageMessage}" Margin="0,6,0,0" />
                 </StackPanel>
-                <Grid Grid.Row="1" Margin="10,4,20,4">
+
+                <!-- Advice (read only) and the suggested layout -->
+                <Grid Grid.Row="1" Margin="0,4,0,10">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="2.6*" />
-                        <ColumnDefinition Width="1.1*" />
-                        <ColumnDefinition Width="1.1*" />
-                        <ColumnDefinition Width="0.6*" />
-                        <ColumnDefinition Width="0.6*" />
-                        <ColumnDefinition Width="0.8*" />
-                        <ColumnDefinition Width="1.8*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Style="{StaticResource Card}">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Top" Style="{StaticResource CardTitle}" Text="{x:Static t:Txt.AdviceTitle}" Margin="0,0,0,6" />
+                            <ScrollViewer MaxHeight="112" VerticalAlignment="Top" VerticalScrollBarVisibility="Auto">
+                                <ItemsControl ItemsSource="{Binding Advice}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Style="{StaticResource Secondary}" Text="{Binding StringFormat='• {0}'}" TextWrapping="Wrap" Margin="0,0,0,4" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </DockPanel>
+                    </Border>
+                    <Border Grid.Column="2" Style="{StaticResource Card}">
+                        <DockPanel>
+                            <DockPanel DockPanel.Dock="Top" LastChildFill="False" Margin="0,0,0,6">
+                                <TextBlock Style="{StaticResource CardTitle}" Text="{x:Static t:Txt.LayoutTitle}" VerticalAlignment="Center" />
+                                <Button DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Content="{x:Static t:Txt.ApplyLayout}" ToolTip="{x:Static t:Txt.LayoutNote}"
+                                        Command="{Binding ApplyLayoutCommand}" />
+                            </DockPanel>
+                            <TextBlock DockPanel.Dock="Bottom" Style="{StaticResource Secondary}" Text="{x:Static t:Txt.LayoutShortNote}" ToolTip="{x:Static t:Txt.LayoutNote}"
+                                       TextTrimming="CharacterEllipsis" FontSize="11.5" Margin="0,6,0,0" />
+                            <ScrollViewer MaxHeight="112" VerticalAlignment="Top" VerticalScrollBarVisibility="Auto">
+                                <ItemsControl ItemsSource="{Binding LayoutRows}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis" ToolTip="{Binding}" Margin="0,0,0,2" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </DockPanel>
+                    </Border>
+                </Grid>
+
+                <Grid Grid.Row="2" Margin="10,4,20,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="2.2*" />
+                        <ColumnDefinition Width="0.9*" />
+                        <ColumnDefinition Width="1*" />
+                        <ColumnDefinition Width="0.5*" />
+                        <ColumnDefinition Width="0.5*" />
+                        <ColumnDefinition Width="0.7*" />
+                        <ColumnDefinition Width="1.5*" />
+                        <ColumnDefinition Width="2*" />
                     </Grid.ColumnDefinitions>
                     <TextBlock Style="{StaticResource SectionTitle}" FontSize="12" Text="{x:Static t:Txt.ColDevice}" />
                     <TextBlock Grid.Column="1" Style="{StaticResource SectionTitle}" FontSize="12" Text="{x:Static t:Txt.ColClass}" />
@@ -706,17 +758,22 @@
                     <TextBlock Grid.Column="4" Style="{StaticResource SectionTitle}" FontSize="12" Text="{x:Static t:Txt.ColLimit}" />
                     <TextBlock Grid.Column="5" Style="{StaticResource SectionTitle}" FontSize="12" Text="{x:Static t:Txt.ColPriority}" />
                     <TextBlock Grid.Column="6" Style="{StaticResource SectionTitle}" FontSize="12" Text="{x:Static t:Txt.ColPolicy}" />
+                    <TextBlock Grid.Column="7" Style="{StaticResource SectionTitle}" FontSize="12" Text="{x:Static t:Txt.ColInEffect}" />
                 </Grid>
-                <Border Grid.Row="2" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
+                <Border Grid.Row="3" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
                     <ListBox Style="{StaticResource DataList}" ItemsSource="{Binding IrqView}" SelectedItem="{Binding Selected, Mode=TwoWay}"
                              SelectionMode="Single" AutomationProperties.Name="{x:Static t:Txt.TabInterrupts}" />
                 </Border>
 
                 <!-- Editor for the selected device: nothing is written before Apply. -->
-                <Border Grid.Row="3" Style="{StaticResource Card}" Margin="0,10,0,0"
+                <Border Grid.Row="4" Style="{StaticResource Card}" Margin="0,10,0,0"
                         Visibility="{Binding HasSelection, Converter={StaticResource BoolToVis}}" v:Motion.Transition="{Binding Selected}">
                     <StackPanel>
-                        <TextBlock Style="{StaticResource CardTitle}" Text="{Binding SelectedName}" />
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Content="{x:Static t:Txt.RestartDevice}" ToolTip="{x:Static t:Txt.RestartDeviceTooltip}" Command="{Binding RestartDeviceCommand}"
+                                    VerticalAlignment="Top" Margin="10,0,0,0" />
+                            <TextBlock Style="{StaticResource CardTitle}" Text="{Binding SelectedName}" VerticalAlignment="Center" />
+                        </DockPanel>
                         <TextBox Style="{StaticResource ReadOnlyText}" Text="{Binding SelectedDetail, Mode=OneWay}" FontSize="12" Margin="0,4,0,10" />
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -762,7 +819,6 @@
                                 <Button Style="{StaticResource PrimaryButton}" Content="{x:Static t:Txt.Apply}" MinWidth="92" Margin="8,0,0,0" Command="{Binding ApplyCommand}" />
                             </StackPanel>
                         </Grid>
-                        <TextBlock Style="{StaticResource PageMessage}" Margin="0,8,0,0" />
                     </StackPanel>
                 </Border>
             </Grid>

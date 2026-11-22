@@ -72,6 +72,8 @@ public sealed class ElevatedJob
     public SnapshotJob? Snapshot { get; set; }
     /// <summary>Interrupt values of a connected PCI device (Devices page).</summary>
     public InterruptConfig? Interrupts { get; set; }
+    /// <summary>Interrupt values of several connected PCI devices, then restarts of PCI USB controllers and network adapters.</summary>
+    public InterruptBatch? InterruptBatch { get; set; }
     /// <summary>Disconnected devices to remove; connected ones are always refused.</summary>
     public List<string> RemoveDevices { get; set; } = new();
     /// <summary>NVIDIA GPU tuning and/or the logon task; revalidated against the device's limits.</summary>
@@ -101,7 +103,7 @@ public sealed class ElevatedJob
 
     string Describe() => TweakId ?? ActionId ?? (Writes.Count > 0 ? "startup entries" : null) ?? (TaskChange is not null ? $"task {TaskChange.Path}" : null)
         ?? (Service is not null ? $"service {Service.Name}" : null) ?? (Power.Count > 0 ? "power plan" : null) ?? (PowerPlan is not null ? $"power plan {PowerPlan.Op}" : null) ?? (PrepareLogs ? "log folder" : null)
-        ?? (Interrupts is not null ? $"interrupts {Interrupts.InstanceId}" : null) ?? (RemoveDevices.Count > 0 ? $"remove {RemoveDevices.Count} devices" : null) ?? (Gpu is not null ? "GPU tuning" : null) ?? (CleanJunk.Count > 0 ? $"cleanup {string.Join(",", CleanJunk)}" : null) ?? (NetAdapter is not null ? $"network adapter {NetAdapter.InstanceId}" : null) ?? (Drivers is not null ? "driver store" : null) ?? (Display is not null ? "display" : null)
+        ?? (Interrupts is not null ? $"interrupts {Interrupts.InstanceId}" : null) ?? (InterruptBatch is not null ? $"interrupts of {InterruptBatch.Configs.Count} devices, {InterruptBatch.Restart.Count} restarts" : null) ?? (RemoveDevices.Count > 0 ? $"remove {RemoveDevices.Count} devices" : null) ?? (Gpu is not null ? "GPU tuning" : null) ?? (CleanJunk.Count > 0 ? $"cleanup {string.Join(",", CleanJunk)}" : null) ?? (NetAdapter is not null ? $"network adapter {NetAdapter.InstanceId}" : null) ?? (Drivers is not null ? "driver store" : null) ?? (Display is not null ? "display" : null)
         ?? (Bios is not null ? $"BIOS {Bios.Mode}" : null) ?? (Debloat is not null ? $"debloat {Debloat.App}/{Debloat.Option}" : null) ?? (Ddu is not null ? $"DDU {Ddu.Vendor}" : null) ?? (NvidiaInstall is not null ? "NVIDIA driver install" : null) ?? (KosFix is not null ? $"KOS state ({KosFix.Ids.Count} items)" : null) ?? (Repair is not null ? $"Windows repair ({Repair.Tool})" : null) ?? $"service snapshots ({Snapshot?.Mode})";
 
     /// <summary>Unelevated side: opens UAC with the request and waits. Returns the elevated process's exit code.</summary>
@@ -152,7 +154,7 @@ public sealed class ElevatedJob
     }
 
     int Kinds() => new[] { TweakId is not null, ActionId is not null, Writes.Count > 0, TaskChange is not null, Service is not null, Power.Count > 0, PowerPlan is not null, Snapshot is not null, PrepareLogs,
-        Interrupts is not null, RemoveDevices.Count > 0, Gpu is not null, CleanJunk.Count > 0, NetAdapter is not null, Drivers is not null, Display is not null,
+        Interrupts is not null, InterruptBatch is not null, RemoveDevices.Count > 0, Gpu is not null, CleanJunk.Count > 0, NetAdapter is not null, Drivers is not null, Display is not null,
         Bios is not null, Debloat is not null, Ddu is not null, NvidiaInstall is not null, KosFix is not null, Repair is not null }.Count(b => b);
 
     /// <summary>Refuses mixed requests and anything that is not exactly an allowed value.</summary>
@@ -176,6 +178,7 @@ public sealed class ElevatedJob
         if (PowerPlan is not null) { PowerPlans.Validate(PowerPlan); return; }
         if (Snapshot is not null) { ValidateSnapshot(Snapshot); return; }
         if (Interrupts is not null) { Devices.Interrupts.Validate(Interrupts, checkDevice: true); return; }
+        if (InterruptBatch is not null) { Devices.Interrupts.ValidateBatch(InterruptBatch); return; }
         if (RemoveDevices.Count > 0) { GhostDevices.Validate(RemoveDevices); return; }
         if (Gpu is not null) { GpuTuner.Validate(Gpu); return; }
         if (CleanJunk.Count > 0) { JunkCleaner.Validate(CleanJunk); return; }
@@ -270,6 +273,7 @@ public sealed class ElevatedJob
         if (PowerPlan is not null) { PowerPlans.Run(PowerPlan); return ExitOk; }
         if (PrepareLogs) return Log.Problem is null ? ExitOk : ExitFailed;
         if (Interrupts is not null) { Devices.Interrupts.Write(Interrupts); return ExitOk; }
+        if (InterruptBatch is not null) return Devices.Interrupts.ExecuteBatch(InterruptBatch);
         if (Gpu is not null) { GpuTuner.Execute(Gpu); return ExitOk; }
         if (CleanJunk.Count > 0) { foreach (var id in CleanJunk) JunkCleaner.Clean(JunkCleaner.Find(id)!); return ExitOk; }
         if (NetAdapter is not null) { NetAdapters.Execute(NetAdapter); return ExitOk; }

@@ -25,7 +25,17 @@ public sealed class InterruptConfig
     /// <summary>AssignmentSetOverride (KAFFINITY), used with policy 4 (specified processors).</summary>
     public ulong? Mask { get; set; }
 
+    public InterruptConfig Copy() => (InterruptConfig)MemberwiseClone();
+
     public bool SameValues(InterruptConfig o) => Msi == o.Msi && Limit == o.Limit && Policy == o.Policy && Priority == o.Priority && Mask == o.Mask;
+}
+
+/// <summary>Interrupt settings of several devices plus devices to restart afterwards (one elevated request).</summary>
+public sealed class InterruptBatch
+{
+    public List<InterruptConfig> Configs { get; set; } = new();
+    /// <summary>PCI USB host controllers and network adapters only (<see cref="DeviceRestart"/>).</summary>
+    public List<string> Restart { get; set; } = new();
 }
 
 public static class Interrupts
@@ -79,6 +89,74 @@ public static class Interrupts
         else await ElevatedRunner.RunAsync(new ElevatedJob { Interrupts = target }, ct).ConfigureAwait(false);
 
         if (!Read(target.InstanceId).SameValues(target)) throw new InvalidOperationException(Txt.ChangeNotConfirmed);
+    }
+
+    /// <summary>
+    /// Writes several devices' settings and then restarts the listed devices, in one elevated request. Saves each device's
+    /// original state first (only on its first change). Returns the ids whose settings didn't read back as written, and
+    /// whether any restart failed (details in the log).
+    /// </summary>
+    public static async Task<(List<string> Unconfirmed, bool RestartFailed)> ApplyBatchAsync(InterruptBatch batch, CancellationToken ct = default)
+    {
+        foreach (var c in batch.Configs) Validate(c);
+        if (batch.Configs.Count > 0)
+        {
+            var all = JsonFile.Load<Dictionary<string, InterruptConfig>>(Backups);
+            var added = false;
+            foreach (var c in batch.Configs) added |= all.TryAdd(c.InstanceId, Read(c.InstanceId));
+            if (added) JsonFile.Save(Backups, all);
+        }
+
+        int code;
+        if (Elevation.IsAdmin)
+        {
+            ValidateBatch(batch);
+            code = await Task.Run(() => ExecuteBatch(batch), ct).ConfigureAwait(false);
+        }
+        else code = await ElevatedRunner.RunAsync(new ElevatedJob { InterruptBatch = batch }, ct).ConfigureAwait(false);
+
+        return (batch.Configs.Where(c => !Read(c.InstanceId).SameValues(c)).Select(c => c.InstanceId).ToList(), code == ElevatedJob.ExitPartial);
+    }
+
+    /// <summary>Storage controllers (the boot drive among them): left out of "Enable MSI on all", since Windows may not start if one misbehaves.</summary>
+    public static bool IsStorage(string deviceClass) => deviceClass is "SCSIAdapter" or "HDC";
+
+    internal static void ValidateBatch(InterruptBatch batch)
+    {
+        if (batch.Configs.Count + batch.Restart.Count is 0 or > 64) throw new InvalidOperationException("The batch must list 1 to 64 changes.");
+        if (batch.Configs.Select(c => c.InstanceId).Distinct(StringComparer.OrdinalIgnoreCase).Count() != batch.Configs.Count
+            || batch.Restart.Distinct(StringComparer.OrdinalIgnoreCase).Count() != batch.Restart.Count)
+            throw new InvalidOperationException("A device is listed twice.");
+        foreach (var c in batch.Configs) Validate(c, checkDevice: true);
+        var pci = PciDevices().ToList();
+        // What the device itself reports, checked here too (the unelevated filter isn't trusted). A value the registry already
+        // holds passes, so a layout batch that copies a device's existing settings isn't refused.
+        foreach (var c in batch.Configs)
+        {
+            var d = pci.First(d => d.InstanceId.Equals(c.InstanceId, StringComparison.OrdinalIgnoreCase));
+            var now = Read(c.InstanceId);
+            if (c.Msi == 1 && now.Msi != 1 && (d.InterruptSupport & 6) is not > 0)
+                throw new InvalidOperationException($"{d.Name} doesn't report MSI support.");
+            if (c.Limit is { } l && l != now.Limit && d.MessageMaximum is { } max && l > max)
+                throw new InvalidOperationException($"{d.Name} supports at most {max} messages.");
+        }
+        foreach (var id in batch.Restart) DeviceRestart.Validate(id, pci);
+    }
+
+    /// <summary>Writes, then restarts. Returns an ElevatedJob exit code (partial when a restart failed). Requires administrator.</summary>
+    internal static int ExecuteBatch(InterruptBatch batch)
+    {
+        // One failed device doesn't stop the others; only devices whose write went through are restarted.
+        var written = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var failed = false;
+        foreach (var c in batch.Configs)
+        {
+            try { Write(c); written.Add(c.InstanceId); }
+            catch (Exception ex) { failed = true; Log.Warn($"Interrupts {c.InstanceId}: writing failed: {ex.Message}"); }
+        }
+        var restart = batch.Restart.Where(id => written.Contains(id) || !batch.Configs.Any(c => c.InstanceId.Equals(id, StringComparison.OrdinalIgnoreCase))).ToList();
+        failed |= restart.Count < batch.Restart.Count;
+        return DeviceRestart.RestartAll(restart) == 0 && !failed ? ElevatedJob.ExitOk : ElevatedJob.ExitPartial;
     }
 
     public static InterruptConfig? Original(string id) => JsonFile.Load<Dictionary<string, InterruptConfig>>(Backups).GetValueOrDefault(id);

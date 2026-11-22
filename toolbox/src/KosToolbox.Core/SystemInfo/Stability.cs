@@ -66,6 +66,27 @@ public static class Stability
         return list;
     }
 
+    /// <summary>The newest System log event matching <paramref name="query"/> (XPath), as XML; null when none matches.</summary>
+    internal static string? NewestXml(string query)
+    {
+        var results = EvtQuery(IntPtr.Zero, Channel, query, 0x1 | 0x200); // channel path, newest first
+        if (results == IntPtr.Zero) throw new InvalidOperationException($"The System log couldn't be read ({Marshal.GetLastWin32Error()}).");
+        var events = new IntPtr[1];
+        try
+        {
+            if (!EvtNext(results, 1, events, 1000, 0, out var returned) || returned == 0) return null;
+            try
+            {
+                EvtRender(IntPtr.Zero, events[0], 1, 0, IntPtr.Zero, out var used, out _);
+                var buffer = Marshal.AllocHGlobal(used);
+                try { return EvtRender(IntPtr.Zero, events[0], 1, used, buffer, out _, out _) ? Marshal.PtrToStringUni(buffer) : null; }
+                finally { Marshal.FreeHGlobal(buffer); }
+            }
+            finally { EvtClose(events[0]); }
+        }
+        finally { EvtClose(results); }
+    }
+
     internal static StabilityEvent? Parse(string xml)
     {
         var e = XDocument.Parse(xml).Root!;

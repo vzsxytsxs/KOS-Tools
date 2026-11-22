@@ -33,6 +33,10 @@ public class ThreadDirectorTests
         // At least two cores stay for the rest of the game.
         Assert.Equal(2, ThreadDirector.Reserve(X3d, 0x00FF, 4, null).Count);
         Assert.Empty(ThreadDirector.Reserve(Plain, 0x3, 1, null));
+        // Windows' best-rated cores first among quiet ones (scheduling class), before CPU 0's rule and the index; real interrupt work still wins.
+        var ranked = new CpuTopology(Enumerable.Range(0, 6).Select(i => new LogicalCpu(i, (uint)(256 + i), i, 0, 0, i is 3 or 5 ? 2 : 1)));
+        Assert.Equal(new[] { 0x08UL, 0x20UL }, ThreadDirector.Reserve(ranked, 0x3F, 2, null));
+        Assert.Equal(new[] { 0x20UL, 0x02UL }, ThreadDirector.Reserve(ranked, 0x3F, 2, new Dictionary<int, double> { [3] = 30 }));
         // Only whole cores among the game's CPUs: CPU 1 alone isn't one.
         Assert.DoesNotContain(0x2UL, ThreadDirector.Reserve(X3d, 0x00FE, 3, null));
     }
