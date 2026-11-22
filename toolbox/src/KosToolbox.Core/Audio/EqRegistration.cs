@@ -348,6 +348,16 @@ public static class EqRegistration
         return record;
     }
 
+    /// <summary>Turns KOS Equalizer off for every endpoint it's on for (the uninstaller). Returns the failures, one line each.</summary>
+    public static List<string> DeactivateAll()
+    {
+        var failures = new List<string>();
+        foreach (var record in LoadJournal().Endpoints.ToList())
+            try { Deactivate(record.EndpointId); }
+            catch (Exception ex) { failures.Add($"{record.Name}: {ex.Message}"); Log.Error($"KOS Equalizer: turning off {record.Name} failed", ex); }
+        return failures;
+    }
+
     /// <summary>
     /// Turns KOS Equalizer off for an endpoint (connected or not): its values go back where they're still as KOS left them (the
     /// names changed since are returned), and with the last endpoint the registration goes too; the audio service restarts.

@@ -96,6 +96,15 @@ The engine reads the whole process list in one `NtQuerySystemInformation` call e
 
 ---
 
+## Installing
+
+Download **`KOS-Setup.exe`** from the [latest release](https://github.com/vzsxytsxs/KOS-Tools/releases/latest) and run it (it asks for administrator; it isn't code-signed yet, so Windows SmartScreen warns first). It's an online installer: pick the parts (KOS Toolbox with the KOS scripts it runs, KOS Governor with KOS Engine, KOS Firewall, KOS Equalizer, and the optional KOS tools such as CPU-Z, HWiNFO and y-cruncher), and it downloads only those from the release, checks each file's SHA-256, installs the .NET 8 Desktop Runtime if it's missing (from Microsoft, its signature checked) and puts the apps in `C:\Program Files\KOS` and the scripts and tools in `C:\ProgramData\TheKOS`. KOS Engine can start at sign-in (a task, checked by default).
+
+- **Updating:** run `KOS-Setup.exe` again. Only the parts that changed are downloaded; the open KOS apps and KOS Engine are closed first and KOS Engine starts again. Unchecking an installed part removes it.
+- **On a regular Windows 11** (not the KOS build) it installs too, after a warning: some parts expect the changes the KOS build makes.
+- **Uninstalling** (Settings › Apps, *KOS*): KOS Firewall is turned off (Windows Firewall back on), KOS Equalizer is removed from every device, the KOS Engine task and the apps go, and so does KOS's data. On a KOS build the KOS scripts, tools and setup files that came with Windows stay.
+- Releases are built by `installer\build-release.ps1` (after the `/publish` skill): one zip per part, `kos-release.ini` and `KOS-Setup.exe` (Inno Setup 6.7, `installer\KOS-Setup.iss`) in `release\`; the KOS scripts and tools come from the KOS-W11 repository beside this one.
+
 ## Requirements
 
 - Windows 10/11 x64 (built and tested on Windows 11).
@@ -116,7 +125,7 @@ dotnet build toolbox/KosToolbox.sln
 dotnet build governor/KosGovernor.sln
 ```
 
-Self-contained single-file releases (output in each project's `publish/win-x64`). The WPF apps (toolbox, KOS Firewall, KOS Equalizer) are published uncompressed and ReadyToRun, the governor ReadyToRun, for a faster start: on the development PC the toolbox reached its window in 0.99 s instead of 1.48 s and used 140 MB of private memory instead of 194 MB, and the governor took 1.19 s instead of 1.55 s; each of those exes is about 240 MB.:
+Framework-dependent single-file releases (output in each project's `publish/win-x64`; they need the .NET 8 Desktop Runtime, which the installer adds). The WPF apps (toolbox, KOS Firewall, KOS Equalizer) are published uncompressed and ReadyToRun, the governor ReadyToRun, for a faster start: on the development PC the toolbox reached its window in 0.99 s instead of 1.48 s and used 140 MB of private memory instead of 194 MB, and the governor took 1.19 s instead of 1.55 s (measured self-contained); each of those exes is about 35 MB. KOS Engine stays Native AOT (no runtime needed):
 
 ```bash
 dotnet publish toolbox/src/KosToolbox/KosToolbox.csproj -c Release -p:PublishProfile=win-x64

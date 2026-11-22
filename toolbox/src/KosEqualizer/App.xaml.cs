@@ -16,6 +16,12 @@ public static class Program
         // As in the toolbox: loaded now from inside the .exe, so closing doesn't crash if the .exe was replaced meanwhile.
         System.Reflection.Assembly.Load("System.Diagnostics.Tracing");
         Log.Initialize();
+        // The KOS installer, before removing it: off for every device (registration included), no window.
+        if (Environment.GetCommandLineArgs().Contains("--uninstall", StringComparer.OrdinalIgnoreCase))
+        {
+            try { return KosToolbox.Core.Audio.EqRegistration.DeactivateAll().Count == 0 ? 0 : 1; }
+            catch (Exception ex) { Log.Error("KOS Equalizer: turning off for the uninstaller failed", ex); return 1; }
+        }
         if (!SingleInstance.Claim("KosEqualizer")) return 0; // already open: its window comes to the front
         var app = new App();
         app.InitializeComponent();
