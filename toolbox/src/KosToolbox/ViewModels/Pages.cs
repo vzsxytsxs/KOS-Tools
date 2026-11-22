@@ -60,11 +60,14 @@ public sealed class CatalogPageViewModel : PageViewModel
         Items = items.ToList();
         Tabs = Items.GroupBy(i => singleTab ? "" : i.Tab ?? "")
             .OrderBy(t => Array.IndexOf(Core.Catalog.Pages.WindowsTabs, t.Key))
-            .Select(t => new TabViewModel(t.Key, t.GroupBy(groupOf).Select(g => new GroupViewModel(g.Key, g.ToList())).ToList()))
+            .Select(t => new TabViewModel(t.Key, t.GroupBy(groupOf).OrderBy(g => GroupRank(g.Key))
+                .Select(g => new GroupViewModel(g.Key, g.ToList())).ToList()))
             .ToList();
         _selectedTab = Tabs.FirstOrDefault();
         ApplyKosDefaultsCommand = new AsyncCommand(ApplyKosDefaultsAsync);
     }
+
+    static int GroupRank(string group) => Array.IndexOf(Core.Catalog.Pages.WindowsGroups, group) is var i and >= 0 ? i : int.MaxValue;
 
     public IReadOnlyList<ICatalogItem> Items { get; }
     public IReadOnlyList<TabViewModel> Tabs { get; }

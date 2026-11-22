@@ -443,6 +443,24 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <ItemsControl Style="{StaticResource Segmented}" ItemsSource="{Binding Tabs}" Tag="{Binding SelectTabCommand}" HorizontalAlignment="Left"
+                          Margin="0,0,0,10" AutomationProperties.Name="{x:Static t:Txt.Tabs}" />
+
+            <!-- Options: services KOS leaves as a choice (catalog page "services") -->
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False"
+                          Visibility="{Binding ShowOptions, Converter={StaticResource BoolToVis}}" v:Motion.Transition="{Binding ShowOptions}">
+                <StackPanel Margin="0,0,10,0">
+                    <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.ServiceOptionsExplanation}" TextWrapping="Wrap" Margin="2,0,0,10" />
+                    <ItemsControl ItemsSource="{Binding Options}" Focusable="False" />
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Snapshots -->
+            <Grid Grid.Row="1" Visibility="{Binding ShowSnapshots, Converter={StaticResource BoolToVis}}" v:Motion.Transition="{Binding ShowSnapshots}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
@@ -532,6 +550,7 @@
                             Command="{Binding RestoreCommand}" />
                 </Grid>
             </Border>
+            </Grid>
         </Grid>
     </DataTemplate>
 

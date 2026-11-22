@@ -199,6 +199,20 @@ The sidebar has the pages in groups: **Overview** (Home, KOS state), **Tune** (W
 - **Settings**: preferences (includes *Enable animations*), logs, data, change history, restart as administrator, about.
   - *Change history* (`%LocalAppData%\KOS\Toolbox\history.json`, the latest 200): every catalog setting changed on the Windows, Power, GPU and Tools pages (and *Restore previous state*), newest first, with the time, the option before → after, "Not confirmed when read back" when the reread didn't match, and the values that changed in the tooltip. *Undo* is only on the latest change of each setting and puts back the values from before it, only if the system still has what that change left (otherwise it refuses and says so). When the state before was an option, Undo applies that option through the normal path (the elevated job for machine settings, with only the tweak id and option); when it matched no option, the values are written back like *Restore previous state*, which for machine settings needs the toolbox already elevated and only writes values one of that setting's own options writes (both files can be changed by the user's unelevated programs, so a custom machine value is reported as not restored). Undo is recorded too.
 
+## Services › Options
+
+The Services page opens on *Options*: Windows services and drivers that KOS leaves as a choice, each with its friendly name, its service name and what it does, and the start types that make sense for it (the Windows default, read from the Windows 11 26H2 image, is marked). The start type applies after a restart; the elevated job writes `Start` and reads it back (catalog page `services`, `KosCatalog.Services.cs`). *Snapshots* is the second tab.
+
+| Service | Options | KOS default | Windows default |
+|---|---|---|---|
+| Credential Manager (`VaultSvc`) | Manual / Disabled | Manual | Manual |
+| Protected Environment Authentication (`PEAUTH`) | Automatic / Manual / Disabled | Automatic | Automatic |
+| Device Setup Manager (`DsmSvc`) | Automatic / Manual / Disabled | Manual | Manual |
+| ACPI wake alarm (`acpitime`) | Manual / Disabled | Disabled | Manual |
+| ACPI processor aggregator (`acpipagr`) | Manual / Disabled | Disabled | Manual |
+| ACPI power meter (`acpipmi`) | Manual / Disabled | Disabled | Manual |
+| Desktop Activity Moderator (`dam`) | On (system start) / Disabled | Disabled | On (system start) |
+
 ## Service snapshots (conversion of ServiceBackup.ps1)
 
 Same format as the script (SchemaVersion 1) and in the same folder: `%ProgramData%\TheKOS\Setup\3-Support\Services\Backups`. Old snapshots remain readable and the new ones remain readable by the script.
@@ -220,6 +234,8 @@ The page explains the difference: the snapshot stores only the startup type of s
 
 "C#" = the toolbox writes the same values as the script directly (verifiable and without a forced restart). "script" = runs the original script, because it does more than write to the Registry.
 
+Inside each Windows tab the settings are in groups, in the order of `Pages.WindowsGroups`: Performance (CPU and scheduling, MMCSS, Timers, Interrupts and DPC, Memory and storage), Gaming (Game Bar and Xbox, Graphics, Game servers), Visuals (Interface, Taskbar, Dark mode, Start menu, File Explorer), System (Updates, Apps, Search and notifications, Sign-in and input, Diagnostics, Date and time), Peripherals (Clipboard and capture, Devices, Audio, Mouse and keyboard), Security (Exploit mitigations, Windows protections, Firewall, Virtualization), Connectivity (Network tuning, Network services, Wireless, Remote access, Privacy).
+
 #### Windows › Performance
 
 | Setting | Options | Applied by | Restart | KOS default | Source |
@@ -230,6 +246,7 @@ The page explains the difference: the snapshot stores only the startup type of s
 | MMCSS service | Disabled / Enabled | C# | yes | — | Setup\4-Tweaking\Bats\MMCSS.bat (the toolbox doesn't force a restart like the script) |
 | MMCSS preset | Windows default / Low latency / Background | C# | yes | — | Registry (`SystemProfile`: `SchedulerPeriod`, `IdleDetectionCycles`, `SchedulerTimerResolution`, `MaxThreadsPerProcess`, `MaxThreadsTotal`; `Tasks\Audio` *Scheduling Category* and *Priority*; NDIS `ReceiveWorkerThreadPriority`) |
 | Processor scheduling (Win32PrioritySeparation) | 38 · short, variable, 3:1 (KOS) / 42 · short, fixed, 3:1 / 40 · short, fixed, no boost / 24 · long, fixed, no boost / 2 (Windows) | C# | no (right away) | 38 (KOS) | bin\2\TheKOS_reg.reg (`Win32PrioritySeparation`) |
+| Write-cache buffer flushing | Disabled / Enabled | C# | yes | Disabled | RunOnce.cmd (`UserWriteCacheSetting`, `CacheIsPowerProtected` on every disk except USB drives; a warning after turning it off) |
 | CSRSS CPU priority | Not configured / Realtime / High / Above normal / Normal / Below normal | C# | yes | Not configured | Setup\4-Tweaking\Bats\CSRSS Priority.bat; RunOnce.cmd (commented-out block) |
 | Power Throttling | Disabled / Enabled | C# | yes | Disabled | Setup\4-Tweaking\Bats\PowerThrottling.cmd (the toolbox doesn't force a restart) |
 | Threaded DPC | Disabled / Enabled | C# | yes | — | Setup\4-Tweaking\Bats\ThreadDPC.cmd |
@@ -372,7 +389,6 @@ The three DirectX settings are `name=value` pairs of one text value (`HKCU\Softw
 | Miracast (wireless display) | Disabled / Enabled | C# | yes | — | Registry (`MiracastForceDisable`) |
 | Serial and parallel ports | Disabled / Enabled | script | yes | — | Setup\3-Support\Windows Features\Serial Ports Enable-Disable.cmd; bin\2\DeviceProfile.cmd |
 | USB power saving | Disabled / Enabled | C# | yes | — | Setup\4-Tweaking\Bats\Configure Powersavings.bat (the same USB values, on their own) |
-| Write-cache buffer flushing | Disabled / Enabled | C# | yes | Disabled | RunOnce.cmd (`UserWriteCacheSetting`, `CacheIsPowerProtected` on every disk except USB drives; a warning after turning it off) |
 | Windows screen capture shortcut (Win+Shift+S) | Disabled / Enabled | C# | no | Disabled | Setup\3-Support\Windows Features\Win+Shift+S-Enable-Disable.bat; RunOnce.cmd |
 | Printing | Disabled / Enabled | script | yes | Disabled | Setup\3-Support\Windows Features\Printer Enable - Disable.cmd; RunOnce.cmd |
 | AutoPlay and AutoRun | Disabled / Enabled | C# | no | — | Registry (`DisableAutoplay`, `NoDriveTypeAutoRun`) |
@@ -423,7 +439,7 @@ Re-enabling the firewall rules runs `netsh advfirewall reset` and deletes custom
 |---|---|---|---|---|---|
 | Wi-Fi | Disabled / Enabled | script | yes | — | Setup\3-Support\Windows Features\WIFI Enable-Disable.bat; bin\2\DeviceProfile.cmd |
 | Bluetooth | Disabled / Enabled | script | yes | — | Setup\3-Support\Windows Features\Bluetooth Enable-Disable.bat; bin\2\DeviceProfile.cmd |
-| GDID tracking | Disabled / Enabled | script | yes | Disabled | Setup\3-Support\Windows Features\GDID-Tracking.cmd; RunOnce.cmd |
+| GDID tracking | Disabled / Enabled | script | yes | Enabled (wlidsvc: Microsoft account sign-in) | Setup\3-Support\Windows Features\GDID-Tracking.cmd; RunOnce.cmd |
 | Remote Desktop | Disabled / Enabled | C# | yes | Disabled | Registry (`fDenyTSConnections`; TermService, SessionEnv and UmRdpService Manual or Disabled; the Remote Desktop firewall rules by id with `Set-NetFirewallRule`, skipped when the Advanced profile deleted them); RunOnce.cmd |
 | Network throttling (MMCSS) | Disabled / Enabled | C# | yes | — | Registry (`NetworkThrottlingIndex` 10 / 0xFFFFFFFF) |
 | Nagle's algorithm | Disabled / Enabled | C# | yes | — | Setup\4-Tweaking\Bats\Nagle Algorithm.bat (`TcpAckFrequency`, `TCPNoDelay`, `TcpDelAckTicks` on every TCP/IP interface) |
@@ -431,6 +447,7 @@ Re-enabling the firewall rules runs `netsh advfirewall reset` and deletes custom
 | Proxy auto-discovery (WPAD) | Disabled / Enabled | C# | yes | Disabled | RunOnce.cmd (WinHttp `DisableWpad` 1) |
 | Short cache for failed DNS lookups | Disabled / Enabled | C# | no | Enabled | RunOnce.cmd (Dnscache `MaxNegativeCacheTtl` 5) |
 | VPN services | Disabled / Enabled | C# | yes | Disabled | RunOnce.cmd (RasMan, RasAuto, IKEEXT, PolicyAgent, SstpSvc, RASSSTP; enabling also turns on BFE, mpssvc, Dhcp, Dnscache, NlaSvc and netprofm) |
+| IPv6 | Disabled / Enabled | C# | yes | Disabled | RunOnce.cmd (Tcpip6 `DisabledComponents` 0xFF; Enabled = 0 and the Tcpip6 driver back to Manual where an older KOS disabled it) |
 | Teredo and IP Helper | Disabled / Enabled | C# | yes | Disabled | RunOnce.cmd (iphlpsvc); Setup\4-Tweaking\Network\Advanced\1-Basics.bat (Teredo) |
 
 **Teredo and IP Helper** sets the IP Helper service (`iphlpsvc`, Automatic or Disabled; it used to be part of the Microsoft Store toggle) and the `Teredo_State` policy. Xbox party chat, its network check and some peer-to-peer games use Teredo: with it off they may report a strict NAT.

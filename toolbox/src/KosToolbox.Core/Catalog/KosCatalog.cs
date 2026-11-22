@@ -12,10 +12,21 @@ namespace KosToolbox.Core.Catalog;
 
 public static class Pages
 {
-    public const string Windows = "windows", Power = "power", Tools = "tools", Gpu = "gpu";
+    public const string Windows = "windows", Power = "power", Tools = "tools", Gpu = "gpu", Services = "services";
     public const string Performance = "Performance", Gaming = "Gaming", Visuals = "Visuals", SystemTab = "System", Peripherals = "Peripherals", Security = "Security", Connectivity = "Connectivity";
     /// <summary>Order of the categories on the Windows page.</summary>
     public static readonly string[] WindowsTabs = { Performance, Gaming, Visuals, SystemTab, Peripherals, Security, Connectivity };
+    /// <summary>Order of the groups inside each Windows tab (a group not listed goes last, in catalog order).</summary>
+    public static readonly string[] WindowsGroups =
+    {
+        "CPU and scheduling", "MMCSS", "Timers", "Interrupts and DPC", "Memory and storage",
+        "Game Bar and Xbox", "Graphics", "Game servers",
+        "Interface", "Taskbar", "Dark mode", "Start menu", "File Explorer",
+        "Updates", "Apps", "Search and notifications", "Sign-in and input", "Diagnostics", "Date and time",
+        "Clipboard and capture", "Devices", "Audio", "Mouse and keyboard",
+        "Exploit mitigations", "Windows protections", "Firewall", "Virtualization",
+        "Network tuning", "Network services", "Wireless", "Remote access", "Privacy",
+    };
 }
 
 /// <summary>
@@ -57,7 +68,7 @@ public static partial class KosCatalog
         return k?.GetValue("VendorIdentifier") as string;
     }
 
-    public static IReadOnlyList<Tweak> Tweaks { get; } = BuildTweaks().Concat(NvidiaTweaks()).Concat(AmdTweaks()).ToList();
+    public static IReadOnlyList<Tweak> Tweaks { get; } = BuildTweaks().Concat(NvidiaTweaks()).Concat(AmdTweaks()).Concat(ServiceTweaks()).ToList();
     public static IReadOnlyList<ActionItem> Actions { get; } = BuildActions().Concat(NvidiaActions()).Concat(AmdActions()).ToList();
     public static Tweak? Find(string id) => Tweaks.FirstOrDefault(t => t.Id == id);
 
@@ -94,28 +105,35 @@ public static partial class KosCatalog
             .Add(new ReleasePinSetting(), (On, S("1")), (Off, Del))
             .With(t => { t.KosDefault = On; t.WindowsDefault = Off; t.Source = "RunOnce.cmd (TargetReleaseVersion)"; }),
 
+        Toggle("ipv6", "IPv6",
+                "IPv6 on every network interface. Off is the supported way (DisabledComponents 0xFF): the loopback ::1 keeps working and the Tcpip6 driver stays loaded. A few games, Xbox party chat and some VPNs prefer IPv6; most connections use IPv4. On also turns the Tcpip6 driver back on where an older KOS had disabled it.",
+                Pages.Windows, Pages.Connectivity, "Network services")
+            .Add(R(LocalMachine, @"SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters", "DisabledComponents"), (On, Target.SetOrAbsent("0")), (Off, S("255")))
+            .AddSpec(RegistrySetting.ServiceStart("Tcpip6"), false, (On, S("3")), (Off, Any))
+            .With(t => { t.RequiresReboot = true; t.KosDefault = Off; t.WindowsDefault = On; t.Source = "RunOnce.cmd (DisabledComponents)"; }),
+
         Toggle("teredo", "Teredo and IP Helper",
                 "The IP Helper service (iphlpsvc) and Teredo, which tunnels IPv6 over IPv4. Xbox party chat, its network check and some peer-to-peer games use Teredo: with it off they may report a strict NAT. KOS turns both off.",
-                Pages.Windows, Pages.Connectivity, "Network")
+                Pages.Windows, Pages.Connectivity, "Network services")
             .Svc("iphlpsvc", "2", "4")
             .Add(R(LocalMachine, @"SOFTWARE\Policies\Microsoft\Windows\TCPIP\v6Transition", "Teredo_State", RegistryValueKind.String), (On, Del), (Off, Target.SetOrAbsent("Disabled")))
             .With(t => { t.RequiresReboot = true; t.KosDefault = Off; t.WindowsDefault = On; t.Source = @"RunOnce.cmd (iphlpsvc); Setup\4-Tweaking\Network\Advanced\1-Basics.bat (Teredo)"; }),
 
         Toggle("store-services", "Microsoft Store",
                 "The Store app's install service (InstallService) and installs sent from the web or another device (PushToInstall). The Store app also downloads through Windows Update's services, which KOS turns off: set Windows Update to Microsoft Store only for that. Install › Microsoft Store installs Store apps without them.",
-                Pages.Windows, Pages.SystemTab, "Windows features")
+                Pages.Windows, Pages.SystemTab, "Apps")
             .SvcList(new[] { "InstallService", "PushToInstall" }, "3", "4")
             .With(t => { t.RequiresReboot = true; t.KosDefault = On; t.WindowsDefault = On; t.Source = WinFeatures + "MS-Store Enable-Disable.cmd"; }),
 
         Toggle("appx-services", "App installs and licenses",
                 "AppX Deployment (AppXSvc), Client License (ClipSVC) and License Manager install, update and license every Store and MSIX app, Calculator, Photos, Notepad and Terminal included, and Install › Microsoft Store uses them. Off: those apps can't be installed or updated, and licensed ones may not start.",
-                Pages.Windows, Pages.SystemTab, "Windows features")
+                Pages.Windows, Pages.SystemTab, "Apps")
             .SvcList(new[] { "AppXSvc", "ClipSVC", "LicenseManager" }, "3", "4")
             .With(t => { t.RequiresReboot = true; t.KosDefault = On; t.WindowsDefault = On; t.Source = WinFeatures + "MS-Store Enable-Disable.cmd (Enable)"; }),
 
         Toggle("windows-hello", "Windows Hello and PIN",
                 "Microsoft Passport (NgcSvc) and its container (NgcCtnrSvc): signing in with a PIN, fingerprint or face, and passkeys. Off: only the password signs in.",
-                Pages.Windows, Pages.SystemTab, "Windows features")
+                Pages.Windows, Pages.SystemTab, "Sign-in and input")
             .SvcList(new[] { "NgcSvc", "NgcCtnrSvc" }, "3", "4")
             .With(t =>
             {
@@ -127,7 +145,7 @@ public static partial class KosCatalog
 
         Toggle("notifications", "Notifications",
                 "System notifications (toasts) and the push notification services.",
-                Pages.Windows, Pages.SystemTab, "Windows features")
+                Pages.Windows, Pages.SystemTab, "Search and notifications")
             .Reg(CurrentUser, @"Software\Microsoft\Windows\CurrentVersion\PushNotifications", "ToastEnabled", RegistryValueKind.DWord, "1", "0")
             .Svc("WpnService", "2", "4").Svc("WpnUserService", "2", "4", optional: true)
             .With(t => { t.RequiresReboot = true; t.Source = WinFeatures + "Notification-Enable-Disable.bat"; }),
@@ -157,7 +175,7 @@ public static partial class KosCatalog
         // leaves it); Disabled also points TextInputManagementService to MSCTF.DLL, and the service fails to start.
         Choice("ctfmon", "CTF Loader (ctfmon.exe)",
                 "Text Services Framework host: input methods (IMEs), handwriting, speech and touch keyboard input. Suspended turns the input service off, so ctfmon.exe stays running but idle instead of handling every keystroke. Disabled also points the Text Input Management service at MSCTF.DLL, so it fails to start. Apps keep typing through MSCTF.DLL in their own process.",
-                Pages.Windows, Pages.SystemTab, "Windows features", ("enabled", "Enabled"), ("suspended", "Suspended"), ("disabled", "Disabled"))
+                Pages.Windows, Pages.SystemTab, "Sign-in and input", ("enabled", "Enabled"), ("suspended", "Suspended"), ("disabled", "Disabled"))
             .Add(R(LocalMachine, @"SOFTWARE\Microsoft\Input", "InputServiceEnabled"), ("enabled", Target.SetOrAbsent("1")), ("suspended", S("0")), ("disabled", S("0")))
             .Add(R(LocalMachine, @"SOFTWARE\Microsoft\Input", "InputServiceEnabledForCCI"), ("enabled", Target.SetOrAbsent("1")), ("suspended", S("0")), ("disabled", S("0")))
             .Add(R(LocalMachine, @"SYSTEM\CurrentControlSet\Services\TextInputManagementService\Parameters", "ServiceDll", RegistryValueKind.ExpandString),
@@ -178,7 +196,7 @@ public static partial class KosCatalog
             .With(t => { t.RestartExplorer = true; t.KosDefault = "immersive"; t.Source = WinFeatures + "Alt-Tab-Settings.bat; RunOnce.cmd"; }),
 
         Toggle("reliability", "Reliability Monitor", "Data collection for Reliability Monitor (perfmon /rel).",
-                Pages.Windows, Pages.SystemTab, "Windows features")
+                Pages.Windows, Pages.SystemTab, "Diagnostics")
             .Reg(LocalMachine, @"SOFTWARE\Policies\Microsoft\Windows\Reliability Analysis\WMI", "WMIEnable", RegistryValueKind.DWord, "1", "0")
             .With(t => { t.RequiresReboot = true; t.KosDefault = Off; t.Source = Fixes + "Reliability Analysis.cmd; bin\\2\\TheKOS_reg.reg"; }),
 
@@ -190,62 +208,62 @@ public static partial class KosCatalog
         // The keys of the old switch (off/on) stay, so its history and backups still apply.
         Choice("transparent-taskbar", "Taskbar style (KOS Shell)",
                 "How the taskbar is drawn, Windows 10 or Windows 11 style: Windows' own look, transparent, blurred, or acrylic (frosted and mostly the tint, like Windows' own). Blur and Acrylic need Transparency effects, which choosing them turns on (Start and menus turn translucent too; going back to another style leaves it on); while it's off the taskbar stays transparent. KOS Engine applies it and keeps it while it runs; for the Windows 11 taskbar it loads KOS Shell (KosShell.dll, beside the engine) into Explorer. Windows gives the taskbar its own look back. If Explorer closes right after KOS Shell loads, it isn't loaded again until this is set to Windows and back.",
-                Pages.Windows, Pages.Visuals, "Interface", (Off, "Windows"), (On, "Transparent"), ("blur", "Blur"), ("acrylic", "Acrylic"))
+                Pages.Windows, Pages.Visuals, "Taskbar", (Off, "Windows"), (On, "Transparent"), ("blur", "Blur"), ("acrylic", "Acrylic"))
             .Add(R(CurrentUser, @"Software\TheKOS\Shell", "TransparentTaskbar"), (Off, Del), (On, S("1")), ("blur", S("2")), ("acrylic", S("3")))
             .Add(R(CurrentUser, @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "EnableTransparency"), (Off, Any), (On, Any), ("blur", S("1")), ("acrylic", S("1")))
             .With(t => { t.KosDefault = Off; t.WindowsDefault = Off; t.Source = "KOS Engine (KOS Shell)"; }),
 
         Choice("taskbar-tint", "Taskbar tint (KOS Shell)",
                 "A color over the taskbar style (not over Windows' own look): black at three strengths, or Windows' accent color at half strength. Acrylic with no tint is dark gray. With Transparent, the Windows 11 hidden icons flyout (^) gets the same: transparent with this tint.",
-                Pages.Windows, Pages.Visuals, "Interface", ("none", "None"), ("light", "Black, light"), ("medium", "Black, medium"), ("dark", "Black, dark"), ("accent", "Accent color"))
+                Pages.Windows, Pages.Visuals, "Taskbar", ("none", "None"), ("light", "Black, light"), ("medium", "Black, medium"), ("dark", "Black, dark"), ("accent", "Accent color"))
             .Add(Sz(CurrentUser, @"Software\TheKOS\Shell", "TaskbarColor"), ("none", Del), ("light", S("#40000000")), ("medium", S("#80000000")), ("dark", S("#C0000000")), ("accent", S("accent")))
             .With(t => { t.KosDefault = "none"; t.WindowsDefault = "none"; t.Source = "KOS Engine (KOS Shell)"; }),
 
         Choice("taskbar-buttons", "Taskbar buttons and indicators (KOS Shell)",
                 "With a taskbar style on, the Windows 11 taskbar's hover and active button backgrounds (apps, Start and the tray) and the line under open apps in white or Windows' accent color, at Windows' own strength. The Windows 10 taskbar keeps its own.",
-                Pages.Windows, Pages.Visuals, "Interface", ("windows", "Windows"), ("white", "White"), ("accent", "Accent color"))
+                Pages.Windows, Pages.Visuals, "Taskbar", ("windows", "Windows"), ("white", "White"), ("accent", "Accent color"))
             .Add(R(CurrentUser, @"Software\TheKOS\Shell", "TaskbarButtons"), ("windows", Del), ("white", S("1")), ("accent", S("2")))
             .With(t => { t.KosDefault = "windows"; t.WindowsDefault = "windows"; t.Source = "KOS Engine (KOS Shell)"; }),
 
         Toggle("dark-regedit", "Dark Registry Editor (KOS Shell)",
                 "Registry Editor in dark mode: title bar, menus, tree, list, status bar and its dialogs. When its window opens, KOS Engine loads KOS Shell (KosShell.dll, beside the engine) into regedit only, never into other programs. Turning it off applies the next time it's opened; an open window stays dark until it's closed.",
-                Pages.Windows, Pages.Visuals, "Interface")
+                Pages.Windows, Pages.Visuals, "Dark mode")
             .Reg(CurrentUser, @"Software\TheKOS\Shell", "DarkRegedit", RegistryValueKind.DWord, "1", null)
             .With(t => { t.KosDefault = Off; t.WindowsDefault = Off; t.Source = "KOS Engine (KOS Shell)"; }),
 
         Toggle("dark-consoles", "Dark management consoles (KOS Shell)",
                 "Services, Device Manager, Computer Management and the other consoles (mmc) in dark mode: title bar, menus, trees, lists and dialogs. Parts a snap-in draws itself (Event Viewer's panes) can stay light. KOS Engine loads KOS Shell (KosShell.dll) into mmc only, when its window opens. Turning it off applies the next time a console is opened.",
-                Pages.Windows, Pages.Visuals, "Interface")
+                Pages.Windows, Pages.Visuals, "Dark mode")
             .Reg(CurrentUser, @"Software\TheKOS\Shell", "DarkConsoles", RegistryValueKind.DWord, "1", null)
             .With(t => { t.KosDefault = Off; t.WindowsDefault = Off; t.Source = "KOS Engine (KOS Shell)"; }),
 
         Toggle("dark-notepad", "Dark classic Notepad (KOS Shell)",
                 "The classic Notepad (System32\\notepad.exe, the one left when the Store Notepad is removed) in dark mode: title bar, menus, text area, scroll bars and status bar. KOS Engine loads KOS Shell (KosShell.dll) into Notepad only, when its window opens. Turning it off applies the next time Notepad is opened.",
-                Pages.Windows, Pages.Visuals, "Interface")
+                Pages.Windows, Pages.Visuals, "Dark mode")
             .Reg(CurrentUser, @"Software\TheKOS\Shell", "DarkNotepad", RegistryValueKind.DWord, "1", null)
             .With(t => { t.KosDefault = Off; t.WindowsDefault = Off; t.Source = "KOS Engine (KOS Shell)"; }),
 
         Toggle("dark-dialogs", "Dark Control Panel and Properties dialogs (KOS Shell)",
                 "Control Panel applets (Sound, Mouse, Network and the others that open as a dialog), System Properties, System Configuration (msconfig), Color Management, ODBC Data Sources and File Explorer's dialogs (Properties, Folder Options) in dark mode. Confirmation boxes keep their light body and the Run box stays as it is (it paints its own light body). In File Explorer KOS Shell (KosShell.dll) is loaded once a dialog opens and touches only dialogs; its folder windows and the taskbar are left as they are. Turning it off applies to dialogs opened after Explorer restarts.",
-                Pages.Windows, Pages.Visuals, "Interface")
+                Pages.Windows, Pages.Visuals, "Dark mode")
             .Reg(CurrentUser, @"Software\TheKOS\Shell", "DarkDialogs", RegistryValueKind.DWord, "1", null)
             .With(t => { t.KosDefault = Off; t.WindowsDefault = Off; t.Source = "KOS Engine (KOS Shell)"; }),
 
         Toggle("dark-tools", "Dark classic tools (KOS Shell, system colors)",
                 "Character Map, System Information, Add Hardware, User Accounts (netplwiz) and Disk Cleanup in dark mode. These paint parts of themselves with the system colors (Character Map's grid, a wizard's header band, a drive list), so in these apps only KOS Shell (KosShell.dll) also replaces GetSysColor and GetSysColorBrush in their import tables. Turning it off applies the next time the app is opened.",
-                Pages.Windows, Pages.Visuals, "Interface")
+                Pages.Windows, Pages.Visuals, "Dark mode")
             .Reg(CurrentUser, @"Software\TheKOS\Shell", "DarkTools", RegistryValueKind.DWord, "1", null)
             .With(t => { t.KosDefault = Off; t.WindowsDefault = Off; t.Source = "KOS Engine (KOS Shell)"; }),
 
         Toggle("no-blank-folders", "No blank between folders in File Explorer (KOS Shell)",
                 "File Explorer keeps the folder you're leaving on screen until the next one is ready, instead of an empty view with \"Working on it...\" each time a folder opens: what pressing F11 twice does, for every window and tab. KOS Shell (KosShell.dll) is loaded into File Explorer once a folder window opens and only holds the tab's redraw while Explorer swaps the folder view. Turning it off works at once (the DLL stays in Explorer until it restarts).",
-                Pages.Windows, Pages.Visuals, "Interface")
+                Pages.Windows, Pages.Visuals, "File Explorer")
             .Reg(CurrentUser, @"Software\TheKOS\Shell", "NoBlankFolders", RegistryValueKind.DWord, "1", null)
             .With(t => { t.KosDefault = Off; t.WindowsDefault = Off; t.Source = "KOS Engine (KOS Shell)"; }),
 
         Toggle("menu-icons", "Context menu icons (KOS Shell)",
                 "A monochrome icon on the common commands of File Explorer's classic context menus that have none (Cut, Copy, Paste, Delete, Rename, Properties, Refresh, Sort by and others), in the menu's text color. English command names only. KOS Shell (KosShell.dll) is loaded into File Explorer at its first menu and only draws into its menus; the first menu after Explorer starts has no icons yet. Turning it off works at once.",
-                Pages.Windows, Pages.Visuals, "Interface")
+                Pages.Windows, Pages.Visuals, "File Explorer")
             .Reg(CurrentUser, @"Software\TheKOS\Shell", "MenuIcons", RegistryValueKind.DWord, "1", null)
             .With(t => { t.KosDefault = Off; t.WindowsDefault = Off; t.Source = "KOS Engine (KOS Shell)"; }),
 
@@ -327,7 +345,7 @@ public static partial class KosCatalog
 
         Toggle("background-apps", "Background apps",
                 "Lets Store apps keep running in the background for notifications and live updates; messaging apps from the Store need it. Desktop programs aren't affected. Disabling denies it to every app (LetAppsRunInBackground policy), turns off the per-user switch; on desktops KOS also turns off the Background Activity Moderator driver (bam), which On turns back on and Off leaves as the device profile set it.",
-                Pages.Windows, Pages.SystemTab, "Windows features")
+                Pages.Windows, Pages.SystemTab, "Apps")
             .Add(R(LocalMachine, @"SOFTWARE\Policies\Microsoft\Windows\AppPrivacy", "LetAppsRunInBackground"), (On, Del), (Off, S("2")))
             .With(t => { foreach (var list in new[] { "UserInControlOfTheseApps", "ForceAllowTheseApps", "ForceDenyTheseApps" })
                 t.Add(R(LocalMachine, @"SOFTWARE\Policies\Microsoft\Windows\AppPrivacy", "LetAppsRunInBackground_" + list, RegistryValueKind.MultiString), (On, Any), (Off, Del)); })
@@ -337,14 +355,14 @@ public static partial class KosCatalog
 
         Toggle("diagnostics-services", "System usage and diagnostics",
                 "The Diagnostic Policy service and its hosts (problem detection, troubleshooters, the app history in Task Manager) and sleep study logging. Windows keeps working without them.",
-                Pages.Windows, Pages.SystemTab, "Windows features")
+                Pages.Windows, Pages.SystemTab, "Diagnostics")
             .Svc("DPS", "2", "4").Svc("diagsvc", "3", "4", optional: true).Svc("WdiServiceHost", "3", "4", optional: true).Svc("WdiSystemHost", "3", "4", optional: true)
             .Add(R(LocalMachine, @"SYSTEM\CurrentControlSet\Control\Session Manager\Power", "SleepStudyDisabled"), (On, Del), (Off, S("1")))
             .With(t => { t.RequiresReboot = true; t.KosDefault = Off; t.WindowsDefault = On; t.Source = @"RunOnce.cmd (service list); bin\2\TheKOS_reg.reg (SleepStudyDisabled)"; }),
 
         Choice("windows-search", "Windows Search",
                 "On: the search indexer and the search app. No indexing: the Windows Search service is off; searching still works, more slowly. Off: also blocks the search app (SearchHost.exe renamed to .old, as KOS does, and redirected to a program that does nothing) and hides the taskbar search box. Open-Shell's Start menu search uses neither.",
-                Pages.Windows, Pages.SystemTab, "Windows features", (On, Txt.Enabled), ("no-index", "No indexing"), (Off, Txt.Disabled))
+                Pages.Windows, Pages.SystemTab, "Search and notifications", (On, Txt.Enabled), ("no-index", "No indexing"), (Off, Txt.Disabled))
             .Add(RegistrySetting.ServiceStart("WSearch"), (On, S("2")), ("no-index", S("4")), (Off, S("4")))
             .BlockExes(SearchExes, @"%SystemRoot%\System32\systray.exe", Off)
             .AddSpec(new RenamedExeSetting("file:search-host", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows),
@@ -432,7 +450,7 @@ public static partial class KosCatalog
 
         Toggle("write-cache-flush", "Write-cache buffer flushing",
                 "Windows makes each disk flush its write cache so data really reaches the disk. Off makes writes faster, but data still in the cache can be lost and files damaged on a power cut or crash: use it with a UPS or a drive with power-loss protection. USB drives aren't changed.",
-                Pages.Windows, Pages.Peripherals, "Storage")
+                Pages.Windows, Pages.Performance, "Memory and storage")
             .Add(new WriteCacheFlushSetting(), (On, S("1")), (Off, S("0")))
             .With(t =>
             {
@@ -528,31 +546,31 @@ public static partial class KosCatalog
 
         Choice("system-responsiveness", "SystemResponsiveness (MMCSS)",
                 "Percentage of CPU the multimedia scheduler reserves for low-priority tasks. 100 turns off the MMCSS reservation.",
-                Pages.Windows, Pages.Performance, "Scheduling and MMCSS", ("20", "20 (Windows)"), ("10", "10 (KOS)"), ("100", "100"))
+                Pages.Windows, Pages.Performance, "MMCSS", ("20", "20 (Windows)"), ("10", "10 (KOS)"), ("100", "100"))
             .Add(R(LocalMachine, Mm, "SystemResponsiveness"), ("20", S("20")), ("10", S("10")), ("100", S("100")))
             .With(t => { t.KosDefault = "10"; t.WindowsDefault = "20"; t.Source = Bats + "SystemResponsiveness.cmd; bin\\2\\TheKOS_reg.reg"; }),
 
         Toggle("no-lazy-mode", "NoLazyMode (MMCSS)",
                 "Makes MMCSS run in a more \"real-time\" mode, using more CPU cycles. Experimental: test before keeping it.",
-                Pages.Windows, Pages.Performance, "Scheduling and MMCSS")
+                Pages.Windows, Pages.Performance, "MMCSS")
             .Reg(LocalMachine, Mm, "NoLazyMode", RegistryValueKind.DWord, "1", null)
             .With(t => { t.RequiresReboot = true; t.WindowsDefault = Off; t.Source = Bats + "NoLazyMode.bat"; }),
 
         Choice("lazy-mode-timeout", "LazyModeTimeout (MMCSS)", "How long MMCSS waits between idle periods before suspending cycles. Experimental.",
-                Pages.Windows, Pages.Performance, "Scheduling and MMCSS",
+                Pages.Windows, Pages.Performance, "MMCSS",
                 ("default", Txt.NotConfiguredOption), ("10000", "10000"), ("25000", "25000"), ("150000", "150000"))
             .Add(R(LocalMachine, Mm, "LazyModeTimeout"), ("default", Del), ("10000", S("10000")), ("25000", S("25000")), ("150000", S("150000")))
             .With(t => { t.RequiresReboot = true; t.WindowsDefault = "default"; t.Source = Bats + "LazyModeTimeout.bat"; }),
 
         Toggle("mmcss", "MMCSS service", "Multimedia Class Scheduler. Disabling it can change latency in games and audio; test before keeping it.",
-                Pages.Windows, Pages.Performance, "Scheduling and MMCSS")
+                Pages.Windows, Pages.Performance, "MMCSS")
             .Svc("MMCSS", "2", "4")
             .With(t => { t.RequiresReboot = true; t.Source = Bats + "MMCSS.bat (the toolbox doesn't force a restart like the script)"; }),
 
         Choice("mmcss-preset", "MMCSS preset",
                 "How the multimedia scheduler prioritizes audio and multimedia threads. Windows default puts back the Windows values. Low latency tunes for the lowest audio " +
                 "latency (scheduler period, idle detection, timer resolution, Audio task priority and the network receive thread). Background audio lowers the audio threads' priority (may crackle under load).",
-                Pages.Windows, Pages.Performance, "Scheduling and MMCSS", ("default", "Windows default"), ("low-latency", "Low latency"), ("background", "Background audio"))
+                Pages.Windows, Pages.Performance, "MMCSS", ("default", "Windows default"), ("low-latency", "Low latency"), ("background", "Background audio"))
             .Add(R(LocalMachine, Mm, "SchedulerPeriod"), ("default", Del), ("low-latency", S("1000000")), ("background", Del))
             .Add(R(LocalMachine, Mm, "IdleDetectionCycles"), ("default", Del), ("low-latency", S("1")), ("background", Del))
             .Add(R(LocalMachine, Mm, "SchedulerTimerResolution"), ("default", Del), ("low-latency", S("10000")), ("background", Del))
@@ -564,7 +582,7 @@ public static partial class KosCatalog
             .With(t => { t.RequiresReboot = true; t.WindowsDefault = "default"; t.Source = Mm + @" (SchedulerPeriod, IdleDetectionCycles, SchedulerTimerResolution, Tasks\Audio); NDIS ReceiveWorkerThreadPriority"; }),
 
         Choice("csrss-priority", "CSRSS CPU priority", "Priority of the process that handles raw input.",
-                Pages.Windows, Pages.Performance, "Scheduling and MMCSS",
+                Pages.Windows, Pages.Performance, "CPU and scheduling",
                 ("unset", Txt.NotConfiguredOption), ("4", "Realtime"), ("3", "High"), ("6", "Above normal"), ("2", "Normal"), ("5", "Below normal"))
             .Add(R(LocalMachine, @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\csrss.exe\PerfOptions", "CpuPriorityClass"),
                 ("unset", Del), ("4", S("4")), ("3", S("3")), ("6", S("6")), ("2", S("2")), ("5", S("5")))
@@ -572,108 +590,108 @@ public static partial class KosCatalog
 
         Toggle("power-throttling", "Power Throttling",
                 "Power limiting for background processes. Disabling it can improve performance at the cost of more power use and heat.",
-                Pages.Windows, Pages.Performance, "Scheduling and MMCSS")
+                Pages.Windows, Pages.Performance, "CPU and scheduling")
             .Add(R(LocalMachine, @"SYSTEM\CurrentControlSet\Control\Power\PowerThrottling", "PowerThrottlingOff"), (On, Target.SetOrAbsent("0")), (Off, S("1")))
             .With(t => { t.RequiresReboot = true; t.KosDefault = Off; t.WindowsDefault = On; t.Source = Bats + "PowerThrottling.cmd (the toolbox doesn't force a restart)"; }),
 
         Toggle("thread-dpc", "Threaded DPC", "Threaded DPCs, which can be preempted. Disabling them can improve responsiveness or cause hangs on unstable hardware.",
-                Pages.Windows, Pages.Performance, "Kernel and memory")
+                Pages.Windows, Pages.Performance, "Interrupts and DPC")
             .Reg(LocalMachine, Kernel, "ThreadDpcEnable", RegistryValueKind.DWord, "1", "0")
             .With(t => { t.RequiresReboot = true; t.Source = Bats + "ThreadDPC.cmd"; }),
 
         Toggle("interrupt-steering", "Interrupt Steering", "Distribution of interrupts across CPU cores.",
-                Pages.Windows, Pages.Performance, "Kernel and memory")
+                Pages.Windows, Pages.Performance, "Interrupts and DPC")
             .Reg(LocalMachine, Kernel, "InterruptSteeringDisabled", RegistryValueKind.DWord, "0", "1")
             .With(t => { t.RequiresReboot = true; t.Source = Bats + "InterruptSteering.bat"; }),
 
         Toggle("xhci-imod", "USB interrupt moderation off (XHCI IMOD)",
                 "At every sign-in, a KOS script sets the interrupt moderation interval of every USB (XHCI) controller to 0 through RW, so input " +
                 "reaches Windows without being batched. Windows refuses RW's driver while the vulnerable driver blocklist, VBS or memory integrity is on: then it can't be turned on.",
-                Pages.Windows, Pages.Performance, "Kernel and memory")
+                Pages.Windows, Pages.Performance, "Interrupts and DPC")
             .Add(R(LocalMachine, @"SOFTWARE\TheKOS", "XhciImod"), (On, Target.SetOrAbsent("1")), (Off, S("0")))
             .With(t => { t.RequiresReboot = true; t.KosDefault = On; t.Compatibility = Devices.RwDriver.Blocked; t.Source = @"bin\3\XHCI-IMOD-Interval.ps1 (startuptweaks.cmd)"; }),
 
         Toggle("global-timer-resolution", "Global timer resolution requests",
                 "Since Windows 10 2004, a program's timer resolution request applies only to that program. Enabling brings back the old behavior, where one request raises the resolution for every process (Windows 11 and Server 2022 or later).",
-                Pages.Windows, Pages.Performance, "Kernel and memory")
+                Pages.Windows, Pages.Performance, "Timers")
             .Reg(LocalMachine, Kernel, "GlobalTimerResolutionRequests", RegistryValueKind.DWord, "1", null)
             .With(t => { t.RequiresReboot = true; t.WindowsDefault = Off; t.Source = "GlobalTimerResolutionRequests"; }),
 
         Toggle("serialize-timer-expiration", "Serialize timer expiration",
                 "Whether timer DPCs run serialized. On = serialized (1); off = the Windows default (absent).",
-                Pages.Windows, Pages.Performance, "Kernel and memory")
+                Pages.Windows, Pages.Performance, "Timers")
             .Reg(LocalMachine, Kernel, "SerializeTimerExpiration", RegistryValueKind.DWord, "1", null)
             .With(t => { t.RequiresReboot = true; t.WindowsDefault = Off; t.Source = "SerializeTimerExpiration"; }),
 
         Toggle("per-cpu-clock-tick", "Per-CPU clock tick scheduling",
                 "Schedules the clock tick per processor. On = enabled (1); off = the Windows default (absent).",
-                Pages.Windows, Pages.Performance, "Kernel and memory")
+                Pages.Windows, Pages.Performance, "Timers")
             .Reg(LocalMachine, Kernel, "EnablePerCpuClockTickScheduling", RegistryValueKind.DWord, "1", null)
             .With(t => { t.RequiresReboot = true; t.WindowsDefault = Off; t.Source = "EnablePerCpuClockTickScheduling"; }),
 
         Choice("cache-aware-scheduling", "Cache-aware scheduling",
                 "How the scheduler places threads by the processors' caches. Windows default = absent.",
-                Pages.Windows, Pages.Performance, "Kernel and memory", ("default", "Windows default"), ("optimized", "Optimized (0x27)"))
+                Pages.Windows, Pages.Performance, "CPU and scheduling", ("default", "Windows default"), ("optimized", "Optimized (0x27)"))
             .Add(R(LocalMachine, Kernel, "CacheAwareScheduling"), ("default", Del), ("optimized", S("39")))
             .With(t => { t.RequiresReboot = true; t.WindowsDefault = "default"; t.Source = "CacheAwareScheduling"; }),
 
         Toggle("skip-tick-override", "Skip tick override",
                 "The power manager's skip-tick override. Off = disabled (0); on = the Windows default (absent).",
-                Pages.Windows, Pages.Performance, "Kernel and memory")
+                Pages.Windows, Pages.Performance, "Timers")
             .Reg(LocalMachine, @"SYSTEM\CurrentControlSet\Control\Session Manager\Power", "SkipTickOverride", RegistryValueKind.DWord, null, "0")
             .With(t => { t.RequiresReboot = true; t.WindowsDefault = On; t.Source = "SkipTickOverride"; }),
 
         Toggle("tick-accumulation", "Tick accumulation from accounting periods",
                 "Accumulates ticks from the accounting periods. On = enabled (1); off = the Windows default (absent).",
-                Pages.Windows, Pages.Performance, "Kernel and memory")
+                Pages.Windows, Pages.Performance, "Timers")
             .Reg(LocalMachine, Kernel, "EnableTickAccumulationFromAccountingPeriods", RegistryValueKind.DWord, "1", null)
             .With(t => { t.RequiresReboot = true; t.WindowsDefault = Off; t.Source = "EnableTickAccumulationFromAccountingPeriods"; }),
 
         Toggle("small-processor-mask", "Small processor mask",
                 "Which logical processors Windows treats as little (efficient) cores, read at boot. On = Windows decides from the CPU (absent); off = 0, no processor is " +
                 "treated as small. Only matters on hybrid CPUs where Windows gets the core types wrong.",
-                Pages.Windows, Pages.Performance, "Kernel and memory")
+                Pages.Windows, Pages.Performance, "CPU and scheduling")
             .Reg(LocalMachine, Kernel + @"\KGroups\00", "SmallProcessorMask", RegistryValueKind.DWord, null, "0")
             .With(t => { t.RequiresReboot = true; t.WindowsDefault = On; t.Source = @"kernel\KGroups\00 SmallProcessorMask"; }),
 
         Choice("worker-threads", "Additional kernel worker threads", "AdditionalCriticalWorkerThreads and AdditionalDelayedWorkerThreads. Experimental.",
-                Pages.Windows, Pages.Performance, "Kernel and memory", ("0", "Default (0)"), ("1", "1 per core"), ("2", "2 per core"))
+                Pages.Windows, Pages.Performance, "Memory and storage", ("0", "Default (0)"), ("1", "1 per core"), ("2", "2 per core"))
             .Add(R(LocalMachine, @"SYSTEM\CurrentControlSet\Control\Session Manager\Executive", "AdditionalCriticalWorkerThreads"), ("0", Target.SetOrAbsent("0")), ("1", S("1")), ("2", S("2")))
             .Add(R(LocalMachine, @"SYSTEM\CurrentControlSet\Control\Session Manager\Executive", "AdditionalDelayedWorkerThreads"), ("0", Target.SetOrAbsent("0")), ("1", S("1")), ("2", S("2")))
             .With(t => { t.RequiresReboot = true; t.WindowsDefault = "0"; t.Source = @"Setup\4-Tweaking\Experimental\AdditionalWorkerThreads_final.bat"; }),
 
         Toggle("large-system-cache", "LargeSystemCache", "Favors the file system cache over process memory. Experimental.",
-                Pages.Windows, Pages.Performance, "Kernel and memory")
+                Pages.Windows, Pages.Performance, "Memory and storage")
             .Reg(LocalMachine, MemMgmt, "LargeSystemCache", RegistryValueKind.DWord, "1", "0")
             .With(t => { t.RequiresReboot = true; t.Source = Bats + "LargeSystemCache.bat"; }),
 
         Choice("io-latency-cap", "IoLatencyCap (StorPort)", "Time after which StorPort holds new pending I/O requests. Experimental.",
-                Pages.Windows, Pages.Performance, "Kernel and memory",
+                Pages.Windows, Pages.Performance, "Memory and storage",
                 ("80", "80 (KOS)"), ("0", "0 (Windows)"), ("20", "20"), ("25", "25"), ("50", "50"), ("500", "500"))
             .Add(R(LocalMachine, @"SYSTEM\CurrentControlSet\Services", "IoLatencyCap"),
                 ("80", S("80")), ("0", Target.SetOrAbsent("0")), ("20", S("20")), ("25", S("25")), ("50", S("50")), ("500", S("500")))
             .With(t => { t.RequiresReboot = true; t.KosDefault = "80"; t.WindowsDefault = "0"; t.Source = Bats + "IoLatencyCap.bat (values written as in the script)"; }),
 
         Choice("io-page-lock-limit", "IOPageLockLimit", "Limit of memory locked for I/O. Experimental. (The script's \"based on RAM\" option was left out: it writes the total memory instead of the calculated value.)",
-                Pages.Windows, Pages.Performance, "Kernel and memory",
+                Pages.Windows, Pages.Performance, "Memory and storage",
                 ("default", Txt.NotConfiguredOption), ("1048576", "1 MB"), ("2097152", "2 MB"), ("4194304", "4 MB"), ("8388608", "8 MB"), ("4294967295", "Maximum"))
             .Add(R(LocalMachine, MemMgmt, "IOPageLockLimit"), ("default", Del), ("1048576", S("1048576")), ("2097152", S("2097152")),
                 ("4194304", S("4194304")), ("8388608", S("8388608")), ("4294967295", S("4294967295")))
             .With(t => { t.RequiresReboot = true; t.WindowsDefault = "default"; t.Source = Bats + "IOPageLockLimit.bat"; }),
 
         Toggle("intel-ppm", "IntelPPM driver", "Intel processor power management driver. Disabling it is experimental and can cause stutters.",
-                Pages.Windows, Pages.Performance, "Kernel and memory")
+                Pages.Windows, Pages.Performance, "CPU and scheduling")
             .Svc("intelppm", "3", "4")
             .With(t => { t.RequiresReboot = true; t.WindowsDefault = On; t.Compatibility = IntelOnly; t.Source = Bats + "DriverPPM.bat"; }),
 
         Toggle("amd-ppm", "AmdPPM driver", "AMD processor power management driver. Disabling it is experimental and can cause stutters.",
-                Pages.Windows, Pages.Performance, "Kernel and memory")
+                Pages.Windows, Pages.Performance, "CPU and scheduling")
             .Svc("amdppm", "3", "4")
             .With(t => { t.RequiresReboot = true; t.WindowsDefault = On; t.Compatibility = AmdOnly; t.Source = Bats + "DriverPPM.bat"; }),
 
         Toggle("native-nvme", "Native NVMe driver (experimental)",
                 "Turns on the new native Windows NVMe driver. It can stop some systems or SSDs from booting or make them unstable; use at your own risk.",
-                Pages.Windows, Pages.Performance, "Kernel and memory")
+                Pages.Windows, Pages.Performance, "Memory and storage")
             .Reg(LocalMachine, @"SYSTEM\CurrentControlSet\Policies\Microsoft\FeatureManagement\Overrides", "735209102", RegistryValueKind.DWord, "1", null)
             .Reg(LocalMachine, @"SYSTEM\CurrentControlSet\Policies\Microsoft\FeatureManagement\Overrides", "1853569164", RegistryValueKind.DWord, "1", null)
             .Reg(LocalMachine, @"SYSTEM\CurrentControlSet\Policies\Microsoft\FeatureManagement\Overrides", "156965516", RegistryValueKind.DWord, "1", null)
@@ -681,41 +699,41 @@ public static partial class KosCatalog
 
         Choice("win32-priority-separation", "Processor scheduling (Win32PrioritySeparation)",
                 "How long a thread runs before Windows switches to another (the quantum), whether that length varies, and how much longer the program in front runs. On Windows 11, 2 picks the same short, variable quanta with a 3:1 boost as 38. Takes effect right away.",
-                Pages.Windows, Pages.Performance, "Scheduling and MMCSS",
+                Pages.Windows, Pages.Performance, "CPU and scheduling",
                 ("38", "38 · short, variable, 3:1 (KOS)"), ("42", "42 · short, fixed, 3:1"), ("40", "40 · short, fixed, no boost"), ("24", "24 · long, fixed, no boost"), ("2", "2 (Windows)"))
             .Add(R(LocalMachine, @"SYSTEM\CurrentControlSet\Control\PriorityControl", "Win32PrioritySeparation"), ("38", S("38")), ("42", S("42")), ("40", S("40")), ("24", S("24")), ("2", S("2")))
             .With(t => { t.KosDefault = "38"; t.WindowsDefault = "2"; t.Source = @"bin\2\TheKOS_reg.reg (Win32PrioritySeparation)"; }),
 
         Choice("disable-dynamic-tick", "disabledynamictick (BCD)",
                 "Turns off the tickless timer: the clock interrupt keeps firing while the processor idles, for steadier timer behavior at a small cost in idle power.",
-                Pages.Windows, Pages.Performance, "Timers (BCD)", ("unset", Txt.NotConfiguredOption), ("Yes", "Yes (KOS)"), ("No", "No"))
+                Pages.Windows, Pages.Performance, "Timers", ("unset", Txt.NotConfiguredOption), ("Yes", "Yes (KOS)"), ("No", "No"))
             .Add(new BcdSetting("disabledynamictick"), ("unset", Del), ("Yes", S("Yes")), ("No", S("No")))
             .With(t => { t.RequiresReboot = true; t.KosDefault = "Yes"; t.WindowsDefault = "unset"; t.Source = "RunOnce.cmd (bcdedit /set disabledynamictick yes)"; }),
 
         Choice("use-platform-clock", "useplatformclock (BCD)",
                 "Forces HPET as the performance counter. It is slower to read than the processor's own counter (TSC), which games and Windows read constantly; KOS removes it.",
-                Pages.Windows, Pages.Performance, "Timers (BCD)", ("unset", "Not set (KOS)"), ("Yes", "Yes (HPET)"), ("No", "No"))
+                Pages.Windows, Pages.Performance, "Timers", ("unset", "Not set (KOS)"), ("Yes", "Yes (HPET)"), ("No", "No"))
             .Add(new BcdSetting("useplatformclock"), ("unset", Del), ("Yes", S("Yes")), ("No", S("No")))
             .With(t => { t.RequiresReboot = true; t.KosDefault = "unset"; t.WindowsDefault = "unset"; t.Source = "RunOnce.cmd (bcdedit /deletevalue useplatformclock)"; }),
 
         Choice("use-platform-tick", "useplatformtick (BCD)", "Use the RTC as the clock tick source. Don't change it if HPET is disabled in the BIOS.",
-                Pages.Windows, Pages.Performance, "Timers (BCD)", ("unset", Txt.NotConfiguredOption), ("Yes", "Yes (RTC)"), ("No", "No (TSC)"))
+                Pages.Windows, Pages.Performance, "Timers", ("unset", Txt.NotConfiguredOption), ("Yes", "Yes (RTC)"), ("No", "No (TSC)"))
             .Add(new BcdSetting("useplatformtick"), ("unset", Del), ("Yes", S("Yes")), ("No", S("No")))
             .With(t => { t.RequiresReboot = true; t.KosDefault = "unset"; t.Source = Bats + "useplatformtick.cmd; RunOnce.cmd"; }),
 
         Choice("tsc-sync-policy", "tscsyncpolicy (BCD)", "TSC synchronization policy across cores.",
-                Pages.Windows, Pages.Performance, "Timers (BCD)", ("unset", Txt.NotConfiguredOption), ("Enhanced", "Enhanced"), ("Legacy", "Legacy"))
+                Pages.Windows, Pages.Performance, "Timers", ("unset", Txt.NotConfiguredOption), ("Enhanced", "Enhanced"), ("Legacy", "Legacy"))
             .Add(new BcdSetting("tscsyncpolicy"), ("unset", Del), ("Enhanced", S("Enhanced")), ("Legacy", S("Legacy")))
             .With(t => { t.RequiresReboot = true; t.Source = Bats + "Tscsyncpolicy.bat"; }),
 
         Toggle("increase-user-va", "IncreaseUserVA 3072 (BCD)", "Raises the user virtual address space to 3072 MB.",
-                Pages.Windows, Pages.Performance, "Timers (BCD)")
+                Pages.Windows, Pages.Performance, "Memory and storage")
             .Add(new BcdSetting("increaseuserva"), (On, S("3072")), (Off, Del))
             .With(t => { t.RequiresReboot = true; t.WindowsDefault = Off; t.Source = Bats + "Increase VA.bat"; }),
 
         // ======================= WINDOWS › SECURITY =======================
         Toggle("uac", "User Account Control (UAC)", "Confirmation prompts before administrative changes, and file virtualization (luafv).",
-                Pages.Windows, Pages.Security, "Protections")
+                Pages.Windows, Pages.Security, "Windows protections")
             .Reg(LocalMachine, @"Software\Microsoft\Windows\CurrentVersion\Policies\System", "EnableLUA", RegistryValueKind.DWord, "1", "0")
             .Reg(LocalMachine, @"Software\Microsoft\Windows\CurrentVersion\Policies\System", "PromptOnSecureDesktop", RegistryValueKind.DWord, "1", "0")
             .Reg(LocalMachine, @"Software\Microsoft\Windows\CurrentVersion\Policies\System", "ConsentPromptBehaviorAdmin", RegistryValueKind.DWord, "5", "0")
@@ -729,7 +747,7 @@ public static partial class KosCatalog
             }),
 
         Toggle("dep", "Data Execution Prevention (DEP)", "Stops code from running in data memory regions (bcdedit nx).",
-                Pages.Windows, Pages.Security, "Protections")
+                Pages.Windows, Pages.Security, "Exploit mitigations")
             .Add(new BcdSetting("nx"), (On, S("OptIn")), (Off, S("AlwaysOff")))
             .With(t =>
             {
@@ -740,7 +758,7 @@ public static partial class KosCatalog
 
         Toggle("cfg", "Control Flow Guard (CFG)",
                 "System-wide control-flow protection. The Basic profile uses the Windows default; Advanced disables it.",
-                Pages.Windows, Pages.Security, "Protections")
+                Pages.Windows, Pages.Security, "Exploit mitigations")
             .Add(new CfgSetting(), (On, S("on")), (Off, S("off")))
             .Script(On, new ScriptRef(WinFeatures + "CFG Enable-Disable.cmd", "39F5326389E05CED10C29696244648F1241BC7C6E024ADAB109D95DBB8F00A12") { Args = "on" })
             .Script(Off, new ScriptRef(WinFeatures + "CFG Enable-Disable.cmd", "39F5326389E05CED10C29696244648F1241BC7C6E024ADAB109D95DBB8F00A12") { Args = "off" })
@@ -753,7 +771,7 @@ public static partial class KosCatalog
 
         Toggle("process-mitigations", "Process mitigations",
                 "Mitigation masks for dwm.exe, lsass.exe, csrss.exe and seven other Windows processes. The Basic profile removes KOS overrides; Advanced disables them.",
-                Pages.Windows, Pages.Security, "Protections")
+                Pages.Windows, Pages.Security, "Exploit mitigations")
             .Add(new ProcessMitigationsSetting(), (On, S("on")), (Off, S("off")))
             .Script(On, SecurityScript("process", "on")).Script(Off, SecurityScript("process", "off"))
             .With(t =>
@@ -765,7 +783,7 @@ public static partial class KosCatalog
 
         Toggle("spectre-meltdown", "Spectre/Meltdown mitigations",
                 "CPU mitigations controlled by FeatureSettingsOverride. Enabling writes the documented values that turn them on (override 0, mask 3). The KOS Advanced profile disables them only on Intel processors.",
-                Pages.Windows, Pages.Security, "Protections")
+                Pages.Windows, Pages.Security, "Exploit mitigations")
             .Reg(LocalMachine, MemMgmt, "FeatureSettings", RegistryValueKind.DWord, null, "1")
             .Add(R(LocalMachine, MemMgmt, "FeatureSettingsOverride"), (On, Target.SetOrAbsent("0")), (Off, S("3")))
             .Add(R(LocalMachine, MemMgmt, "FeatureSettingsOverrideMask"), (On, Target.SetOrAbsent("3")), (Off, S("3")))
@@ -779,7 +797,7 @@ public static partial class KosCatalog
 
         Toggle("lsa-protection", "LSA protection",
                 "Runs the Local Security Authority (lsass.exe) as a protected process, which blocks credential-dumping tools. Plug-ins that aren't signed for it (some smart card or VPN software) stop loading. A value of 1 (enabled with the UEFI lock) shows as Unknown.",
-                Pages.Windows, Pages.Security, "Protections")
+                Pages.Windows, Pages.Security, "Windows protections")
             .Reg(LocalMachine, @"SYSTEM\CurrentControlSet\Control\Lsa", "RunAsPPL", RegistryValueKind.DWord, "2", "0")
             .With(t =>
             {
@@ -789,7 +807,7 @@ public static partial class KosCatalog
 
         Toggle("sehop", "Exception chain validation (SEHOP)",
                 "Structured Exception Handler Overwrite Protection: blocks exploits that overwrite exception handlers.",
-                Pages.Windows, Pages.Security, "Protections")
+                Pages.Windows, Pages.Security, "Exploit mitigations")
             .Reg(LocalMachine, Kernel, "DisableExceptionChainValidation", RegistryValueKind.DWord, "0", "1")
             .With(t =>
             {
@@ -799,7 +817,7 @@ public static partial class KosCatalog
 
         Toggle("xfg", "eXtended Flow Guard (XFG)",
                 "XFG, the stricter version of Control Flow Guard that also checks the function's type at each indirect call. Off disables it.",
-                Pages.Windows, Pages.Security, "Protections")
+                Pages.Windows, Pages.Security, "Exploit mitigations")
             .Reg(LocalMachine, Kernel, "DisableControlFlowGuardXfg", RegistryValueKind.DWord, "0", "1")
             .With(t =>
             {
@@ -809,7 +827,7 @@ public static partial class KosCatalog
 
         Toggle("cfg-export-suppression", "CFG export suppression",
                 "Control Flow Guard's export suppression: exported functions aren't valid call targets until a program resolves them. Off disables it.",
-                Pages.Windows, Pages.Security, "Protections")
+                Pages.Windows, Pages.Security, "Exploit mitigations")
             .Reg(LocalMachine, Kernel, "DisableControlFlowGuardExportSuppression", RegistryValueKind.DWord, "0", "1")
             .With(t =>
             {
@@ -819,7 +837,7 @@ public static partial class KosCatalog
 
         Toggle("drive-remapping-mitigation", "Drive remapping mitigation",
                 "Stops a program from remapping drive letters to redirect what an elevated process opens. On = the Windows default (absent); off = 0.",
-                Pages.Windows, Pages.Security, "Protections")
+                Pages.Windows, Pages.Security, "Exploit mitigations")
             .Reg(LocalMachine, Kernel, "DriveRemappingMitigation", RegistryValueKind.DWord, null, "0")
             .With(t =>
             {
@@ -830,7 +848,7 @@ public static partial class KosCatalog
         Toggle("driver-blocklist", "Vulnerable driver blocklist",
                 "Blocks drivers Microsoft lists as vulnerable or malicious. Some old hardware and overclocking tools use drivers on the list. " +
                 "So does the KOS sign-in tweak that turns off USB interrupt moderation (XHCI IMOD, through RW): while the blocklist is on, that tweak is skipped.",
-                Pages.Windows, Pages.Security, "Protections")
+                Pages.Windows, Pages.Security, "Windows protections")
             .Reg(LocalMachine, @"SYSTEM\CurrentControlSet\Control\CI\Config", "VulnerableDriverBlocklistEnable", RegistryValueKind.DWord, "1", "0")
             .With(t =>
             {
@@ -839,7 +857,7 @@ public static partial class KosCatalog
             }),
 
         Toggle("firewall", "Windows Firewall", "The Firewall (mpssvc) and Base Filtering Engine (BFE) services.",
-                Pages.Windows, Pages.Security, "Protections")
+                Pages.Windows, Pages.Security, "Firewall")
             .Svc("mpssvc", "2", "4").Svc("BFE", "2", "4")
             .With(t =>
             {
@@ -851,7 +869,7 @@ public static partial class KosCatalog
 
         Toggle("firewall-rules", "Windows Firewall rules",
                 "Whether the default Windows Firewall rules are kept. Advanced clears the rules while leaving the firewall service running. Only the Windows default rules are compared: rules that apps add later don't change the state.",
-                Pages.Windows, Pages.Security, "Protections")
+                Pages.Windows, Pages.Security, "Firewall")
             .Add(new FirewallRulesSetting(), (On, S("on")), (Off, S("off")))
             .Script(On, SecurityScript("firewall", "on")).Script(Off, SecurityScript("firewall", "off"))
             .With(t =>
@@ -919,7 +937,7 @@ public static partial class KosCatalog
 
         Choice("ps-execution-policy", "PowerShell script execution policy",
                 "Which PowerShell scripts can run: Restricted runs none, RemoteSigned needs a signature on scripts downloaded from the internet, Unrestricted runs all of them (asking before downloaded ones). Set for the machine and for this user, whose setting wins.",
-                Pages.Windows, Pages.Security, "Protections", ("Restricted", "Restricted (Windows)"), ("RemoteSigned", "RemoteSigned"), ("Unrestricted", "Unrestricted (KOS)"))
+                Pages.Windows, Pages.Security, "Windows protections", ("Restricted", "Restricted (Windows)"), ("RemoteSigned", "RemoteSigned"), ("Unrestricted", "Unrestricted (KOS)"))
             .Add(Sz(LocalMachine, PsPolicy, "ExecutionPolicy"), ("Restricted", Target.SetOrAbsent("Restricted")), ("RemoteSigned", S("RemoteSigned")), ("Unrestricted", S("Unrestricted")))
             .Add(Sz(CurrentUser, PsPolicy, "ExecutionPolicy"), ("Restricted", Target.SetOrAbsent("Restricted")), ("RemoteSigned", Target.SetOrAbsent("RemoteSigned")), ("Unrestricted", Target.SetOrAbsent("Unrestricted")))
             .With(t =>
@@ -953,7 +971,7 @@ public static partial class KosCatalog
 
         Toggle("kernel-shadow-stacks", "Kernel-mode hardware-enforced stack protection",
                 "Uses CPU shadow stacks to protect kernel return addresses. Works only with memory integrity (Core isolation) on and an Intel 11th gen / AMD Zen 3 or newer CPU. Some anti-cheats and older drivers are incompatible.",
-                Pages.Windows, Pages.Security, "Virtualization")
+                Pages.Windows, Pages.Security, "Exploit mitigations")
             .Reg(LocalMachine, @"SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\KernelShadowStacks", "Enabled", RegistryValueKind.DWord, "1", "0")
             .With(t =>
             {
@@ -963,7 +981,7 @@ public static partial class KosCatalog
 
         Toggle("login-screen-command-prompt", "Command prompt on sign-in screen (Utilman)",
                 "Replaces the accessibility app on the sign-in screen with cmd.exe. Anyone at the computer can open a SYSTEM command prompt before signing in.",
-                Pages.Windows, Pages.Security, "Protections")
+                Pages.Windows, Pages.Security, "Windows protections")
             .Add(new UtilmanSetting(), (On, S("on")), (Off, S("off")))
             .Script(On, new ScriptRef(WinFeatures + "Utilman Enable-Disable.cmd", "2D3461ACC52C68D24797EFD8D342BAA84F251028D92EFB972ADE29D886EB91B5") { Args = "on", Timeout = TimeSpan.FromMinutes(15) })
             .Script(Off, new ScriptRef(WinFeatures + "Utilman Enable-Disable.cmd", "2D3461ACC52C68D24797EFD8D342BAA84F251028D92EFB972ADE29D886EB91B5") { Args = "off", Timeout = TimeSpan.FromMinutes(15) })
@@ -993,14 +1011,14 @@ public static partial class KosCatalog
             .With(t => { t.RequiresReboot = true; t.Source = WinFeatures + "Bluetooth Enable-Disable.bat; bin\\2\\DeviceProfile.cmd"; }),
 
         Toggle("gdid", "GDID tracking",
-                "Connected Devices Platform and Microsoft account services (CDPSvc, wlidsvc), and domain blocking in the hosts file. With tracking disabled, Microsoft Store sign-in and downloads can fail.",
-                Pages.Windows, Pages.Connectivity, "Online services")
+                "Connected Devices Platform and Microsoft account services (CDPSvc, wlidsvc), and domain blocking in the hosts file. KOS leaves it on: the Microsoft account sign-in (Microsoft Store, Xbox, Game Pass, the Minecraft launcher) needs wlidsvc. Disabled, those sign-ins and Store downloads can fail.",
+                Pages.Windows, Pages.Connectivity, "Privacy")
             .Add(Sz(LocalMachine, @"SOFTWARE\TheKOS", "GDIDTRACKING"), (On, S("0")), (Off, S("1")))
             .Svc("CDPSvc", "2", "4").Svc("CDPUserSvc", "2", "4", optional: true).Svc("wlidsvc", "3", "4")
             .Add(new HostsGdidSetting(), (On, S("0")), (Off, S("1")))
             .Script(On, new ScriptRef(WinFeatures + "GDID-Tracking.cmd", "BFC5823C5E2990140DF40664E1E64A8DC7D82DA4C84537AAA95F05F50F6D858B") { Args = "2" })
             .Script(Off, new ScriptRef(WinFeatures + "GDID-Tracking.cmd", "BFC5823C5E2990140DF40664E1E64A8DC7D82DA4C84537AAA95F05F50F6D858B") { Args = "1" })
-            .With(t => { t.RequiresReboot = true; t.KosDefault = Off; t.Source = WinFeatures + "GDID-Tracking.cmd; RunOnce.cmd"; }),
+            .With(t => { t.RequiresReboot = true; t.KosDefault = On; t.WindowsDefault = On; t.Source = WinFeatures + "GDID-Tracking.cmd; RunOnce.cmd"; }),
 
         Toggle("remote-desktop", "Remote Desktop",
                 "Lets other computers connect to this one with Remote Desktop (Pro editions and higher). Also sets the Remote Desktop services to manual (on) or disabled (off) and turns the Remote Desktop firewall rules on or off.",
@@ -1016,19 +1034,19 @@ public static partial class KosCatalog
 
         Toggle("network-throttling", "Network throttling (MMCSS)",
                 "Limits how many network packets per millisecond other traffic gets while multimedia plays (NetworkThrottlingIndex 10). Off removes the limit; on some network drivers that raises DPC latency, so test it.",
-                Pages.Windows, Pages.Connectivity, "Network")
+                Pages.Windows, Pages.Connectivity, "Network tuning")
             .Add(R(LocalMachine, Mm, "NetworkThrottlingIndex"), (On, Target.SetOrAbsent("10")), (Off, S("4294967295")))
             .With(t => { t.RequiresReboot = true; t.WindowsDefault = On; t.Source = "NetworkThrottlingIndex"; }),
 
         Toggle("nagle", "Nagle's algorithm",
                 "Groups small TCP packets before sending them. Off sends them at once (TcpAckFrequency and TCPNoDelay on every network interface), which can lower latency in some games at the cost of a little bandwidth; test it.",
-                Pages.Windows, Pages.Connectivity, "Network")
+                Pages.Windows, Pages.Connectivity, "Network tuning")
             .Add(new NagleSetting(), (On, S("1")), (Off, S("0")))
             .With(t => { t.RequiresReboot = true; t.WindowsDefault = On; t.Source = Bats + "Nagle Algorithm.bat"; }),
 
         Toggle("network-power-management", "Network power management",
                 "Power management of the Windows connection manager (fDisablePowerManagement policy) and the DNS client's DisableCoalescing value. Off keeps Windows from saving power on network connections. Each adapter's own power options are on the Network page.",
-                Pages.Windows, Pages.Connectivity, "Network")
+                Pages.Windows, Pages.Connectivity, "Network tuning")
             .Add(R(LocalMachine, @"SOFTWARE\Policies\Microsoft\Windows\WcmSvc\Local", "fDisablePowerManagement"), (On, Del), (Off, S("1")))
             .Add(R(LocalMachine, @"SOFTWARE\Policies\Microsoft\Windows\WcmSvc\GroupPolicy", "fDisablePowerManagement"), (On, Del), (Off, S("1")))
             .Add(R(LocalMachine, @"SYSTEM\CurrentControlSet\Services\Dnscache\Parameters", "DisableCoalescing"), (On, Del), (Off, S("1")))
@@ -1037,18 +1055,18 @@ public static partial class KosCatalog
 
         Toggle("wpad", "Proxy auto-discovery (WPAD)",
                 "Windows looks for a proxy configuration on the local network (WinHTTP auto-proxy). Off stops those lookups and closes the known spoofed-proxy attack; only company networks that hand out their proxy this way need it.",
-                Pages.Windows, Pages.Connectivity, "Network")
+                Pages.Windows, Pages.Connectivity, "Network services")
             .Reg(LocalMachine, @"SOFTWARE\Microsoft\Windows\CurrentVersion\Internet Settings\WinHttp", "DisableWpad", RegistryValueKind.DWord, null, "1")
             .With(t => { t.RequiresReboot = true; t.KosDefault = Off; t.WindowsDefault = On; t.Source = "RunOnce.cmd (DisableWpad)"; }),
 
         Toggle("dns-negative-cache", "Short cache for failed DNS lookups",
                 "A name that failed to resolve is remembered for 5 s instead of minutes (MaxNegativeCacheTtl), so a site or game server that was briefly unreachable works again right away. Off = the Windows default.",
-                Pages.Windows, Pages.Connectivity, "Network")
+                Pages.Windows, Pages.Connectivity, "Network services")
             .Reg(LocalMachine, @"SYSTEM\CurrentControlSet\Services\Dnscache\Parameters", "MaxNegativeCacheTtl", RegistryValueKind.DWord, "5", null)
             .With(t => { t.KosDefault = On; t.WindowsDefault = Off; t.Source = "RunOnce.cmd (MaxNegativeCacheTtl)"; }),
         Toggle("vpn-services", "VPN services",
                 "The Windows VPN stack (Remote Access, IKE and AuthIP, IPsec Policy Agent, SSTP) that the built-in VPN client and some VPN apps need. Enabling also turns on the firewall, DHCP, DNS and network awareness services they depend on; disabling leaves those alone.",
-                Pages.Windows, Pages.Connectivity, "Network")
+                Pages.Windows, Pages.Connectivity, "Network services")
             .SvcList(new[] { "RasMan", "RasAuto", "IKEEXT", "PolicyAgent", "SstpSvc", "RASSSTP" }, "3", "4")
             .With(t => { foreach (var (svc, start) in new[] { ("BFE", "2"), ("mpssvc", "2"), ("Dhcp", "2"), ("Dnscache", "2"), ("NlaSvc", "2"), ("netprofm", "3") })
                 t.AddSpec(RegistrySetting.ServiceStart(svc), true, (On, S(start)), (Off, Any)); })

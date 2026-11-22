@@ -59,7 +59,7 @@ public sealed class MainViewModel : ObservableObject
                 new NetworkPageViewModel(),
                 new PeripheralsPageViewModel(), // HID mice, keyboards and other devices: the list and each one's collections
                 new AudioPageViewModel()), // playback and recording devices: default, volume, format, exclusive mode, enhancements
-            new NavListViewModel(select, Txt.NavSystem, new StartupPageViewModel(), new ServicesPageViewModel(), new DevicesPageViewModel(),
+            new NavListViewModel(select, Txt.NavSystem, new StartupPageViewModel(), new ServicesPageViewModel(ItemsOf(Core.Catalog.Pages.Services)), new DevicesPageViewModel(),
                 new BiosPageViewModel()), // BIOS settings through SCEWIN, with a backup on every write
             new NavListViewModel(select, Txt.NavSoftware, setup,
                 new WindowsUpdatePageViewModel(), // search, install and hide updates while Windows Update stays off

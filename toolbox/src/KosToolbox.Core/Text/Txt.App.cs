@@ -52,7 +52,11 @@ public static partial class Txt
     public const string PageWindows = "Windows", PageWindowsSubtitle = "Performance, gaming, visuals, system, peripherals, security and connectivity.";
     public const string PageStartup = "Startup", PageStartupSubtitle = "What starts with Windows, by source. Disabling keeps the entry so it can be enabled again.";
     public const string PagePower = "Power", PagePowerSubtitle = "KOS power profiles and the power plan editor.";
-    public const string PageServices = "Services", PageServicesSubtitle = "Service snapshots: capture, compare and restore startup types.";
+    public const string PageServices = "Services", PageServicesSubtitle = "Optional services and snapshots: capture, compare and restore startup types.";
+    public const string TabServiceOptions = "Options", TabServiceSnapshots = "Snapshots";
+    public const string ServiceOptionsExplanation = "Windows services and drivers that KOS leaves as a choice. The start type applies after a restart; Windows default marks what a clean Windows uses.";
+    public const string StartAutomatic = "Automatic", StartManual = "Manual", StartSystem = "On (system start)", StartWindowsDefault = " (Windows default)";
+    public const string ServiceGroupAccounts = "Accounts and sign-in", ServiceGroupMedia = "Media", ServiceGroupDevices = "Devices", ServiceGroupPower = "Power (laptops)";
     public const string PageTools = "Tools", PageToolsSubtitle = "KOS programs, maintenance and fixes.";
     public const string PageSettings = "Settings", PageSettingsSubtitle = "Preferences, logs and information about the toolbox.";
 

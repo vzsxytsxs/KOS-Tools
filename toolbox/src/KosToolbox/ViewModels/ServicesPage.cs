@@ -44,8 +44,11 @@ public sealed class ServicesPageViewModel : PageViewModel
     string? _message, _loadError, _rowsFor;
     int _serviceCount, _checked, _legacy;
 
-    public ServicesPageViewModel() : base("services", Txt.PageServices, "", Txt.PageServicesSubtitle)
+    public ServicesPageViewModel(IEnumerable<ICatalogItem> options) : base("services", Txt.PageServices, "", Txt.PageServicesSubtitle)
     {
+        Options = options.GroupBy(i => i.Group ?? "").Select(g => new GroupViewModel(g.Key, g.ToList())).ToList();
+        Tabs = new[] { new OptionItem("options", Txt.TabServiceOptions) { IsSelected = true }, new OptionItem("snapshots", Txt.TabServiceSnapshots) };
+        SelectTabCommand = new RelayCommand(p => SelectTab((string)p!));
         NewSnapshotCommand = new AsyncCommand(NewSnapshotAsync, () => !_busy);
         RestoreCommand = new AsyncCommand(RestoreAsync, () => !_busy && _checked > 0);
         CheckAllCommand = new RelayCommand(() => Check(true), () => !_busy && _rows.Count > 0);
@@ -56,6 +59,19 @@ public sealed class ServicesPageViewModel : PageViewModel
     }
 
     public override bool ScrollsItself => true;
+    /// <summary>Options tab: the catalog's services page (start type of services KOS leaves as a choice).</summary>
+    public IReadOnlyList<GroupViewModel> Options { get; }
+    public IReadOnlyList<OptionItem> Tabs { get; }
+    public ICommand SelectTabCommand { get; }
+    public bool ShowOptions => Tabs[0].IsSelected;
+    public bool ShowSnapshots => Tabs[1].IsSelected;
+
+    void SelectTab(string key)
+    {
+        foreach (var t in Tabs) t.IsSelected = t.Key == key;
+        Raise(nameof(ShowOptions));
+        Raise(nameof(ShowSnapshots));
+    }
     public ObservableCollection<SnapshotInfo> Snapshots { get; } = new();
     public ListCollectionView View { get => _view; private set => Set(ref _view, value); }
     public ICommand NewSnapshotCommand { get; }
@@ -99,6 +115,7 @@ public sealed class ServicesPageViewModel : PageViewModel
 
     public override async Task RefreshAsync()
     {
+        foreach (var item in Options.SelectMany(g => g.Items)) await item.RefreshAsync();
         var keep = _selected?.Name;
         var (list, legacy) = await Task.Run(() => (ServiceSnapshots.List(), ServiceSnapshots.LegacyFiles().Count));
         Snapshots.Clear();
