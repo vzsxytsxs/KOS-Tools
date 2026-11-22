@@ -80,7 +80,7 @@ public static class KosFirewall
     public static string? BfeProblem()
     {
         using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\BFE");
-        if (key?.GetValue("Start") is 4) return "The Base Filtering Engine service is disabled (Windows › Security › Windows Firewall turned off). Turn it on and restart first.";
+        if (key?.GetValue("Start") is 4) return "The Base Filtering Engine service is disabled (Windows › Security › Firewall set to Disabled). Set it to Enabled and restart first.";
         return ServiceControl.State("BFE") == ServiceControl.StateRunning ? null : "The Base Filtering Engine service isn't running.";
     }
 
@@ -131,19 +131,25 @@ public static class KosFirewall
     /// then every KOS filter, the sublayer and the provider are deleted. Returns how many filters there were. It's the way back, so
     /// it needs neither the lock nor a readable config: with the config unreadable every profile goes back on and the config is
     /// left as it is (saving would drop its rules). Callers read Windows Firewall back to say what is on.
+    /// <paramref name="strict"/> (the Windows page's Firewall choice, which disables BFE right after): takes the lock like any
+    /// change, a profile that doesn't come back on throws before anything is removed, and a filter left in the engine throws.
     /// </summary>
-    public static int TurnOff(bool restoreWindows)
+    public static int TurnOff(bool restoreWindows, bool strict = false)
     {
-        using var hold = Hold(required: false);
+        using var hold = Hold(required: strict);
         FirewallConfig? config;
         try { config = Load(); }
         catch (Exception ex) { Log.Error("KOS Firewall: turning off with the config unreadable; every Windows Firewall profile goes back on", ex); config = null; }
         var restore = config?.RestoreProfiles ?? [.. WindowsFirewall.Profiles];
         if (restoreWindows && restore.Count > 0)
             try { WindowsFirewall.Set(on: true, restore); }
-            catch (Exception ex) { Log.Error("Turning Windows Firewall back on", ex); }
+            catch (Exception ex) when (!strict) { Log.Error("Turning Windows Firewall back on", ex); }
         int removed;
-        using (var s = WfpSession.Open(dynamic: false)) removed = s.RemoveEverything();
+        using (var s = WfpSession.Open(dynamic: false))
+        {
+            removed = s.RemoveEverything();
+            if (strict && s.Filters().Count is > 0 and var left) throw new InvalidOperationException($"KOS Firewall: {left} filter(s) are still in the filter engine.");
+        }
         if (config is not null && (config.Enabled || config.RestoreProfiles.Count > 0))
         {
             config.Enabled = false;

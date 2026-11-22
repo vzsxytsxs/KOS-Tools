@@ -9,7 +9,8 @@
 //   and the taskbar are left alone;
 // - each window by its class, as it's created (a WinEvent hook inside this process only): title bar (DWM attribute 20), tree and
 //   list views, headers, tabs, status bars, edits, combo and list boxes, buttons, scroll bars, rebars, toolbars, the MDI client,
-//   dialogs (WM_CTLCOLOR*) and the menu bar (the undocumented UAH messages).
+//   dialogs (WM_CTLCOLOR*) and the menu bar (the undocumented UAH messages). Windows Forms controls (managed snap-ins) and what's
+//   inside them stay light: they paint with colors this DLL can't reach.
 // Nothing else: no other process is touched, and no API is hooked except GetSysColor and GetSysColorBrush in the DarkTools apps
 // (import table pointers, no code patched). The DLL stays loaded until the app exits (its windows use it).
 #include <windows.h>
@@ -489,6 +490,21 @@ namespace
     void Probe(const char*, HWND) {}
 #endif
 
+    /// A Windows Forms control (the managed snap-ins in consoles, e.g. Task Scheduler's task list and details: classes
+    /// "WindowsForms10.<native class>.app..."), or a window inside one. Forms paints its panels, labels and check boxes itself with
+    /// the system colors read through .NET, which this DLL doesn't reach: darkening only some of its controls left dark headers with
+    /// black text and dark fields on white panels. Left light as a whole; a top-level form gets only the dark title bar.
+    bool InWinForms(HWND h)
+    {
+        const auto desktop = GetDesktopWindow();
+        for (auto w = h; w && w != desktop; w = GetAncestor(w, GA_PARENT))
+        {
+            wchar_t cls[16] = {};
+            if (GetClassNameW(w, cls, 16) == 15 && CompareStringOrdinal(cls, 15, L"WindowsForms10.", 15, TRUE) == CSTR_EQUAL) return true;
+        }
+        return false;
+    }
+
     void ParentColors(HWND h)
     {
         if (auto parent = GetParent(h)) SetWindowSubclass(parent, FrameProc, FrameId, 0);
@@ -510,6 +526,16 @@ namespace
         if (const auto parent = GetParent(h); parent && GetClassNameW(parent, cls, 64) && Is(cls, L"CtrlNotifySink")) return;
         GetClassNameW(h, cls, 64);
         const bool top = GetAncestor(h, GA_ROOT) == h;
+        if (InWinForms(h))
+        {
+            if (top)
+            {
+                BOOL dark = TRUE;
+                DwmSetWindowAttribute(h, 20, &dark, sizeof dark);
+                SetWindowPos(h, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+            }
+            return;
+        }
         if (g_allowDark) g_allowDark(h, TRUE);
         if (top || Is(cls, L"#32770"))
         {

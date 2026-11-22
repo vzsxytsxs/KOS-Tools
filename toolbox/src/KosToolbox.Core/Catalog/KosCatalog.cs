@@ -36,6 +36,8 @@ public static class Pages
 /// </summary>
 public static partial class KosCatalog
 {
+    /// <summary>The firewall choice's KOS Firewall option.</summary>
+    public const string KosFirewallOption = "kos";
     const string WinFeatures = @"Setup\3-Support\Windows Features\";
     const string Bats = @"Setup\4-Tweaking\Bats\";
     const string Fixes = @"Setup\3-Support\Troubleshooting - Fixes\";
@@ -849,15 +851,21 @@ public static partial class KosCatalog
                 t.SecurityNote = "Without the blocklist, malware running as administrator can load a known vulnerable driver to take over the kernel.";
             }),
 
-        Toggle("firewall", "Windows Firewall", "The Firewall (mpssvc) and Base Filtering Engine (BFE) services.",
-                Pages.Windows, Pages.Security, "Firewall")
-            .Svc("mpssvc", "2", "4").Svc("BFE", "2", "4")
+        Choice("firewall", "Firewall",
+                "Which firewall runs. Enabled: Windows Firewall (the mpssvc and Base Filtering Engine services). KOS Firewall: KOS's own rules in the Base Filtering Engine, with the Windows Firewall profiles turned off (rules and popups in the KOS Firewall app). Disabled: no firewall, both services off.",
+                Pages.Windows, Pages.Security, "Firewall", (On, Txt.Enabled), (KosFirewallOption, "KOS Firewall"), (Off, Txt.Disabled))
+            // KOS Firewall first: turned off before the services change, so its filters never stay behind a disabled BFE.
+            .Add(new KosFirewallSetting(), (On, S("off")), (KosFirewallOption, S("on")), (Off, S("off")))
+            .Add(RegistrySetting.ServiceStart("mpssvc"), (On, S("2")), (KosFirewallOption, S("2")), (Off, S("4")))
+            .Add(RegistrySetting.ServiceStart("BFE"), (On, S("2")), (KosFirewallOption, S("2")), (Off, S("4")))
             .With(t =>
             {
-                t.RequiresReboot = true; t.LessSecureOption = Off; t.Source = WinFeatures + "Firewall Enable-Disable.bat";
+                t.RequiresReboot = true; t.LessSecureOption = Off; t.Source = WinFeatures + "Firewall Enable-Disable.bat; KOS Firewall";
                 t.SecurityNote = "Without a firewall, services that listen on the network are exposed. Disabling BFE also affects VPNs and Internet Connection Sharing.";
-                // KOS Firewall's filters live in BFE: disabling it under them would leave the PC with no firewall at all.
-                t.Refuse = o => o != On && Firewall.KosFirewall.IsOn() ? Txt.FirewallToggleRefused : null;
+                // KOS Firewall needs the Base Filtering Engine running. Only the options are applied: a custom restore could combine
+                // KOS Firewall on with BFE disabled (each value alone is one an option writes).
+                t.Refuse = o => o == KosFirewallOption ? Firewall.KosFirewall.BfeProblem() : null;
+                t.Restorable = false;
             }),
 
         Toggle("firewall-rules", "Windows Firewall rules",

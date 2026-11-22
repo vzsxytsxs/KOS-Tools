@@ -202,20 +202,24 @@ public class EngineTests : IDisposable
         Assert.Equal("1", a.Value);
     }
 
-    /// <summary>The Windows Firewall toggle's Off (it disables BFE) is refused while KOS Firewall is on, in the elevated process too. Validation only: nothing is applied.</summary>
+    /// <summary>
+    /// The firewall choice turns KOS Firewall off before the services change (Off no longer refused while it's on), never restores
+    /// custom values (KOS Firewall on with BFE disabled), and the Startup page and snapshot restores still refuse BFE disabled under it. Validation only.
+    /// </summary>
     [Fact]
-    public void FirewallToggleOffRefusedWhileKosFirewallOn()
+    public void FirewallChoiceWithKosFirewallOn()
     {
         var saved = KosToolbox.Core.Firewall.KosFirewall.IsOn;
         try
         {
             KosToolbox.Core.Firewall.KosFirewall.IsOn = () => true;
             var tweak = KosCatalog.Find("firewall")!;
-            Assert.Equal(Txt.FirewallToggleRefused, tweak.Refuse!(Tweak.Off));
-            Assert.NotNull(tweak.Refuse(null));
+            Assert.Equal(new[] { Tweak.On, KosCatalog.KosFirewallOption, Tweak.Off }, tweak.Options.Select(o => o.Key));
+            Assert.IsType<KosToolbox.Core.Settings.KosFirewallSetting>(tweak.Specs[0].Setting); // written first
+            Assert.Null(tweak.Refuse!(Tweak.Off));
+            Assert.False(tweak.Restorable);
             Assert.Null(tweak.Refuse(Tweak.On));
-            var ex = Assert.Throws<InvalidOperationException>(() => new ElevatedJob { TweakId = "firewall", Option = Tweak.Off }.Validate());
-            Assert.Equal(Txt.FirewallToggleRefused, ex.Message);
+            new ElevatedJob { TweakId = "firewall", Option = Tweak.Off }.Validate();
             new ElevatedJob { TweakId = "firewall", Option = Tweak.On }.Validate();
             // The Startup page and a service snapshot restore ask the same: BFE disabled, nothing else.
             Assert.Equal(Txt.FirewallToggleRefused, KosToolbox.Core.Firewall.KosFirewall.ServiceStartRefused("bfe", 4));
