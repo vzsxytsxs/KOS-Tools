@@ -1,4 +1,5 @@
 using KosToolbox.Core.Peripherals;
+using KosToolbox.Core.Peripherals.AttackShark;
 using KosToolbox.Core.Peripherals.Batteries;
 using KosToolbox.Core.Peripherals.Hid;
 using KosToolbox.Core.Peripherals.Razer;
@@ -44,9 +45,11 @@ internal sealed class GamemodePeripheralHost
                 Write(drivers, new GamemodePeripheralEntry
                 {
                     VendorId = e.VendorId, ProductId = e.ProductId, Name = e.Name,
-                    Dpi = b.Dpi is null ? null : e.Dpi, PollingHz = b.PollingHz is null ? null : e.PollingHz,
-                    Brightness = b.Brightness is null && b.KeyboardLight is null ? null : e.Brightness,
-                    Effect = b.Effect is null && b.KeyboardLight is null ? null : e.Effect, Color = e.Color,
+                    Dpi = b.Dpi is null && b.MouseDpiReport is null ? null : e.Dpi, PollingHz = b.PollingHz is null ? null : e.PollingHz,
+                    Brightness = b.Brightness is null && b.KeyboardLight is null && b.MouseLightReport is null ? null : e.Brightness,
+                    Effect = b.Effect is null && b.KeyboardLight is null && b.MouseLightReport is null ? null : e.Effect, Color = e.Color,
+                    AngleSnap = b.MouseDpiReport is null ? null : e.AngleSnap, Ripple = b.MouseDpiReport is null ? null : e.Ripple,
+                    DebounceMs = b.MouseLightReport is null ? null : e.DebounceMs,
                     RapidTrigger = b.KeyboardSwitches is null ? null : e.RapidTrigger, RapidTriggerMm = e.RapidTriggerMm,
                     LightBar = b.LightBar is null ? null : e.LightBar,
                 }, $"gamemode values for {e.Name}");
@@ -110,6 +113,14 @@ internal sealed class GamemodePeripheralHost
             if (e.RapidTrigger is not null) b.KeyboardSwitches = r.Columns;
             return b;
         }
+        if (d is AttackSharkDriver x)
+        {
+            // Every write is stored: the whole reports go back as they were (the DPI stays in its report, so b.Dpi isn't used).
+            b.Dpi = null;
+            if (e.Dpi is not null || e.AngleSnap is not null || e.Ripple is not null) b.MouseDpiReport = x.Raw(AttackSharkCodec.Dpi);
+            if (e.Brightness is not null || e.Effect is not null || e.DebounceMs is not null) b.MouseLightReport = x.Raw(AttackSharkCodec.Light);
+            return b;
+        }
         b.Brightness = e.Brightness is null ? null : LiveBrightness(d);
         if (e.Effect is not null && LiveLighting(d) is { Effect: not LightingEffect.Other } l) (b.Effect, b.Color) = (l.Effect, l.Color);
         return b;
@@ -125,6 +136,29 @@ internal sealed class GamemodePeripheralHost
     {
         try { return d.HasLiveBrightness ? d.ReadLiveBrightness() : null; }
         catch (Exception ex) when (ex is PeripheralException or System.ComponentModel.Win32Exception or IOException or TimeoutException) { return null; }
+    }
+
+    /// <summary>
+    /// The Attack Shark X11 (every write stored, so only what differs): the saved reports as they were (gamemode off), else the active
+    /// stage's DPI, angle snap, ripple, the light (off, or an effect and colour) and key response.
+    /// </summary>
+    static void WriteAttackShark(AttackSharkDriver x, PeripheralState now, GamemodePeripheralEntry e)
+    {
+        if (e.MouseDpiReport is { } dpi) { if (x.Raw(AttackSharkCodec.Dpi) is not { } cur || !cur.AsSpan().SequenceEqual(dpi)) x.Restore(dpi); }
+        else
+        {
+            if (e.Dpi is { } v && now.Dpi?.X != v) x.SetDpi(v, v);
+            if (e.AngleSnap is { } a && x.Extras?.AngleSnap != a) x.SetAngleSnap(a);
+            if (e.Ripple is { } rp && x.Extras?.Ripple != rp) x.SetRipple(rp);
+        }
+        if (e.MouseLightReport is { } light) { if (x.Raw(AttackSharkCodec.Light) is not { } cur || !cur.AsSpan().SequenceEqual(light)) x.Restore(light); }
+        else
+        {
+            if (e.Brightness == 0) { if (now.Lighting?.Effect != LightingEffect.Off) x.SetLighting(LightingEffect.Off, 0); }
+            else if (e.Effect is { } fx && (now.Lighting?.Effect != fx || fx is LightingEffect.Static or LightingEffect.Breathing && now.Lighting?.Color != e.Color))
+                x.SetLighting(fx, e.Color ?? 0xFFFFFF);
+            if (e.DebounceMs is { } ms && x.Extras?.DebounceMs != ms) x.SetDebounce(ms);
+        }
     }
 
     /// <summary>
@@ -157,6 +191,7 @@ internal sealed class GamemodePeripheralHost
             if (e.Dpi is { } dpi && now.Dpi?.X != dpi && d.HasLiveDpi && d.Writable.Contains(PeripheralSetting.Dpi)) d.SetDpiLive(dpi, dpi);
             if (e.PollingHz is { } hz && now.Polling?.Hz != hz && d.Writable.Contains(PeripheralSetting.PollingRate)) d.SetPollingRate(hz);
             if (d is RoyuanDriver r) WriteKeyboard(r, now, e);
+            else if (d is AttackSharkDriver x) WriteAttackShark(x, now, e);
             else if (d is PlayStationDriver ps)
             {
                 // Sent every time: the controller can't report its light bar, so there's nothing to compare it with

@@ -22,13 +22,16 @@ public sealed class MouseTestViewModel : ObservableObject
 {
     enum Mode { Idle, ArmedCollect, ArmedMeasure, Collecting, Measuring, Logging }
 
-    readonly DispatcherTimer _live = new() { Interval = TimeSpan.FromMilliseconds(250) };
+    // Nothing is drawn or computed while recording: the raw reports arrive on the same thread as the screen, and every update
+    // (statistics, a repainted list) delayed them by several ms every 250 ms, which looked like a periodic mouse fault.
     List<MouseSample> _samples = new();
     RawMouse? _raw;
     Mode _mode;
     long _start;
     double? _cpi;
-    string _distance = "10", _status = Txt.MouseIdle;
+    string _distance = "10", _status = Txt.MouseIdle, _rangeStart = "", _rangeEnd = "", _rangeNote = "";
+    bool _hideOutliers = true;
+    double _yMin = double.NaN, _yMax = double.NaN;
     Choice<MouseGraph> _graph;
     Choice<PlotStyle> _style;
     IReadOnlyList<IReadOnlyList<Point>>? _series;
@@ -44,7 +47,7 @@ public sealed class MouseTestViewModel : ObservableObject
             new("X vs. Y (path)", MouseGraph.XvsY),
         };
         Styles = new Choice<PlotStyle>[] { new("Dots", PlotStyle.Dots), new("Lines", PlotStyle.Lines), new("Stems", PlotStyle.Stem) };
-        _graph = Graphs[0];
+        _graph = Graphs[1]; // frequency vs. time, MouseTester's own first graph
         _style = Styles[0];
         MeasureCommand = new RelayCommand(() => Arm(Mode.ArmedMeasure), () => _mode == Mode.Idle);
         CollectCommand = new RelayCommand(() => Arm(Mode.ArmedCollect), () => _mode == Mode.Idle);
@@ -52,7 +55,6 @@ public sealed class MouseTestViewModel : ObservableObject
         CancelCommand = new RelayCommand(Stop, () => _mode is Mode.ArmedCollect or Mode.ArmedMeasure);
         SaveCommand = new RelayCommand(Save, () => _mode == Mode.Idle && _samples.Count > 0);
         LoadCommand = new RelayCommand(Load, () => _mode == Mode.Idle);
-        _live.Tick += (_, _) => ShowStats();
     }
 
     public IReadOnlyList<Choice<MouseGraph>> Graphs { get; }
@@ -63,6 +65,14 @@ public sealed class MouseTestViewModel : ObservableObject
     public ICommand CancelCommand { get; }
     public ICommand SaveCommand { get; }
     public ICommand LoadCommand { get; }
+    /// <summary>Data points to show and measure (1-based, both ends included); empty = from the first / to the last.</summary>
+    public string RangeStart { get => _rangeStart; set { if (Set(ref _rangeStart, value ?? "")) Refresh(); } }
+    public string RangeEnd { get => _rangeEnd; set { if (Set(ref _rangeEnd, value ?? "")) Refresh(); } }
+    public bool HideOutliers { get => _hideOutliers; set { if (Set(ref _hideOutliers, value)) Plot(); } }
+    public double YMin { get => _yMin; private set => Set(ref _yMin, value); }
+    public double YMax { get => _yMax; private set => Set(ref _yMax, value); }
+    public string RangeNote { get => _rangeNote; private set => Set(ref _rangeNote, value); }
+    public bool CanHideOutliers => _graph.Value is MouseGraph.Interval or MouseGraph.Frequency;
     public string Distance { get => _distance; set => Set(ref _distance, value ?? ""); }
     public string Status { get => _status; private set => Set(ref _status, value); }
     public string LogText => _mode == Mode.Logging ? Txt.MouseLogStop : Txt.MouseLog;
@@ -104,15 +114,17 @@ public sealed class MouseTestViewModel : ObservableObject
         }
         _mode = mode;
         if (mode == Mode.Logging) Begin();
-        Status = mode switch { Mode.ArmedCollect => Txt.MouseArmedCollect, Mode.ArmedMeasure => Txt.MouseArmedMeasure(_distance), _ => Txt.MouseLogging };
+        Status = mode switch { Mode.ArmedCollect => Txt.MouseArmedCollect, Mode.ArmedMeasure => Txt.MouseArmedMeasure(_distance), _ => Txt.MouseRecordingNoLive };
         Changed();
     }
 
     void Begin()
     {
-        _samples = new List<MouseSample>(16384);
+        _samples = new List<MouseSample>(1 << 18); // room for minutes at 1 kHz: the list never grows (a copy of it would stall the reports)
         _start = 0;
-        _live.Start();
+        RangeStart = RangeEnd = "";
+        Series = null;
+        Stats = Array.Empty<InfoRow>();
     }
 
     const ushort LeftDown = 0x0001, LeftUp = 0x0002;
@@ -123,7 +135,7 @@ public sealed class MouseTestViewModel : ObservableObject
         {
             _mode = _mode == Mode.ArmedCollect ? Mode.Collecting : Mode.Measuring;
             Begin();
-            Status = _mode == Mode.Measuring ? Txt.MouseMeasuring : Txt.MouseCollecting;
+            Status = _mode == Mode.Measuring ? Txt.MouseMeasuring : Txt.MouseRecordingNoLive;
         }
         if (_mode is Mode.Collecting or Mode.Measuring or Mode.Logging && (dx != 0 || dy != 0))
         {
@@ -150,7 +162,6 @@ public sealed class MouseTestViewModel : ObservableObject
     /// <summary>Stops listening (page hidden, Cancel, end of a recording).</summary>
     public void Stop()
     {
-        _live.Stop();
         _raw?.Dispose();
         _raw = null;
         if (_mode is Mode.ArmedCollect or Mode.ArmedMeasure) Status = Txt.MouseIdle;
@@ -164,9 +175,28 @@ public sealed class MouseTestViewModel : ObservableObject
         CommandManager.InvalidateRequerySuggested();
     }
 
+    /// <summary>The data points inside the range typed (all of them when it is empty or doesn't make sense).</summary>
+    List<MouseSample> Visible()
+    {
+        int.TryParse(_rangeStart, out var from);
+        int.TryParse(_rangeEnd, out var to);
+        from = from < 1 ? 1 : Math.Min(from, _samples.Count);
+        to = to < 1 ? _samples.Count : Math.Min(to, _samples.Count);
+        if (_samples.Count == 0 || to < from) return _samples;
+        RangeNote = from == 1 && to == _samples.Count ? "" : Txt.MouseRangeNote(from, to, _samples.Count);
+        return _samples.GetRange(from - 1, to - from + 1);
+    }
+
+    void Refresh()
+    {
+        if (_mode is Mode.Collecting or Mode.Measuring or Mode.Logging) return;
+        ShowStats();
+        Plot();
+    }
+
     void ShowStats()
     {
-        if (MouseTest.Stats(_samples) is not { } s) { Stats = Array.Empty<InfoRow>(); return; }
+        if (MouseTest.Stats(Visible()) is not { } s) { Stats = Array.Empty<InfoRow>(); return; }
         var ms = CultureInfo.CurrentCulture;
         Stats = new InfoRow[]
         {
@@ -180,7 +210,13 @@ public sealed class MouseTestViewModel : ObservableObject
 
     void Plot()
     {
-        Series = MouseTest.Series(_samples, _graph.Value, _cpi).Select(s => (IReadOnlyList<Point>)s.Select(p => new Point(p.X, p.Y)).ToList()).ToList();
+        var raw = MouseTest.Series(Visible(), _graph.Value, _cpi);
+        Series = raw.Select(s => (IReadOnlyList<Point>)s.Select(p => new Point(p.X, p.Y)).ToList()).ToList();
+        // Interval and frequency: the view leaves out the few extreme points, and says how many (they are still in the statistics).
+        var window = _hideOutliers && CanHideOutliers && raw.Count > 0 ? MouseTest.RobustRange(raw[0]) : null;
+        (YMin, YMax) = window is { } w ? (w.Min, w.Max) : (double.NaN, double.NaN);
+        if (window is { } cut) RangeNote = string.Join(" ", new[] { RangeNote, Txt.MouseOutside(cut.Outside) }.Where(t => t.Length > 0));
+        Raise(nameof(CanHideOutliers));
         Raise(nameof(XTitle));
         Raise(nameof(YTitle));
     }

@@ -109,6 +109,8 @@
                     <DockPanel>
                         <DockPanel DockPanel.Dock="Top" LastChildFill="True" Margin="0,0,0,6">
                             <Button DockPanel.Dock="Left" Content="{x:Static t:Txt.Up}" Command="{Binding UpCommand}" />
+                            <Button DockPanel.Dock="Left" Content="{x:Static t:Txt.ViewList}" Command="{Binding ShowMapCommand}" CommandParameter="false" IsEnabled="{Binding MapView}" Margin="8,0,0,0" />
+                            <Button DockPanel.Dock="Left" Content="{x:Static t:Txt.ViewMap}" Command="{Binding ShowMapCommand}" CommandParameter="true" IsEnabled="{Binding ShowList}" Margin="4,0,0,0" />
                             <Button DockPanel.Dock="Right" Content="{x:Static t:Txt.ShowInExplorer}" Margin="8,0,0,0" Command="{Binding ShowFolderCommand}" />
                             <Button DockPanel.Dock="Right" Content="Uncompress" Margin="8,0,0,0" Command="{Binding UncompressCommand}"
                                     ToolTip="Uncompresses the selected folder (or the one shown)" />
@@ -121,7 +123,7 @@
                             <TextBlock Style="{StaticResource Secondary}" Text="{Binding CurrentText}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
                                        ToolTip="{Binding CurrentText}" Margin="10,0,0,0" VerticalAlignment="Center" />
                         </DockPanel>
-                        <Grid DockPanel.Dock="Top" Margin="10,4,20,4">
+                        <Grid DockPanel.Dock="Top" Margin="10,4,20,4" Visibility="{Binding ShowList, Converter={StaticResource BoolToVis}}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="3*" />
                                 <ColumnDefinition Width="1*" />
@@ -132,10 +134,19 @@
                             <TextBlock Grid.Column="1" Style="{StaticResource SectionTitle}" FontSize="12" Text="{x:Static t:Txt.ColSize}" />
                             <TextBlock Grid.Column="3" Style="{StaticResource SectionTitle}" FontSize="12" Text="{x:Static t:Txt.ColFiles}" />
                         </Grid>
-                        <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
+                        <Grid>
+                        <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Visibility="{Binding ShowList, Converter={StaticResource BoolToVis}}">
                             <ListBox Style="{StaticResource DataList}" ItemsSource="{Binding Folders}" SelectedItem="{Binding SelectedFolder, Mode=TwoWay}"
                                      SelectionMode="Single" AutomationProperties.Name="{x:Static t:Txt.Folders}" />
                         </Border>
+                        <DockPanel Visibility="{Binding MapView, Converter={StaticResource BoolToVis}}">
+                            <TextBlock DockPanel.Dock="Bottom" Style="{StaticResource Secondary}" Text="{x:Static t:Txt.MapNote}" TextWrapping="Wrap" Margin="10,6,0,0" />
+                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Margin="0,4,0,0" ClipToBounds="True">
+                                <v:TreemapView Root="{Binding MapRoot}" Version="{Binding MapVersion}" OpenCommand="{Binding MapOpenCommand}" RevealCommand="{Binding MapRevealCommand}"
+                                               RecycleCommand="{Binding MapRecycleCommand}" DeleteCommand="{Binding MapDeleteCommand}" />
+                            </Border>
+                        </DockPanel>
+                        </Grid>
                     </DockPanel>
                     <DockPanel Grid.Column="2">
                         <TextBlock DockPanel.Dock="Top" Style="{StaticResource SectionTitle}" FontSize="12" Text="{x:Static t:Txt.LargestFiles}" Margin="10,10,0,8" />

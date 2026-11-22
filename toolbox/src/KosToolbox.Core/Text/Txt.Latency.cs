@@ -34,7 +34,12 @@ public static partial class Txt
     // ---------- Mouse tab (report rate test) ----------
     public const string MouseNote = "Measures the rate your mouse really sends reports at and how steady it is, from the raw input Windows receives. Move the mouse quickly in circles: a slow mouse sends fewer reports. Keep this window in front, because Windows lowers the raw input rate of background windows. Polling rate, sensor and USB port problems show as a lower rate or scattered intervals.";
     public const string MouseCancel = "Cancel", MouseMeasure = "Measure", MouseCollect = "Collect", MouseLog = "Log", MouseLogStop = "Stop (F2)", MouseSave = "Save CSV…", MouseLoad = "Load CSV…",
-        MouseDistance = "Distance (cm)", MouseCpi = "CPI", MouseGraphLabel = "Graph", MouseStyleLabel = "Style", MouseStats = "Statistics";
+        MouseDistance = "Distance (cm)", MouseCpi = "CPI", MouseGraphLabel = "Graph", MouseStyleLabel = "Style", MouseStats = "Statistics",
+        MouseRangeStart = "From point", MouseRangeEnd = "to point", MouseHideOutliers = "Hide stray points",
+        MouseHideOutliersTip = "Keeps the few extreme points out of the view so the line isn't flattened (the statistics still count them).",
+        MouseRecordingNoLive = "Recording: nothing is drawn until it stops, so the screen doesn't delay the mouse reports. Press F2 or the button to stop.";
+    public static string MouseOutside(int count) => $"{count:N0} point{(count == 1 ? "" : "s")} outside the view.";
+    public static string MouseRangeNote(int from, int to, int of) => $"Points {from:N0} to {to:N0} of {of:N0}.";
     public const string MouseMeasureTip = "Measures the CPI: enter a distance, press Measure, then hold the left button, move the mouse exactly that far to the right along a ruler and release.",
         MouseCollectTip = "Press Collect, then hold the left button and move the mouse; releasing the button stops.",
         MouseLogTip = "Records every report until you press F2 or Stop, without holding a button.";

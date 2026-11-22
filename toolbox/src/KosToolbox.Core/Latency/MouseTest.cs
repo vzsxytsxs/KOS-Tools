@@ -75,6 +75,25 @@ public static class MouseTest
         return b.Count > 0 ? new() { a, b } : new() { a };
     }
 
+    /// <summary>
+    /// A Y range that leaves out the few extreme points (the middle 99 % of the values, plus 15 % of their spread or 10 % of their median
+    /// on each side, whichever is more), like the view MouseTester gives (450 to 600 Hz for a 500 Hz mouse): one stray 982 Hz doesn't
+    /// flatten the line. Null when nothing falls outside it (no need to clip).
+    /// <paramref name="Outside"/> is how many points are left out of the view.
+    /// </summary>
+    public static (double Min, double Max, int Outside)? RobustRange(IReadOnlyList<(double X, double Y)> points)
+    {
+        if (points.Count < 20) return null;
+        var y = points.Select(p => p.Y).Order().ToArray();
+        double At(double q) => y[Math.Clamp((int)Math.Round(q * (y.Length - 1)), 0, y.Length - 1)];
+        double lo = At(0.005), hi = At(0.995), median = At(0.5);
+        var pad = Math.Max((hi - lo) * 0.15, Math.Abs(median) * 0.10);
+        if (pad <= 0) pad = 1;
+        double min = lo - pad, max = hi + pad;
+        var outside = y.Count(v => v < min || v > max);
+        return outside == 0 ? null : (min, max, outside);
+    }
+
     public static string ToCsv(IReadOnlyList<MouseSample> s, double? cpi)
     {
         var sb = new StringBuilder();

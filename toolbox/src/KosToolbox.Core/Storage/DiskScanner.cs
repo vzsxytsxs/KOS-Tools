@@ -11,6 +11,19 @@ public sealed class DirNode(string name, DirNode? parent)
     public long Files { get; internal set; }
     public List<DirNode>? Children { get; internal set; }
     public string Path => Parent is null ? Name : System.IO.Path.Combine(Parent.Path, Name);
+
+    /// <summary>This folder is gone: it leaves its parent's list and its size and files come off every folder above it.</summary>
+    public void Detach()
+    {
+        for (var p = Parent; p is not null; p = p.Parent) { p.Size -= Size; p.Files -= Files; }
+        Parent?.Children?.Remove(this);
+    }
+
+    /// <summary>A file of this folder is gone: its size and one file come off this folder and every folder above it.</summary>
+    public void RemoveFile(long size)
+    {
+        for (var n = this; n is not null; n = n.Parent) { n.Size -= size; n.Files--; }
+    }
 }
 
 public sealed record LargeFile(string Path, long Size);

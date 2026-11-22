@@ -72,6 +72,11 @@ public sealed class StoragePageViewModel : PageViewModel
         ChooseFolderCommand = new RelayCommand(ChooseFolder, () => !_busy);
         CancelCommand = new RelayCommand(() => _cts?.Cancel(), () => _cts is not null);
         UpCommand = new RelayCommand(() => Show(_current?.Parent), () => _current?.Parent is not null);
+        ShowMapCommand = new RelayCommand(p => MapView = p is true or "true");
+        MapOpenCommand = new RelayCommand(p => { if (p is DirNode { Children: not null } n) Show(n); });
+        MapRevealCommand = new RelayCommand(p => { if (p is MapTarget t) Reveal(t.Path, t.IsFile); });
+        MapRecycleCommand = new AsyncCommand(p => p is MapTarget t ? DeleteAsync(t, permanent: false) : Task.CompletedTask, _ => !_busy);
+        MapDeleteCommand = new AsyncCommand(p => p is MapTarget t ? DeleteAsync(t, permanent: true) : Task.CompletedTask, _ => !_busy);
         OpenFolderCommand = new RelayCommand(p => { if ((p ?? _selectedFolder) is FolderRowViewModel r && r.Node.Children is not null) Show(r.Node); },
             p => (p ?? _selectedFolder) is FolderRowViewModel { Node.Children: not null });
         ShowFolderCommand = new RelayCommand(() => Reveal((_selectedFolder?.Node ?? _current)!.Path, file: false), () => _current is not null);
@@ -133,6 +138,19 @@ public sealed class StoragePageViewModel : PageViewModel
     public ICommand ChooseFolderCommand { get; }
     public ICommand CancelCommand { get; }
     public ICommand UpCommand { get; }
+    public ICommand ShowMapCommand { get; }
+    public ICommand MapOpenCommand { get; }
+    public ICommand MapRevealCommand { get; }
+    public ICommand MapRecycleCommand { get; }
+    public ICommand MapDeleteCommand { get; }
+    int _mapVersion;
+    /// <summary>Counts deletions so the map reads the files of its folders again.</summary>
+    public int MapVersion { get => _mapVersion; private set => Set(ref _mapVersion, value); }
+    /// <summary>The folders as a treemap instead of the list (kept for the session).</summary>
+    static bool _mapView;
+    public bool MapView { get => _mapView; set { if (_mapView != value) { _mapView = value; Raise(); Raise(nameof(ShowList)); } } }
+    public bool ShowList => !_mapView;
+    public DirNode? MapRoot => _current;
     public ICommand OpenFolderCommand { get; }
     public ICommand ShowFolderCommand { get; }
     public ICommand ShowFileCommand { get; }
@@ -186,10 +204,19 @@ public sealed class StoragePageViewModel : PageViewModel
         var clock = Stopwatch.StartNew();
         try
         {
-            var r = await Task.Run(() => DiskScanner.Scan(root, progress, cts.Token));
+            // A whole drive, as administrator on NTFS: the sizes come from the master file table (one pass over the volume, a few seconds even on a
+            // big drive). A folder, a drive that can't be read that way, or no administrator: the folders are walked.
+            var fast = true;
+            var wholeDrive = string.Equals(Path.GetFullPath(root), Path.GetPathRoot(root), StringComparison.OrdinalIgnoreCase);
+            var r = await Task.Run(() =>
+            {
+                if (wholeDrive && MftScanner.TryScan(root, progress, cts.Token) is { } quick) return quick;
+                fast = false;
+                return DiskScanner.Scan(root, progress, cts.Token);
+            });
             Largest = r.Largest.Select(f => new LargeFileRowViewModel(f)).ToList();
             Show(r.Root);
-            Report(Txt.ScanDone(r.Files, r.Root.Size, r.Skipped, clock.Elapsed), false);
+            Report(Txt.ScanDone(r.Files, r.Root.Size, r.Skipped, clock.Elapsed, fast), false);
         }
         catch (OperationCanceledException) { Report(Txt.ScanCancelled, false); }
         catch (Exception ex)
@@ -207,10 +234,47 @@ public sealed class StoragePageViewModel : PageViewModel
         }
     }
 
+    /// <summary>
+    /// Deletes a folder or a file of the map (to the Recycle Bin, or for good) and takes it out of the scan result. The menu item was the
+    /// choice, so nothing asks. If something stays (a file in use), the sizes aren't touched: the toast says to scan again.
+    /// </summary>
+    async Task DeleteAsync(MapTarget target, bool permanent)
+    {
+        if (_busy) return;
+        var name = System.IO.Path.GetFileName(target.Path.TrimEnd('\\'));
+        if (StorageDelete.Problem(target.Path) is { } why) { Toasts.Show($"{name}: {why}", ToastKind.Warning); return; }
+        _busy = true;
+        CommandManager.InvalidateRequerySuggested();
+        try
+        {
+            var error = await Task.Run(() => permanent ? StorageDelete.Permanent(target.Path) : StorageDelete.Recycle(target.Path));
+            var gone = target.IsFile ? !System.IO.File.Exists(target.Path) : !System.IO.Directory.Exists(target.Path);
+            if (!gone)
+            {
+                Toasts.Show(Txt.MapDeleteFailed(name, error ?? "It is still there."), ToastKind.Error);
+                Log.Warn($"Disk map: {target.Path} wasn't deleted: {error}");
+                return;
+            }
+            if (target.IsFile) target.Folder.RemoveFile(target.Size); else target.Node?.Detach();
+            var prefix = target.Path.TrimEnd('\\') + (target.IsFile ? "" : "\\");
+            Largest = _largest.Where(f => target.IsFile ? !string.Equals(f.Path, target.Path, StringComparison.OrdinalIgnoreCase) : !f.Path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList();
+            Show(_current);
+            MapVersion++;
+            Toasts.Show(permanent ? Txt.MapDeleted(name, target.Size) : Txt.MapRecycled(name, target.Size));
+            Log.Info($"Disk map: {target.Path} {(permanent ? "deleted" : "moved to the Recycle Bin")} ({target.Size:N0} bytes).");
+        }
+        finally
+        {
+            _busy = false;
+            CommandManager.InvalidateRequerySuggested();
+        }
+    }
+
     void Show(DirNode? node)
     {
         if (node is null) return;
         _current = node;
+        Raise(nameof(MapRoot));
         Folders = node.Children?.Select(c => new FolderRowViewModel(c, node.Size)).ToList() ?? (IReadOnlyList<FolderRowViewModel>)Array.Empty<FolderRowViewModel>();
         Raise(nameof(CurrentText));
         Raise(nameof(HasResult));

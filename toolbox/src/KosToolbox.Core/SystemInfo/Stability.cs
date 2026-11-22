@@ -29,12 +29,18 @@ public static class Stability
     /// <summary>Newest first, up to <paramref name="max"/>; with <paramref name="since"/>, only events logged from then on.</summary>
     public static List<StabilityEvent> Events(int max = 500, DateTime? since = null)
     {
-        var list = new List<StabilityEvent>();
         var query = since is { } from
             ? $"*[System[({Providers}) and TimeCreated[@SystemTime>='{from.ToUniversalTime():yyyy-MM-ddTHH:mm:ss.fffZ}']]]"
             : $"*[System[{Providers}]]";
-        var results = EvtQuery(IntPtr.Zero, Channel, query, 0x1 | 0x200); // channel path, newest first
-        if (results == IntPtr.Zero) throw new InvalidOperationException($"The System log couldn't be read ({Marshal.GetLastWin32Error()}).");
+        return Read(Channel, query, max, Parse);
+    }
+
+    /// <summary>Events of <paramref name="channel"/> matching <paramref name="query"/> (XPath), newest first, through <paramref name="parse"/> (null = skipped).</summary>
+    internal static List<T> Read<T>(string channel, string query, int max, Func<string, T?> parse) where T : class
+    {
+        var list = new List<T>();
+        var results = EvtQuery(IntPtr.Zero, channel, query, 0x1 | 0x200); // channel path, newest first
+        if (results == IntPtr.Zero) throw new InvalidOperationException($"The {channel} log couldn't be read ({Marshal.GetLastWin32Error()}).");
         var buffer = IntPtr.Zero;
         var size = 0;
         try
@@ -52,7 +58,7 @@ public static class Stability
                             buffer = Marshal.AllocHGlobal(size = used);
                             if (!EvtRender(IntPtr.Zero, events[i], 1, size, buffer, out used, out _)) continue;
                         }
-                        if (list.Count < max && Parse(Marshal.PtrToStringUni(buffer)!) is { } e) list.Add(e);
+                        if (list.Count < max && parse(Marshal.PtrToStringUni(buffer)!) is { } e) list.Add(e);
                     }
                     catch (Exception ex) when (ex is System.Xml.XmlException or FormatException or OverflowException or NullReferenceException) { } // one unreadable event is skipped
                     finally { EvtClose(events[i]); }

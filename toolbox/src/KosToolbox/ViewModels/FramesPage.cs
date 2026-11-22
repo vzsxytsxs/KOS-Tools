@@ -10,7 +10,7 @@ using KosToolbox.Views;
 namespace KosToolbox.ViewModels;
 
 /// <summary>Latency › Frames: a timed PresentMon capture of one program, with its FPS, lows, spikes and present mode.</summary>
-public sealed class FramesViewModel : ObservableObject
+public sealed partial class FramesViewModel : ObservableObject
 {
     string _program = "";
     Choice<int> _duration;
@@ -27,6 +27,7 @@ public sealed class FramesViewModel : ObservableObject
         _duration = Durations[1];
         CaptureCommand = new AsyncCommand(CaptureAsync, () => !_running && Available && Elevation.IsAdmin && FrameCapture.ValidProgram(_program.Trim()));
         RefreshProgramsCommand = new RelayCommand(RefreshPrograms);
+        InitCaptures();
     }
 
     bool _available = FrameCapture.Exe is not null;
@@ -76,7 +77,9 @@ public sealed class FramesViewModel : ObservableObject
         Status = $"Capturing {program}: {seconds} s left. Keep the game in front and playing.";
         try
         {
-            Show(await FrameCapture.CaptureAsync(program, seconds));
+            var report = await FrameCapture.CaptureAsync(program, seconds);
+            Show(report);
+            Captured(report, seconds);
         }
         catch (Exception ex)
         {
@@ -96,20 +99,36 @@ public sealed class FramesViewModel : ObservableObject
     {
         Results = Format(r);
         Raise(nameof(HasResults));
-        Series = new[] { (IReadOnlyList<Point>)r.FrameTimesMs.Select((ms, i) => new Point(i + 1, ms)).ToList() };
+        (_shown, _shownTimes) = (r.FrameTimesMs, FrameStats.Cumulative(r.FrameTimesMs));
+        Plot();
         Status = r.IndependentFlip
             ? $"{r.Program} presents with independent flip: its frames skip the desktop compositor."
             : $"{r.Program} presents through the desktop compositor ({r.PresentModes.FirstOrDefault()?.Mode}). Exclusive fullscreen, fullscreen optimizations or borderless with MPO usually gives independent flip.";
     }
 
-    internal static IReadOnlyList<InfoRow> Format(FrameReport r) => new[]
+    internal static IReadOnlyList<InfoRow> Format(FrameReport r)
     {
-        new InfoRow("Average", $"{r.AverageFps:0.0} FPS ({r.Frames:N0} frames in {r.Seconds:0.0} s)"),
-        new InfoRow("1 % low", $"{r.Low1Fps:0.0} FPS"),
-        new InfoRow("0.1 % low", $"{r.Low01Fps:0.0} FPS"),
-        new InfoRow("Frame time", $"median {r.MedianMs:0.00} ms · worst {r.MaxMs:0.0} ms"),
-        new InfoRow("Spikes", $"{r.Spikes:N0} frame(s) over twice the median"),
-        new InfoRow("Present mode", string.Join(" · ", r.PresentModes.Take(3).Select(m => $"{m.Mode} {m.Share:P0}"))),
-        new InfoRow("Tearing allowed", $"{r.TearingShare:P0} of frames"),
-    };
+        var rows = new List<InfoRow>
+        {
+            new("Average", $"{r.AverageFps:0.0} FPS ({r.Frames:N0} frames in {r.Seconds:0.0} s)"),
+            new("1 % low", $"{r.Low1Fps:0.0} FPS"),
+            new("0.1 % low", $"{r.Low01Fps:0.0} FPS"),
+            new("Frame time", $"median {r.MedianMs:0.00} ms · worst {r.MaxMs:0.0} ms"),
+            new("Spikes", $"{r.Spikes:N0} frame(s) over twice the median"),
+        };
+        if (FrameStats.Of(r.FrameTimesMs) is { } s)
+            rows.AddRange(new InfoRow[]
+            {
+                new("Worst 1 % / 0.1 % average", $"{s.Worst1Fps:0.0} / {s.Worst01Fps:0.0} FPS"),
+                new("99th / 99.9th percentile", $"{s.P99Ms:0.00} / {s.P999Ms:0.00} ms"),
+                new("Frame time deviation", $"{s.StdDevMs:0.00} ms"),
+                new("Over 16.7 / 8.3 ms", $"{s.Over16Share:P1} / {s.Over8Share:P1} of frames"),
+            });
+        if (r.PresentModes.Count > 0)
+        {
+            rows.Add(new("Present mode", string.Join(" · ", r.PresentModes.Take(3).Select(m => $"{m.Mode} {m.Share:P0}"))));
+            rows.Add(new("Tearing allowed", $"{r.TearingShare:P0} of frames"));
+        }
+        return rows;
+    }
 }

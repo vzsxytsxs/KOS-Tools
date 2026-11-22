@@ -24,6 +24,13 @@ public interface IHidTransport
     byte[] GetInputReport(byte reportId);
     /// <summary>Drops the input reports Windows has queued.</summary>
     void FlushQueue();
+    /// <summary>
+    /// A feature report of exactly <paramref name="length"/> bytes (id included) instead of the collection's longest one: devices whose
+    /// feature reports differ in size answer only at the report's own length (the Attack Shark X11's settings reports).
+    /// </summary>
+    void SetFeature(byte reportId, ReadOnlySpan<byte> payload, int length) => SetFeature(reportId, payload);
+    /// <summary>A feature report read at exactly <paramref name="length"/> bytes, its id at [0].</summary>
+    byte[] GetFeature(byte reportId, int length) => GetFeature(reportId)[..length];
 }
 
 public static class HidBuffer
@@ -89,6 +96,27 @@ public sealed class HidHandle : IHidTransport, IDisposable
         var buffer = HidBuffer.Build(reportId, default, Collection.FeatureLength);
         lock (_lock) Check(HidNative.HidD_GetFeature(_handle, buffer, buffer.Length));
         return buffer;
+    }
+
+    public void SetFeature(byte reportId, ReadOnlySpan<byte> payload, int length)
+    {
+        Require(length);
+        var buffer = HidBuffer.Build(reportId, payload, length);
+        lock (_lock) Check(HidNative.HidD_SetFeature(_handle, buffer, buffer.Length));
+    }
+
+    public byte[] GetFeature(byte reportId, int length)
+    {
+        Require(length);
+        var buffer = HidBuffer.Build(reportId, default, length);
+        lock (_lock) Check(HidNative.HidD_GetFeature(_handle, buffer, buffer.Length));
+        return buffer;
+    }
+
+    void Require(int length)
+    {
+        if (length < 2 || length > Collection.FeatureLength)
+            throw new ArgumentOutOfRangeException(nameof(length), $"A feature report on this collection takes 2 to {Collection.FeatureLength} bytes.");
     }
 
     public byte[] GetInputReport(byte reportId)

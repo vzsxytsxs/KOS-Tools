@@ -25,9 +25,20 @@ public static partial class Txt
     public static string DriveLabel(string name, string label, long free, long total) =>
         $"{name.TrimEnd('\\')}{(label.Length > 0 ? " · " + label : "")} · {Size(free)} free of {Size(total)}";
     public static string Scanning(long files, string folder) => $"Scanning… {files:N0} files · {folder}";
-    public static string ScanDone(long files, long bytes, int skipped, TimeSpan time) =>
-        $"{files:N0} files, {Size(bytes)}, in {time.TotalSeconds:0.0} s." + (skipped > 0 ? $" {skipped:N0} folders couldn't be read{(Execution.Elevation.IsAdmin ? "" : " (run as administrator to include them)")}." : "");
+    public static string ScanDone(long files, long bytes, int skipped, TimeSpan time, bool fromMft = false) =>
+        $"{files:N0} files, {Size(bytes)}, in {time.TotalSeconds:0.0} s{(fromMft ? " (from the file table)" : "")}." + (skipped > 0 ? fromMft ? $" {skipped:N0} entries inside links and cloud folders weren't counted." : $" {skipped:N0} folders couldn't be read{(Execution.Elevation.IsAdmin ? "" : " (run as administrator to include them)")}." : "");
     public const string ScanCancelled = "Scan cancelled.";
+    public const string MenuShowInExplorer = "Show in Explorer", MenuRecycle = "Move to Recycle Bin", MenuDelete = "Delete permanently";
+    public const string StorageDeleteNotAPath = "that isn't a full path.", StorageDeleteDrive = "a whole drive isn't deleted from here.",
+        StorageDeleteInsideWindows = "Windows' own files aren't deleted from here (only the contents of its Temp folder).",
+        StorageDeleteCancelled = "Windows cancelled it (it would have deleted the file for good).";
+    public static string StorageDeleteSystemItem(string name) => $"{name} belongs to Windows and isn't deleted from here.";
+    public static string StorageDeleteProtected(string name) => $"{name} (or what it holds) is a folder Windows or the toolbox needs, so it isn't deleted from here.";
+    public static string MapRecycled(string name, long bytes) => $"{name} ({Size(bytes)}) moved to the Recycle Bin.";
+    public static string MapDeleted(string name, long bytes) => $"{name} ({Size(bytes)}) deleted for good.";
+    public static string MapDeleteFailed(string name, string message) => $"{name} wasn't deleted completely: {message} Scan again to see what is left.";
+    public const string ViewList = "List", ViewMap = "Map", TreemapFiles = "files here",
+        MapNote = "Each rectangle is a folder, as big as its size; inside it, its own biggest folders. Click a folder to open it, right-click to show it in Explorer.";
     public static string ScanFailed(string message) => $"The scan failed: {message}";
     public static string FolderSummary(string path, long bytes, long files) => $"{path} · {Size(bytes)} · {files:N0} files";
 

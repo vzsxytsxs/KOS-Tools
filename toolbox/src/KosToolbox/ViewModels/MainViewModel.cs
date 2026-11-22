@@ -48,6 +48,10 @@ public sealed class MainViewModel : ObservableObject
         KosStatePageViewModel.Open = () => SelectedPage = kosState;
         var setup = new SetupPageViewModel();
         ToolsPageViewModel.OpenSetup = () => SelectedPage = setup;
+        var latency = new LatencyPageViewModel();
+        var stability = new StabilityPageViewModel();
+        SlowPageViewModel.OpenLatency = () => SelectedPage = latency;
+        SlowPageViewModel.OpenStability = () => SelectedPage = stability;
         NavGroups = new[]
         {
             new NavListViewModel(select, Txt.NavOverview, new HomeViewModel(),
@@ -67,8 +71,9 @@ public sealed class MainViewModel : ObservableObject
                 new ToolsPageViewModel(ItemsOf(Core.Catalog.Pages.Tools)),
                 new CleanupPageViewModel()), // Apps, Storage, Drivers and Ghost devices, as tabs
             new NavListViewModel(select, Txt.NavDiagnose,
-                new LatencyPageViewModel(), // DPC/ISR per driver, mouse report rate and Sleep(1) precision
-                new StabilityPageViewModel()), // crashes, driver resets and hardware errors from the System log
+                latency, // DPC/ISR per driver, mouse report rate and Sleep(1) precision
+                new SlowPageViewModel(), // what's frozen, slow or full now, recent hangs and when the sign-in programs started
+                stability), // crashes, driver resets and hardware errors from the System log
             // The other KOS apps: each entry opens the app (or brings it to the front); the page that's open stays.
             new NavListViewModel(select, Txt.NavKosApps,
                 new AppLinkViewModel("app-governor", Txt.AppGovernorLink, "", Txt.AppGovernorSubtitle, "governor", "KosGovernor.exe",

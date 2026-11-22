@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using KosToolbox.Core.Peripherals.AttackShark;
 using KosToolbox.Core.Peripherals.Batteries;
 using KosToolbox.Core.Peripherals.Hid;
 using KosToolbox.Core.Peripherals.Keyboards;
@@ -23,6 +24,7 @@ public static class PeripheralRegistry
         OdmBatteryDriver.Claim,
         WootingDriver.Claim,
         RoyuanDriver.Claim,
+        AttackSharkDriver.Claim,
         ViaDriver.Claim,
     };
 
@@ -45,6 +47,8 @@ public static class PeripheralRegistry
     {
         ("Razer", "Razer Synapse", new[] { "RazerAppEngine", "Razer Synapse 3", "Razer Synapse Service" }),
         ("Logitech HID++", "Logitech G HUB", new[] { "lghub", "lghub_agent" }),
+        // AttackShark.exe from the X11 installer (ATTACK SHARK X11 SOFT, read statically; not run): it takes the same one-shot read grant.
+        ("Attack Shark", "Attack Shark", new[] { "AttackShark" }),
     };
 
     /// <summary>The vendor app running now that may overwrite this family's settings, or null.</summary>

@@ -13,6 +13,8 @@ public sealed class AppSettings
     public bool NavCollapsed { get; set; }
     /// <summary>Windows build and update number ("26200.7171") at the last KOS state check; Home checks again when it changes.</summary>
     public string? KosCheckedBuild { get; set; }
+    /// <summary>Latency › Frames saves each capture to its list as soon as it ends; off by default.</summary>
+    public bool SaveFramesAutomatically { get; set; }
 
     public static AppSettings Current { get; } = JsonFile.Load<AppSettings>(AppPaths.Settings);
 

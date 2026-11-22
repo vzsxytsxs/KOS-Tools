@@ -68,7 +68,7 @@ public sealed class LatencyPageViewModel : PageViewModel
         Raise(nameof(IsFramesTab));
         Raise(nameof(IsPingTab));
         if (IsTimerTab) Timer.Refresh();
-        if (IsFramesTab) Frames.RefreshPrograms();
+        if (IsFramesTab) { Frames.RefreshPrograms(); Frames.ReloadCaptures(); }
         if (IsPingTab) Ping.RefreshHosts();
     }
     public bool NeedsAdmin => !Elevation.IsAdmin;

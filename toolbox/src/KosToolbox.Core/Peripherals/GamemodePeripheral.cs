@@ -84,6 +84,14 @@ public sealed class GamemodePeripheralEntry
     /// <summary>State only, ROYUAN keyboards (every write stored): the lighting and the switch columns from before gamemode, written back as they were.</summary>
     public Royuan.RoyuanLight? KeyboardLight { get; set; }
     public Royuan.RoyuanColumns? KeyboardSwitches { get; set; }
+    /// <summary>The Attack Shark X11 (every write stored): angle snap, ripple control and key response (ms) in gamemode.</summary>
+    public bool? AngleSnap { get; set; }
+    public bool? Ripple { get; set; }
+    public int? DebounceMs { get; set; }
+    /// <summary>State only, the Attack Shark X11: its DPI report (stages, angle snap, ripple) and light report (light, sleep, key
+    /// response) from before gamemode, written back as they were.</summary>
+    public byte[]? MouseDpiReport { get; set; }
+    public byte[]? MouseLightReport { get; set; }
 }
 
 /// <summary>What the devices had before gamemode (same shape: the values to write back).</summary>

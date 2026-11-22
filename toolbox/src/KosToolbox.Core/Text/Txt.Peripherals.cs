@@ -76,6 +76,9 @@ public static partial class Txt
             g.DockBattery switch { true => "battery on the ring", false => "no battery on the ring", _ => null },
             g.RapidTrigger switch { true => $"rapid trigger {g.RapidTriggerMm ?? 0.1:0.##} mm", false => "rapid trigger off", _ => null },
             g.LightBar switch { 0 => "light bar off", { } bar => $"light bar #{bar:X6}", _ => null },
+            g.AngleSnap switch { true => "angle snap on", false => "angle snap off", _ => null },
+            g.Ripple switch { true => "ripple control on", false => "ripple control off", _ => null },
+            g.DebounceMs is { } db ? $"key response {db} ms" : null,
         }.OfType<string>()) is { Length: > 0 } s ? s : "—";
 
     public const string PeripheralGamemodeLightBarNote = "When gamemode turns off, the light bar goes back to the color it has on this page (the controller can't report its own, so set it here first).",
@@ -84,7 +87,7 @@ public static partial class Txt
     public static string PeripheralGamemodeRtInvalid(double max) => $"the rapid-trigger step goes from 0.01 to {max} mm.";
 
     public const string PeripheralGamemodeLight = "Light", PeripheralGamemodeRt = "Rapid trigger", PeripheralGamemodeRtStep = "Rapid-trigger step (mm)",
-        PeripheralGamemodeStoredNote = "This keyboard keeps every setting in its memory: gamemode writes it when it turns on and again when it turns off.",
+        PeripheralGamemodeStoredNote = "This device keeps every setting in its memory: gamemode writes it when it turns on and again when it turns off.",
         PeripheralSync = "Lighting sync", PeripheralSyncNote = "The checked devices get this effect and color; a keyboard's brightness goes to 100 % if it was 0.",
         PeripheralSyncApply = "Apply to all", PeripheralSyncGamemode = "Use in gamemode",
         PeripheralSyncGamemodeSaved = "Saved in each checked device's gamemode profile.", PeripheralSyncNone = "Check at least one device.",
@@ -99,6 +102,34 @@ public static partial class Txt
     public static string PeripheralReadFailed(string message) => $"The device couldn't be read: {message}";
     public static string PeripheralWriteFailed(string message) => $"Not changed: {message}";
     public static string PeripheralApplied(string what) => $"{what} changed and read back from the device.";
+
+    // Attack Shark X11 (its own card)
+    public const string SharkHeader = "Attack Shark X11", SharkRipple = "Ripple control", SharkAngleSnap = "Angle snap",
+        SharkRippleNote = "Smooths the sensor's jitter at high DPI; adds a little delay.", SharkAngleSnapNote = "Straightens nearly straight movements.",
+        SharkStagesHeader = "DPI stages", SharkStagesNote = "50 to 22000 DPI (steps of 50 up to 10000, 100 up to 20000, then 200); the colour shows when the stage is chosen.",
+        SharkDeepSleep = "Deep sleep after (minutes, 1 to 60)", SharkDebounce = "Key response (ms, 4 to 50, even)",
+        SharkButtonsHeader = "Buttons", SharkButtonsNote = "A left click always stays on one button. A macro is set in the macro editor below.",
+        SharkButtonLeft = "1 · Left", SharkButtonRight = "2 · Right", SharkButtonMiddle = "3 · Middle (wheel)", SharkButtonFront = "4 · Front side", SharkButtonRear = "5 · Rear side",
+        SharkFnLeft = "Left click", SharkFnRight = "Right click", SharkFnMiddle = "Middle click", SharkFnForward = "Forward", SharkFnBack = "Back",
+        SharkFnDouble = "Double click", SharkFnFire = "Fire (rapid click)", SharkFnScrollUp = "Scroll up", SharkFnScrollDown = "Scroll down",
+        SharkFnTiltLeft = "Tilt left", SharkFnTiltRight = "Tilt right", SharkFnDpiCycle = "DPI cycle", SharkFnDpiUp = "DPI up", SharkFnDpiDown = "DPI down",
+        SharkFnPlayPause = "Play / pause", SharkFnNext = "Next track", SharkFnPrevious = "Previous track", SharkFnVolumeUp = "Volume up",
+        SharkFnVolumeDown = "Volume down", SharkFnMute = "Mute", SharkFnOff = "Off", SharkFnKey = "Key", SharkFnMacro = "Macro",
+        SharkButtonInvalid = "choose a function (and a key for Key; a macro is set in the macro editor).",
+        SharkColorInvalid = "the colour is #RRGGBB.",
+        SharkMacroHeader = "Macro", SharkMacroButton = "On button", SharkMacroLoopsLabel = "Times",
+        SharkMacroTimes = "Run the number of times", SharkMacroUntilPressed = "Repeat until pressed again", SharkMacroWhileHeld = "Repeat while held",
+        SharkMacroStepsNote = "One step per line: key down|up and the delay before it in ms (0 to 1270), e.g. \"A down 10\". Mouse1..5 are the mouse buttons. Up to 50 steps.",
+        SharkMacroSave = "Save to the button",
+        SharkMacroLength = "a macro takes 1 to 50 steps.", SharkMacroDelay = "a step's delay goes from 0 to 1270 ms.",
+        SharkMacroLoopsInvalid = "the number of times goes from 1 to 255.",
+        SharkMacroNotAcknowledged = "The mouse didn't confirm the macro, so the button wasn't changed. Try again with the mouse awake.",
+        SharkGmDebounce = "Key response in gamemode (ms; empty keeps it)", SharkGmDebounceInvalid = "the key response goes from 4 to 50 ms, even.",
+        SharkMacroNote = "The mouse can't report macros: the button runs this one now, but the steps themselves can't be read back.";
+    public static string SharkStage(int n) => $"DPI stage {n}";
+    public static string SharkStageLabel(int n) => $"Stage {n}";
+    public static string SharkButton(string label) => $"Button {label}";
+    public static string SharkMacro(string label) => $"Macro on button {label}";
     public const string PeripheralProfile = "Onboard profile";
     public const string PeripheralSwitches = "Switches", PeripheralActuation = "Actuation (mm)", PeripheralRapidTrigger = "Rapid trigger",
         PeripheralRtPress = "Press step (mm)", PeripheralRtRelease = "Release step (mm)", PeripheralDeadZone = "Bottom dead zone (mm)",

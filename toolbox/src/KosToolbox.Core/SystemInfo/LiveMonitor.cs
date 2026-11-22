@@ -111,7 +111,7 @@ public sealed class LiveMonitor : IDisposable
 
     // ---------- memory ----------
 
-    static MemoryReading Memory()
+    internal static MemoryReading Memory()
     {
         var m = new MemoryStatus { Length = (uint)Marshal.SizeOf<MemoryStatus>() };
         GlobalMemoryStatusEx(ref m);

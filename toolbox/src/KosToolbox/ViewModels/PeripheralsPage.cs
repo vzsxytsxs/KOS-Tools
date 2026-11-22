@@ -5,6 +5,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using KosToolbox.Core.Peripherals;
+using KosToolbox.Core.Peripherals.AttackShark;
 using KosToolbox.Core.Peripherals.Royuan;
 using KosToolbox.Core.Peripherals.Hid;
 using KosToolbox.Core.Persistence;
@@ -20,7 +21,7 @@ public sealed record HidCollectionRow(string Location, string Usage, string? Usa
 /// A device of the list; selected, its settings and Info show beside the list. A device with a driver is read on the page's refresh
 /// (getters only) and changed only by a click: the value is validated, written once, read back, and the toast says what the device has.
 /// </summary>
-public sealed class PeripheralRowViewModel : ObservableObject
+public sealed partial class PeripheralRowViewModel : ObservableObject
 {
     PeripheralState? _state;
     string? _error, _dpiText, _sleepText, _lowText, _brightText, _colorText, _actText, _rtPressText, _rtReleaseText, _deadZoneText;
@@ -63,7 +64,7 @@ public sealed class PeripheralRowViewModel : ObservableObject
         StageCommand = new AsyncCommand(p => p is string k && int.TryParse(k, out var n) ? Write(Txt.PeripheralDpiStages, d => d.SetActiveStage(n)) : Task.CompletedTask);
         PollingCommand = new AsyncCommand(p => p is string k && int.TryParse(k, out var hz) && hz != _state?.Polling?.Hz
             ? Write(Txt.PeripheralPolling, d => d.SetPollingRate(hz), Txt.PeripheralPollingApplied(hz)) : Task.CompletedTask);
-        ApplySleepCommand = new AsyncCommand(() => Int(_sleepText) is { } m ? Write(Txt.PeripheralSleep, d => d.SetSleep(m * 60)) : Invalid());
+        ApplySleepCommand = new AsyncCommand(() => Minutes(_sleepText) is { } sec ? Write(Txt.PeripheralSleep, d => d.SetSleep(sec)) : Invalid());
         ApplyLowCommand = new AsyncCommand(() => Int(_lowText) is { } v ? Write(Txt.PeripheralLowBattery, d => d.SetLowBattery(v)) : Invalid());
         ApplyBrightnessCommand = new AsyncCommand(() => Int(_brightText) is { } v ? Write(Txt.PeripheralBrightness, d => d.SetBrightness(v)) : Invalid());
         HostModeCommand = new AsyncCommand(() => Write(Txt.PeripheralUseHostMode, d => d.SetHostMode()));
@@ -163,19 +164,19 @@ public sealed class PeripheralRowViewModel : ObservableObject
     public ICommand GmLightCommand { get; }
     public ICommand GmSwatchCommand { get; }
     public ICommand GmRtCommand { get; }
-    public bool CanGmDpi => Driver is { HasLiveDpi: true } && CanDpi && Dpi is not null;
+    public bool CanGmDpi => Driver is { HasLiveDpi: true } or AttackSharkDriver && CanDpi && Dpi is not null;
     public bool CanGmPolling => CanPolling && HasPolling;
     /// <summary>A light gamemode can turn off: live on a mouse or the dock; stored on a keyboard that stores everything.</summary>
-    public bool CanGmLight => (Driver is { HasLiveBrightness: true } or { StoredOnly: true } && HasLight) || IsLightBar;
+    public bool CanGmLight => (Driver is { HasLiveBrightness: true } or KosToolbox.Core.Peripherals.Royuan.RoyuanDriver or AttackSharkDriver && HasLight) || IsLightBar;
     /// <summary>Effects in gamemode: a Razer device's live effect, a stored-only keyboard's, or a DualShock 4's light bar color.</summary>
-    public bool CanGmEffect => CanLighting && Driver is KosToolbox.Core.Peripherals.Razer.RazerDriver { IsDock: false } or { StoredOnly: true }
+    public bool CanGmEffect => CanLighting && Driver is KosToolbox.Core.Peripherals.Razer.RazerDriver { IsDock: false } or KosToolbox.Core.Peripherals.Royuan.RoyuanDriver or AttackSharkDriver
         or KosToolbox.Core.Peripherals.Batteries.PlayStationDriver { HasLightBar: true };
     /// <summary>A DualShock 4 on its cable: gamemode sets its light bar and puts back the color last set here.</summary>
     public bool IsLightBar => Driver is KosToolbox.Core.Peripherals.Batteries.PlayStationDriver { HasLightBar: true };
     /// <summary>The light bar's color as last set from this page (0 = off); null when not set since the toolbox started.</summary>
     public int? LightBarNow => IsLightBar && _state?.Lighting is { } l ? l.Effect == LightingEffect.Off ? 0 : l.Color : null;
     public bool CanGmRt => Writable.Contains(PeripheralSetting.Magnetic) && Driver is KosToolbox.Core.Peripherals.Royuan.RoyuanDriver;
-    public bool CanGamemode => Driver is { BatteryOnly: false } && (CanGmDpi || CanGmPolling || CanGmLight || CanGmRt);
+    public bool CanGamemode => Driver is { BatteryOnly: false } && (CanGmDpi || CanGmPolling || CanGmLight || CanGmRt || CanGmShark);
     /// <summary>The device stores every write: gamemode writes its flash on each start and stop.</summary>
     public bool GmStoredOnly => Driver is { StoredOnly: true };
     public bool GmDpiOn { get => _gmDpiOn; set => Set(ref _gmDpiOn, value); }
@@ -227,6 +228,7 @@ public sealed class PeripheralRowViewModel : ObservableObject
         _gmRing = _gamemode?.Brightness == 0 ? "off" : _gamemode?.DockBattery switch { true => "battery", false => "nobattery", _ => "" };
         _gmRt = _gamemode?.RapidTrigger switch { true => "on", false => "off", _ => "" };
         _gmRtText = (_gamemode?.RapidTriggerMm ?? 0.1).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        LoadSharkGamemode();
     }
 
     /// <summary>Another place changed the saved profile (the lighting sync): the editor shows it again.</summary>
@@ -274,7 +276,9 @@ public sealed class PeripheralRowViewModel : ObservableObject
                             System.Globalization.CultureInfo.InvariantCulture, out var mm) && mm is >= 0.01 and <= PeripheralMagnetic.RtMaxMm
                             ? mm : throw new InvalidOperationException(Txt.PeripheralGamemodeRtInvalid(PeripheralMagnetic.RtMaxMm));
                 }
-                if (entry is { Dpi: null, PollingHz: null, Brightness: null, Effect: null, DockBattery: null, RapidTrigger: null, LightBar: null })
+                SaveSharkGamemode(entry);
+                if (entry is { Dpi: null, PollingHz: null, Brightness: null, Effect: null, DockBattery: null, RapidTrigger: null, LightBar: null,
+                    AngleSnap: null, Ripple: null, DebounceMs: null })
                     throw new InvalidOperationException(Txt.PeripheralGamemodeNothing);
             }
             var config = GamemodePeripheral.Load() ?? new GamemodePeripheral();
@@ -822,6 +826,9 @@ public sealed class PeripheralRowViewModel : ObservableObject
     }
 
     static int? Int(string? s) => int.TryParse(s?.Trim(), out var v) ? v : null;
+    /// <summary>Minutes typed as 2, 0.5 or 0,5, in whole seconds (the Attack Shark X11 sleeps in half minutes).</summary>
+    static int? Minutes(string? s) => double.TryParse(s?.Trim().Replace(',', '.'), System.Globalization.NumberStyles.Float,
+        System.Globalization.CultureInfo.InvariantCulture, out var m) && m is > 0 and < 1000 ? (int)Math.Round(m * 60) : null;
 
     /// <summary>#RRGGBB (the # is optional) as 0xRRGGBB.</summary>
     internal static int? Hex(string? s) => s?.Trim().TrimStart('#') is { Length: 6 } h
@@ -859,7 +866,7 @@ public sealed class PeripheralRowViewModel : ObservableObject
         _state = state;
         if (state.Name is { Length: > 0 } n) Name = n;
         DpiText = state.Dpi?.X.ToString();
-        SleepText = state.SleepSeconds is { } s ? (s / 60).ToString() : null;
+        SleepText = state.SleepSeconds is { } s ? (s / 60.0).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) : null;
         LowText = state.LowBatteryPercent?.ToString();
         BrightnessText = state.Brightness?.ToString();
         if (state.Lighting?.Color is { } color) ColorText = $"#{color:X6}"; // an effect without a color keeps what was typed
@@ -867,6 +874,7 @@ public sealed class PeripheralRowViewModel : ObservableObject
         LoadSwitchFields();
         LoadKeyMode();
         LoadRemap();
+        LoadShark();
         Info.Rows = InfoRows();
         LoadGamemodeEditor();
         KeepLightBarAfter();

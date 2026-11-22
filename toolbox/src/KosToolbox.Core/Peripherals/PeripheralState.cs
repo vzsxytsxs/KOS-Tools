@@ -107,7 +107,7 @@ public abstract class PeripheralDriver
     /// <summary>The protocol family (Razer, Logitech HID++…), shown in Info.</summary>
     public string Family { get; }
     /// <summary>The catalog's model name; null when the device names itself.</summary>
-    public string? Model { get; }
+    public virtual string? Model { get; }
     /// <summary>Checked on hardware (by us or upstream for this exact PID and connection); false shows "Untested model".</summary>
     public bool Tested { get; }
     /// <summary>Only reads the battery (headsets, controllers, generic HID): no settings, and the page shows Power and Info only.</summary>

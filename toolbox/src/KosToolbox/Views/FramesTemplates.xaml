@@ -1,0 +1,219 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:vm="clr-namespace:KosToolbox.ViewModels"
+                    xmlns:v="clr-namespace:KosToolbox.Views"
+                    xmlns:t="clr-namespace:KosToolbox.Core.Text;assembly=KosToolbox.Core">
+
+    <!-- ===================== Latency › Frames (PresentMon capture, saved captures, comparison) ===================== -->
+    <!-- Shown by the Latency page's Frames tab (a ContentControl in PageTemplates.xaml). Uses Theme.xaml, Templates.xaml and GpuTemplates.xaml (GpuSwitch). -->
+
+    <Style x:Key="FramesColumnHead" TargetType="TextBlock" BasedOn="{StaticResource Secondary}">
+        <Setter Property="FontSize" Value="11" />
+    </Style>
+
+    <DataTemplate DataType="{x:Type vm:CaptureRowViewModel}">
+        <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="0,5">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="28" />
+                    <ColumnDefinition Width="*" MinWidth="180" />
+                    <ColumnDefinition Width="130" />
+                    <ColumnDefinition Width="120" />
+                    <ColumnDefinition Width="90" />
+                    <ColumnDefinition Width="90" />
+                    <ColumnDefinition Width="Auto" SharedSizeGroup="FramesActions" />
+                </Grid.ColumnDefinitions>
+                <CheckBox IsChecked="{Binding IsPicked}" VerticalAlignment="Center" ToolTip="{x:Static t:Txt.FramesCompareTip}" AutomationProperties.Name="{Binding Name}" />
+                <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}" Margin="0,0,12,0"
+                           Visibility="{Binding IsRenaming, Converter={StaticResource InverseBoolToVis}}" />
+                <TextBox Grid.Column="1" Text="{Binding EditName, UpdateSourceTrigger=PropertyChanged}" VerticalContentAlignment="Center" Margin="0,0,12,0" MaxLength="120"
+                         Visibility="{Binding IsRenaming, Converter={StaticResource BoolToVis}}" AutomationProperties.Name="{x:Static t:Txt.FramesRename}">
+                    <TextBox.InputBindings>
+                        <KeyBinding Key="Return" Command="{Binding DataContext.RenameCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}" />
+                    </TextBox.InputBindings>
+                </TextBox>
+                <TextBlock Grid.Column="2" Style="{StaticResource Secondary}" Text="{Binding Program}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,8,0" />
+                <TextBlock Grid.Column="3" Style="{StaticResource Secondary}" Text="{Binding Date}" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="4" Text="{Binding Average}" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="5" Text="{Binding Low1}" VerticalAlignment="Center" />
+                <StackPanel Grid.Column="6" Orientation="Horizontal">
+                    <Button Content="{x:Static t:Txt.FramesLoad}" Margin="0,0,6,0" CommandParameter="{Binding}"
+                            Command="{Binding DataContext.LoadCaptureCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" />
+                    <Button Margin="0,0,6,0" CommandParameter="{Binding}" Command="{Binding DataContext.RenameCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                <Setter Property="Content" Value="{x:Static t:Txt.FramesRename}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsRenaming}" Value="True"><Setter Property="Content" Value="{x:Static t:Txt.FramesRenameDone}" /></DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <Button Content="{x:Static t:Txt.FramesExport}" Margin="0,0,6,0" CommandParameter="{Binding}"
+                            Command="{Binding DataContext.ExportCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" />
+                    <Button Content="{x:Static t:Txt.FramesDelete}" CommandParameter="{Binding}"
+                            Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vm:CompareRowViewModel}">
+        <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="0,4">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Left" Width="210" Style="{StaticResource Secondary}" Text="{Binding Label}" VerticalAlignment="Center" />
+                <ItemsControl ItemsSource="{Binding Cells}" Focusable="False">
+                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Width="175" Orientation="Horizontal">
+                                <TextBlock Text="{Binding Text}" Width="92" />
+                                <TextBlock Text="{Binding Diff}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource Secondary}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Worse}" Value="True"><Setter Property="Foreground" Value="{StaticResource WarningBrush}" /></DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </DockPanel>
+        </Border>
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vm:FramesViewModel}">
+        <StackPanel>
+            <Border Style="{StaticResource Card}" Margin="0,0,0,10" Visibility="{Binding NeedsAdmin, Converter={StaticResource BoolToVis}}">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <TextBlock Style="{StaticResource Secondary}" Text="Capturing frames reads the graphics events of every program (ETW), which needs administrator." VerticalAlignment="Center" Margin="0,0,16,0" TextWrapping="Wrap" />
+                    <Button Grid.Column="1" Content="{x:Static t:Txt.RestartAsAdmin}" VerticalAlignment="Center" Command="{Binding RestartAsAdminCommand}" />
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource Card}" Margin="0,0,0,10">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource Secondary}" TextWrapping="Wrap"
+                               Text="Measures a running game with PresentMon: average FPS, 1 % and 0.1 % lows, frame-time spikes, and the present mode it really got, which shows whether fullscreen optimizations, windowed optimizations and MPO took effect. Start the game, then capture while playing. Saved captures can be compared below." />
+                    <TextBlock Style="{StaticResource Secondary}" Text="{Binding MissingNote}" Foreground="{StaticResource WarningBrush}" Margin="0,6,0,0"
+                               Visibility="{Binding MissingNote, Converter={StaticResource NotEmptyToVis}}" />
+                    <WrapPanel Margin="0,12,0,0">
+                        <TextBlock Style="{StaticResource Secondary}" Text="Program" VerticalAlignment="Center" Margin="0,0,6,6" />
+                        <TextBox Text="{Binding Program, UpdateSourceTrigger=PropertyChanged}" Tag="game.exe" MinWidth="180" Margin="0,0,6,6" VerticalAlignment="Center"
+                                 AutomationProperties.Name="Program" ToolTip="The game's program file name (game.exe)" />
+                        <ComboBox ItemsSource="{Binding Programs}" SelectedItem="{Binding PickedProgram}" MinWidth="200" Margin="0,0,6,6"
+                                  AutomationProperties.Name="Open programs" ToolTip="Programs with a window: picking one fills in the program" />
+                        <Button Style="{StaticResource IconButton}" Content="&#xE72C;" Command="{Binding RefreshProgramsCommand}" Margin="0,0,16,6" ToolTip="Read the open programs again" AutomationProperties.Name="Refresh programs" />
+                        <TextBlock Style="{StaticResource Secondary}" Text="Duration" VerticalAlignment="Center" Margin="0,0,6,6" />
+                        <ComboBox ItemsSource="{Binding Durations}" SelectedItem="{Binding Duration}" DisplayMemberPath="Label" MinWidth="90" Margin="0,0,16,6" AutomationProperties.Name="Duration" />
+                        <Button Style="{StaticResource PrimaryButton}" Content="Capture" Command="{Binding CaptureCommand}" MinWidth="90" Margin="0,0,8,6" />
+                        <Button Content="{x:Static t:Txt.FramesSave}" Command="{Binding SaveCaptureCommand}" Margin="0,0,0,6"
+                                Visibility="{Binding CanSave, Converter={StaticResource BoolToVis}}" />
+                    </WrapPanel>
+                    <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Margin="0,6,0,0" Visibility="{Binding Status, Converter={StaticResource NotEmptyToVis}}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource Secondary}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsError}" Value="True"><Setter Property="Foreground" Value="{StaticResource ErrorBrush}" /></DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </StackPanel>
+            </Border>
+
+            <!-- Saved captures -->
+            <Border Style="{StaticResource Card}" Margin="0,0,0,10">
+                <StackPanel Grid.IsSharedSizeScope="True">
+                    <DockPanel Margin="0,0,0,8">
+                        <TextBlock Style="{StaticResource CardTitle}" Text="{x:Static t:Txt.FramesCaptures}" VerticalAlignment="Center" />
+                        <WrapPanel HorizontalAlignment="Right">
+                            <CheckBox Style="{StaticResource GpuSwitch}" Content="{x:Static t:Txt.FramesAutoSave}" IsChecked="{Binding AutoSave}" ToolTip="{x:Static t:Txt.FramesAutoSaveTip}"
+                                      VerticalAlignment="Center" Margin="0,0,16,0" />
+                            <Button Content="{x:Static t:Txt.FramesImport}" Command="{Binding ImportCommand}" ToolTip="{x:Static t:Txt.FramesImportTip}" Margin="0,0,8,0" />
+                            <Button Content="{x:Static t:Txt.OpenFolder}" Command="{Binding OpenFolderCommand}" Margin="0,0,8,0" />
+                            <Button Style="{StaticResource PrimaryButton}" Content="{x:Static t:Txt.FramesCompare}" Command="{Binding CompareCommand}" ToolTip="{x:Static t:Txt.FramesCompareTip}" MinWidth="90" />
+                        </WrapPanel>
+                    </DockPanel>
+                    <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.FramesNoCaptures}" TextWrapping="Wrap"
+                               Visibility="{Binding HasCaptures, Converter={StaticResource InverseBoolToVis}}" />
+                    <Grid Margin="0,0,0,4" Visibility="{Binding HasCaptures, Converter={StaticResource BoolToVis}}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="28" />
+                            <ColumnDefinition Width="*" MinWidth="180" />
+                            <ColumnDefinition Width="130" />
+                            <ColumnDefinition Width="120" />
+                            <ColumnDefinition Width="90" />
+                            <ColumnDefinition Width="90" />
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="FramesActions" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="1" Style="{StaticResource FramesColumnHead}" Text="Name" />
+                        <TextBlock Grid.Column="2" Style="{StaticResource FramesColumnHead}" Text="Program" />
+                        <TextBlock Grid.Column="3" Style="{StaticResource FramesColumnHead}" Text="Date" />
+                        <TextBlock Grid.Column="4" Style="{StaticResource FramesColumnHead}" Text="Average" />
+                        <TextBlock Grid.Column="5" Style="{StaticResource FramesColumnHead}" Text="1 % low" />
+                    </Grid>
+                    <ItemsControl ItemsSource="{Binding Captures}" Focusable="False" />
+                    <TextBlock Style="{StaticResource Secondary}" Text="{Binding CapturesNote}" TextWrapping="Wrap" Margin="0,6,0,0"
+                               Visibility="{Binding CapturesNote, Converter={StaticResource NotEmptyToVis}}" />
+                </StackPanel>
+            </Border>
+
+            <!-- Comparison of 2 to 4 saved captures -->
+            <StackPanel Visibility="{Binding IsComparing, Converter={StaticResource BoolToVis}}">
+                <Border Style="{StaticResource Card}" Margin="0,0,0,10">
+                    <StackPanel>
+                        <DockPanel Margin="0,0,0,8">
+                            <Button DockPanel.Dock="Right" Content="{x:Static t:Txt.FramesCloseCompare}" Command="{Binding CloseCompareCommand}" />
+                            <TextBlock Style="{StaticResource CardTitle}" Text="{x:Static t:Txt.FramesComparison}" VerticalAlignment="Center" />
+                        </DockPanel>
+                        <!-- 210 + 4 × 175 px: fits the narrowest page without a scroller of its own (which would catch the wheel) -->
+                        <DockPanel Margin="0,0,0,4">
+                            <Border DockPanel.Dock="Left" Width="210" />
+                            <ItemsControl ItemsSource="{Binding CompareNames}" Focusable="False">
+                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate><TextBlock Width="175" Text="{Binding}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding}" Padding="0,0,8,0" /></DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </DockPanel>
+                        <ItemsControl ItemsSource="{Binding CompareRows}" Focusable="False" />
+                        <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.FramesLowsNote}" TextWrapping="Wrap" Margin="0,8,0,0" />
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Card}" Margin="0,0,0,10">
+                    <StackPanel>
+                        <ComboBox ItemsSource="{Binding CompareGraphs}" SelectedItem="{Binding CompareGraph}" DisplayMemberPath="Label" MinWidth="220" HorizontalAlignment="Left" Margin="0,0,0,8"
+                                  AutomationProperties.Name="{x:Static t:Txt.FramesGraphLabel}" />
+                        <v:DataPlot Series="{Binding CompareSeries}" Legend="{Binding CompareNames}" StyleKind="Lines" XTitle="{Binding CompareXTitle}" YTitle="{Binding CompareYTitle}" Height="320"
+                                    Visibility="{Binding IsCompareBars, Converter={StaticResource InverseBoolToVis}}" />
+                        <v:BarChart Groups="{Binding CompareBars}" Legend="{Binding CompareNames}" YTitle="{Binding CompareYTitle}" Height="320"
+                                    Visibility="{Binding IsCompareBars, Converter={StaticResource BoolToVis}}" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <!-- One capture: the fresh one or a loaded one -->
+            <StackPanel Visibility="{Binding IsComparing, Converter={StaticResource InverseBoolToVis}}">
+                <Border Style="{StaticResource Card}" Margin="0,0,0,10" Visibility="{Binding HasResults, Converter={StaticResource BoolToVis}}">
+                    <StackPanel>
+                        <ItemsControl ItemsSource="{Binding Results}" Grid.IsSharedSizeScope="True" Focusable="False">
+                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="2" VerticalAlignment="Top" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                        </ItemsControl>
+                        <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.FramesLowsNote}" TextWrapping="Wrap" Margin="0,8,0,0" />
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Card}" Visibility="{Binding HasResults, Converter={StaticResource BoolToVis}}">
+                    <StackPanel>
+                        <ComboBox ItemsSource="{Binding Graphs}" SelectedItem="{Binding Graph}" DisplayMemberPath="Label" MinWidth="220" HorizontalAlignment="Left" Margin="0,0,0,8"
+                                  AutomationProperties.Name="{x:Static t:Txt.FramesGraphLabel}" />
+                        <v:DataPlot Series="{Binding Series}" StyleKind="{Binding PlotStyle}" XTitle="{Binding XTitle}" YTitle="{Binding YTitle}" Height="280" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </StackPanel>
+    </DataTemplate>
+</ResourceDictionary>

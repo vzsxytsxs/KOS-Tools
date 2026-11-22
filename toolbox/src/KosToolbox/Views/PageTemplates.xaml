@@ -942,6 +942,60 @@
         <Setter Property="Margin" Value="0,0,8,0" />
     </Style>
 
+    <!-- ===================== What's slow (rows are StabilityRow) ===================== -->
+    <DataTemplate DataType="{x:Type vm:SlowPageViewModel}">
+        <StackPanel>
+            <Border Style="{StaticResource Card}" Margin="0,0,0,10">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.SlowSampling}" Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}" />
+                    <ItemsControl ItemsSource="{Binding Verdict}" Focusable="False">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate><TextBlock Style="{StaticResource CardTitle}" Text="{Binding}" TextWrapping="Wrap" Margin="0,0,0,4" /></DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <TextBlock Style="{StaticResource SectionTitle}" Text="{x:Static t:Txt.SlowNow}" Margin="2,4,0,4" />
+            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,0,0,14">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.SlowHungNone}" Margin="10,6,0,2" Visibility="{Binding NoHung, Converter={StaticResource BoolToVis}}" />
+                    <ItemsControl ItemsSource="{Binding Hung}" Focusable="False" />
+                    <ItemsControl ItemsSource="{Binding Disks}" Focusable="False" />
+                    <TextBlock Style="{StaticResource Secondary}" Text="{Binding DisksNote}" TextWrapping="Wrap" Margin="10,2,20,2" Visibility="{Binding DisksNote, Converter={StaticResource NotEmptyToVis}}" />
+                    <TextBlock Text="{Binding Memory}" TextWrapping="Wrap" Margin="10,4,20,2" Visibility="{Binding Memory, Converter={StaticResource NotEmptyToVis}}" />
+                </StackPanel>
+            </Border>
+
+            <TextBlock Style="{StaticResource SectionTitle}" Text="{x:Static t:Txt.SlowRecentHangs}" Margin="2,4,0,4" />
+            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,0,0,14">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource Secondary}" Text="{Binding HangsNote}" TextWrapping="Wrap" Margin="10,6,20,0" Visibility="{Binding HangsNote, Converter={StaticResource NotEmptyToVis}}" />
+                    <ItemsControl ItemsSource="{Binding Hangs}" Focusable="False" />
+                </StackPanel>
+            </Border>
+
+            <TextBlock Style="{StaticResource SectionTitle}" Text="{x:Static t:Txt.SlowSinceBoot}" Margin="2,4,0,4" />
+            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,0,0,14">
+                <StackPanel>
+                    <TextBlock Text="{Binding Boot}" TextWrapping="Wrap" Margin="10,6,20,4" />
+                    <ItemsControl ItemsSource="{Binding Startup}" Focusable="False" />
+                    <TextBlock Style="{StaticResource Secondary}" Text="{Binding StartupNote}" TextWrapping="Wrap" Margin="10,6,20,0" />
+                    <TextBlock Style="{StaticResource Secondary}" Text="{Binding BootLogNote}" TextWrapping="Wrap" Margin="10,4,20,0" Visibility="{Binding BootLogNote, Converter={StaticResource NotEmptyToVis}}" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource Card}">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.SlowMore}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,16,0" />
+                    <Button Grid.Column="1" Content="{x:Static t:Txt.SlowOpenLatency}" Command="{Binding OpenLatencyCommand}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <Button Grid.Column="2" Content="{x:Static t:Txt.SlowOpenStability}" Command="{Binding OpenStabilityCommand}" VerticalAlignment="Center" />
+                </Grid>
+            </Border>
+        </StackPanel>
+    </DataTemplate>
+
     <!-- ===================== Stability ===================== -->
     <DataTemplate DataType="{x:Type vm:StabilityRow}">
         <Grid Margin="10,4,20,4">
@@ -1145,8 +1199,15 @@
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                                 <ComboBox ItemsSource="{Binding Graphs}" SelectedItem="{Binding Graph}" DisplayMemberPath="Label" MinWidth="220" AutomationProperties.Name="{x:Static t:Txt.MouseGraphLabel}" />
                                 <ComboBox ItemsSource="{Binding Styles}" SelectedItem="{Binding Style}" DisplayMemberPath="Label" MinWidth="110" Margin="8,0,0,0" AutomationProperties.Name="{x:Static t:Txt.MouseStyleLabel}" />
+                                <CheckBox Content="{x:Static t:Txt.MouseHideOutliers}" IsChecked="{Binding HideOutliers}" IsEnabled="{Binding CanHideOutliers}"
+                                          ToolTip="{x:Static t:Txt.MouseHideOutliersTip}" VerticalAlignment="Center" Margin="16,0,0,0" />
+                                <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.MouseRangeStart}" VerticalAlignment="Center" Margin="16,0,6,0" />
+                                <TextBox Text="{Binding RangeStart, UpdateSourceTrigger=LostFocus}" Width="64" VerticalContentAlignment="Center" AutomationProperties.Name="{x:Static t:Txt.MouseRangeStart}" />
+                                <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.MouseRangeEnd}" VerticalAlignment="Center" Margin="8,0,6,0" />
+                                <TextBox Text="{Binding RangeEnd, UpdateSourceTrigger=LostFocus}" Width="64" VerticalContentAlignment="Center" AutomationProperties.Name="{x:Static t:Txt.MouseRangeEnd}" />
                             </StackPanel>
-                            <v:DataPlot Series="{Binding Series}" StyleKind="{Binding PlotStyle}" XTitle="{Binding XTitle}" YTitle="{Binding YTitle}" Height="340" />
+                            <v:DataPlot Series="{Binding Series}" StyleKind="{Binding PlotStyle}" XTitle="{Binding XTitle}" YTitle="{Binding YTitle}" YMin="{Binding YMin}" YMax="{Binding YMax}" Height="340" />
+                            <TextBlock Style="{StaticResource Secondary}" Text="{Binding RangeNote}" Margin="0,6,0,0" Visibility="{Binding RangeNote, Converter={StaticResource NotEmptyToVis}}" />
                         </StackPanel>
                     </Border>
                     <Border Style="{StaticResource Card}">
@@ -1160,52 +1221,8 @@
                 </StackPanel>
             </StackPanel>
 
-            <!-- ===== Frames (PresentMon capture) ===== -->
-            <StackPanel Visibility="{Binding IsFramesTab, Converter={StaticResource BoolToVis}}">
-                <StackPanel DataContext="{Binding Frames}">
-                    <Border Style="{StaticResource Card}" Margin="0,0,0,10" Visibility="{Binding NeedsAdmin, Converter={StaticResource BoolToVis}}">
-                        <Grid>
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                            <TextBlock Style="{StaticResource Secondary}" Text="Capturing frames reads the graphics events of every program (ETW), which needs administrator." VerticalAlignment="Center" Margin="0,0,16,0" TextWrapping="Wrap" />
-                            <Button Grid.Column="1" Content="{x:Static t:Txt.RestartAsAdmin}" VerticalAlignment="Center" Command="{Binding RestartAsAdminCommand}" />
-                        </Grid>
-                    </Border>
-                    <Border Style="{StaticResource Card}" Margin="0,0,0,10">
-                        <StackPanel>
-                            <TextBlock Style="{StaticResource Secondary}" TextWrapping="Wrap"
-                                       Text="Measures a running game with PresentMon: average FPS, 1 % and 0.1 % lows, frame-time spikes, and the present mode it really got, which shows whether fullscreen optimizations, windowed optimizations and MPO took effect. Start the game, then capture while playing." />
-                            <TextBlock Style="{StaticResource Secondary}" Text="{Binding MissingNote}" Foreground="{StaticResource WarningBrush}" Margin="0,6,0,0"
-                                       Visibility="{Binding MissingNote, Converter={StaticResource NotEmptyToVis}}" />
-                            <WrapPanel Margin="0,12,0,0">
-                                <TextBlock Style="{StaticResource Secondary}" Text="Program" VerticalAlignment="Center" Margin="0,0,6,6" />
-                                <TextBox Text="{Binding Program, UpdateSourceTrigger=PropertyChanged}" Tag="game.exe" MinWidth="180" Margin="0,0,6,6" VerticalAlignment="Center"
-                                         AutomationProperties.Name="Program" ToolTip="The game's program file name (game.exe)" />
-                                <ComboBox ItemsSource="{Binding Programs}" SelectedItem="{Binding PickedProgram}" MinWidth="200" Margin="0,0,6,6"
-                                          AutomationProperties.Name="Open programs" ToolTip="Programs with a window: picking one fills in the program" />
-                                <Button Style="{StaticResource IconButton}" Content="&#xE72C;" Command="{Binding RefreshProgramsCommand}" Margin="0,0,16,6" ToolTip="Read the open programs again" AutomationProperties.Name="Refresh programs" />
-                                <TextBlock Style="{StaticResource Secondary}" Text="Duration" VerticalAlignment="Center" Margin="0,0,6,6" />
-                                <ComboBox ItemsSource="{Binding Durations}" SelectedItem="{Binding Duration}" DisplayMemberPath="Label" MinWidth="90" Margin="0,0,16,6" AutomationProperties.Name="Duration" />
-                                <Button Style="{StaticResource PrimaryButton}" Content="Capture" Command="{Binding CaptureCommand}" MinWidth="90" Margin="0,0,0,6" />
-                            </WrapPanel>
-                            <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Margin="0,6,0,0" Visibility="{Binding Status, Converter={StaticResource NotEmptyToVis}}">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock" BasedOn="{StaticResource Secondary}">
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsError}" Value="True"><Setter Property="Foreground" Value="{StaticResource ErrorBrush}" /></DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
-                        </StackPanel>
-                    </Border>
-                    <Border Style="{StaticResource Card}" Margin="0,0,0,10" Visibility="{Binding HasResults, Converter={StaticResource BoolToVis}}">
-                        <ItemsControl ItemsSource="{Binding Results}" Grid.IsSharedSizeScope="True" Focusable="False" />
-                    </Border>
-                    <Border Style="{StaticResource Card}" Visibility="{Binding HasResults, Converter={StaticResource BoolToVis}}">
-                        <v:DataPlot Series="{Binding Series}" StyleKind="Lines" XTitle="Frame" YTitle="Frame time (ms)" Height="260" />
-                    </Border>
-                </StackPanel>
-            </StackPanel>
+            <!-- ===== Frames (PresentMon capture, saved captures, comparison): FramesTemplates.xaml ===== -->
+            <ContentControl Content="{Binding Frames}" Focusable="False" Visibility="{Binding IsFramesTab, Converter={StaticResource BoolToVis}}" />
 
             <!-- ===== Ping (round trip, jitter and loss) ===== -->
             <StackPanel Visibility="{Binding IsPingTab, Converter={StaticResource BoolToVis}}">

@@ -19,6 +19,7 @@
                 <ResourceDictionary Source="Views/KosStateTemplates.xaml" />
                 <ResourceDictionary Source="Views/PeripheralTemplates.xaml" />
                 <ResourceDictionary Source="Views/AudioTemplates.xaml" />
+                <ResourceDictionary Source="Views/FramesTemplates.xaml" />
 
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
