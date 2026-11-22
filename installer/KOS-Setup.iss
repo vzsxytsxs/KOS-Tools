@@ -193,7 +193,17 @@ begin
   if Result then FindClose(Find);
 end;
 
+{ KOS Firewall on, as its config says (its first value). }
+function KosFirewallOn: Boolean;
+var
+  Text: AnsiString;
+begin
+  Result := LoadStringFromFile(ExpandConstant('{commonappdata}\TheKOS\Firewall\config.json'), Text) and (Pos('"Enabled": true', Copy(Text, 1, 64)) > 0);
+end;
+
 function InitializeSetup: Boolean;
+var
+  Retry: Boolean;
 begin
   Parts[0] := 'toolbox'; Parts[1] := 'scripts'; Parts[2] := 'tools'; Parts[3] := 'governor';
   Parts[4] := 'engine'; Parts[5] := 'firewall'; Parts[6] := 'equalizer';
@@ -202,23 +212,32 @@ begin
   Manifest := ExpandConstant('{tmp}\kos-release.ini');
   // A KOS Windows install has its profile in the registry, or the folder its setup leaves (older installs).
   IsKosWindows := RegValueExists(HKLM64, 'SOFTWARE\TheKOS', 'Profile') or DirExists(ExpandConstant('{commonappdata}\TheKOS\bin'));
-  try
-    #ifndef TestBuild
-    if not IsHttps(Source) then RaiseException('Only an https:// source is accepted.');
-    #endif
-    // The manifest is signed: its SHA-256s are what every part is checked against.
-    if IsHttps(Source) then
-      DownloadTemporaryFileWithISSigVerify(Source + 'kos-release.ini', '', 'kos-release.ini', nil, nil)
-    else if IsUrl(Source) then
-      DownloadTemporaryFile(Source + 'kos-release.ini', 'kos-release.ini', '', nil)
-    else
-      FetchNow('kos-release.ini', '-');
-    Result := Info('release', 'version') <> '';
-    if not Result then RaiseException('kos-release.ini has no release version.');
-  except
-    SuppressibleMsgBox('The KOS release couldn''t be read from ' + Source + ':' + #13#10 + GetExceptionMessage, mbCriticalError, MB_OK, IDOK);
-    Result := False;
-  end;
+  repeat
+    Retry := False;
+    try
+      #ifndef TestBuild
+      if not IsHttps(Source) then RaiseException('Only an https:// source is accepted.');
+      #endif
+      // The manifest is signed: its SHA-256s are what every part is checked against.
+      if IsHttps(Source) then
+        DownloadTemporaryFileWithISSigVerify(Source + 'kos-release.ini', '', 'kos-release.ini', nil, nil)
+      else if IsUrl(Source) then
+        DownloadTemporaryFile(Source + 'kos-release.ini', 'kos-release.ini', '', nil)
+      else
+        FetchNow('kos-release.ini', '-');
+      Result := Info('release', 'version') <> '';
+      if not Result then RaiseException('kos-release.ini has no release version.');
+    except
+      Result := False;
+      // KOS Firewall blocks programs without a rule, this setup too (it runs from a new temporary folder each time).
+      if KosFirewallOn then
+        Retry := SuppressibleMsgBox('The KOS release couldn''t be downloaded: KOS Firewall is on and blocks KOS Setup until it''s allowed.' + #13#10#13#10 +
+          'When KOS Engine asks about KOS Setup, choose Allow or Until restart, then click Retry. (Or turn KOS Firewall off in KOS Firewall.)' + #13#10#13#10 +
+          GetExceptionMessage, mbError, MB_RETRYCANCEL, IDCANCEL) = IDRETRY
+      else
+        SuppressibleMsgBox('The KOS release couldn''t be read from ' + Source + ':' + #13#10 + GetExceptionMessage, mbCriticalError, MB_OK, IDOK);
+    end;
+  until not Retry;
 end;
 
 { ---------- wizard ---------- }
