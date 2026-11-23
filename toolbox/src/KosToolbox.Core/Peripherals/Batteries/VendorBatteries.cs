@@ -91,15 +91,8 @@ public sealed class VendorBatteryDriver : PeripheralDriver
 
     static PeripheralBattery? Bragi(IHidTransport t)
     {
-        var numbered = t.Collection.OutputLength == 65; // a 64-byte payload behind a report id; otherwise id 0 and the 02 in the payload
-        uint? Get(byte target, byte property)
-        {
-            var source = target == 0x08 ? 0x00 : 0x01;
-            var r = numbered
-                ? Query(t, 0x02, new byte[] { target, 0x02, property }, 300, r => r.Length >= 8 && r[1] == source)
-                : Query(t, 0x00, new byte[] { 0x02, target, 0x02, property }, 300, r => r.Length >= 8 && r[1] == source);
-            return r is null ? null : VendorBatteryCodec.BragiValue(r);
-        }
+        var link = new Corsair.BragiLink(t); // report 02 where the collection is numbered (the Virtuoso's receiver), id 0 where it isn't
+        uint? Get(byte target, byte property) => link.GetProperty(target, property) is { Ok: true } r ? r.Value : null;
         foreach (byte target in new byte[] { 0x09, 0x0A, 0x0B, 0x08 }) // paired devices behind a receiver first, then the device itself
             if (Get(target, 0x0F) is { } level and <= 1000)
                 return new PeripheralBattery(VendorBatteryCodec.BragiPercent(level), Get(target, 0x10) is { } charge ? charge is 1 or 3 : null);
@@ -121,7 +114,8 @@ public sealed class VendorBatteryDriver : PeripheralDriver
             "Corsair wireless headset", PeripheralKind.Headset,
             c => (c.UsagePage == 0xFFC5 || c.UsagePage == 0xFF00) && c.OutputLength > 0,
             t => Query(t, 0xC9, new byte[] { 0x64 }, 1000) is { Length: >= 5 } r ? VendorBatteryCodec.CorsairVoid(r) : null),
-        new(0x1B1C, new ushort[] { 0x2A08, 0x2A02, 0x0A97, 0x0A64, 0x0A62, 0x0A3E, 0x0A3D }, "Corsair wireless device", PeripheralKind.Other,
+        // 0A41–0A44: the Virtuoso RGB Wireless (0A42 + 0A41 read on the friend's PC: battery 0F = 710, numbered report 02, collection FF42/0001).
+        new(0x1B1C, new ushort[] { 0x2A08, 0x2A02, 0x0A97, 0x0A64, 0x0A62, 0x0A3E, 0x0A3D, 0x0A41, 0x0A42, 0x0A43, 0x0A44 }, "Corsair wireless device", PeripheralKind.Other,
             c => c.UsagePage >= 0xFF00 && c.OutputLength is 64 or 65 && c.InputLength is 64 or 65, Bragi),
         new(0x03F0, new ushort[] { 0x05B7, 0x0C9D }, "HyperX Cloud III Wireless", PeripheralKind.Headset,
             c => c.OutputLength == 62 && c.InputLength == 62,

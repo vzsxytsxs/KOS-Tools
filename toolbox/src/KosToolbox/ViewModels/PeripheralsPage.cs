@@ -875,6 +875,7 @@ public sealed partial class PeripheralRowViewModel : ObservableObject
         LoadKeyMode();
         LoadRemap();
         LoadShark();
+        LoadCorsair();
         Info.Rows = InfoRows();
         LoadGamemodeEditor();
         KeepLightBarAfter();

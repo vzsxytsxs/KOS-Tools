@@ -103,6 +103,19 @@ public static partial class Txt
     public static string PeripheralWriteFailed(string message) => $"Not changed: {message}";
     public static string PeripheralApplied(string what) => $"{what} changed and read back from the device.";
 
+    // Corsair (SABRE v2 PRO, K65 RGB Mini, Virtuoso): the card of what the shared rows don't have
+    public const string CorsairHeader = "Corsair", CorsairMotionSync = "Motion sync", CorsairAngleSnap = "Angle snapping", CorsairRipple = "Ripple control",
+        CorsairMotionSyncNote = "Syncs the sensor with the USB polling.", CorsairAngleSnapNote = "Straightens nearly straight movements.",
+        CorsairRippleNote = "Smooths the sensor's jitter at high DPI; adds a little delay.",
+        CorsairLiftOff = "Lift-off distance", CorsairLiftLow = "Low", CorsairLiftMedium = "Medium", CorsairLiftHigh = "High",
+        CorsairLiftOffLocked = "The lift-off distance follows the surface calibration while that is on, so it can't be changed here.",
+        CorsairButtonsHeader = "Buttons", CorsairButtonsNote = "Stored in the mouse. A left click always stays on one button.",
+        CorsairButton1 = "1 · Left", CorsairButton2 = "2 · Right", CorsairButton3 = "3 · Middle (wheel)", CorsairButton4 = "4 · Back", CorsairButton5 = "5 · Forward",
+        CorsairFnLeft = "Left click", CorsairFnRight = "Right click", CorsairFnMiddle = "Middle click", CorsairFnBack = "Back", CorsairFnForward = "Forward",
+        CorsairFnDpiCycle = "DPI cycle", CorsairFnDpiUp = "DPI up", CorsairFnDpiDown = "DPI down", CorsairFnOff = "Off",
+        CorsairFnCustom = "Other (set in iCUE)", CorsairButtonInvalid = "choose one of the functions in the list; Other is a function set in iCUE.",
+        CorsairWinLock = "Win Lock", CorsairWinLockNote = "Blocks the Windows key while it is on.";
+
     // Attack Shark X11 (its own card)
     public const string SharkHeader = "Attack Shark X11", SharkRipple = "Ripple control", SharkAngleSnap = "Angle snap",
         SharkRippleNote = "Smooths the sensor's jitter at high DPI; adds a little delay.", SharkAngleSnapNote = "Straightens nearly straight movements.",

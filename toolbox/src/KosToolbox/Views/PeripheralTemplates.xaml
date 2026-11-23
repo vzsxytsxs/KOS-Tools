@@ -628,6 +628,50 @@
                 </StackPanel>
             </Border>
 
+            <!-- Corsair: the SABRE's sensor toggles, lift-off and buttons; the K65's Win Lock. -->
+            <Border Style="{StaticResource Card}" Margin="0,0,8,8" Visibility="{Binding HasCorsair, Converter={StaticResource BoolToVis}}">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource CardTitle}" Text="{x:Static t:Txt.CorsairHeader}" Margin="0,0,0,10" />
+                    <CheckBox Style="{StaticResource GpuSwitch}" Content="{x:Static t:Txt.CorsairWinLock}" IsChecked="{Binding WinLockOn, Mode=OneWay}" HorizontalAlignment="Left"
+                              Visibility="{Binding HasWinLock, Converter={StaticResource BoolToVis}}" Command="{Binding WinLockCommand}"
+                              CommandParameter="{Binding IsChecked, RelativeSource={RelativeSource Self}}" ToolTip="{x:Static t:Txt.CorsairWinLockNote}" Margin="0,0,0,6" />
+                    <CheckBox Style="{StaticResource GpuSwitch}" Content="{x:Static t:Txt.CorsairMotionSync}" IsChecked="{Binding MotionSyncOn, Mode=OneWay}" HorizontalAlignment="Left"
+                              Visibility="{Binding HasMotionSync, Converter={StaticResource BoolToVis}}" Command="{Binding MotionSyncCommand}"
+                              CommandParameter="{Binding IsChecked, RelativeSource={RelativeSource Self}}" ToolTip="{x:Static t:Txt.CorsairMotionSyncNote}" Margin="0,0,0,6" />
+                    <CheckBox Style="{StaticResource GpuSwitch}" Content="{x:Static t:Txt.CorsairAngleSnap}" IsChecked="{Binding AngleSnapOn, Mode=OneWay}" HorizontalAlignment="Left"
+                              Visibility="{Binding HasAngleSnap, Converter={StaticResource BoolToVis}}" Command="{Binding SabreAngleSnapCommand}"
+                              CommandParameter="{Binding IsChecked, RelativeSource={RelativeSource Self}}" ToolTip="{x:Static t:Txt.CorsairAngleSnapNote}" Margin="0,0,0,6" />
+                    <CheckBox Style="{StaticResource GpuSwitch}" Content="{x:Static t:Txt.CorsairRipple}" IsChecked="{Binding RippleOn, Mode=OneWay}" HorizontalAlignment="Left"
+                              Visibility="{Binding HasRipple, Converter={StaticResource BoolToVis}}" Command="{Binding SabreRippleCommand}"
+                              CommandParameter="{Binding IsChecked, RelativeSource={RelativeSource Self}}" ToolTip="{x:Static t:Txt.CorsairRippleNote}" Margin="0,0,0,12" />
+
+                    <StackPanel Visibility="{Binding HasLiftOff, Converter={StaticResource BoolToVis}}" Margin="0,0,0,12">
+                        <TextBlock Style="{StaticResource PeriLabel}" Text="{x:Static t:Txt.CorsairLiftOff}" />
+                        <ItemsControl Style="{StaticResource PeriSegmented}" ItemsSource="{Binding LiftOffs}" Tag="{Binding LiftOffCommand}" IsEnabled="{Binding CanLiftOff}"
+                                      AutomationProperties.Name="{x:Static t:Txt.CorsairLiftOff}" />
+                        <TextBlock Style="{StaticResource GpuHint}" Text="{x:Static t:Txt.CorsairLiftOffLocked}" TextWrapping="Wrap" Margin="0,4,0,0"
+                                   Visibility="{Binding LiftOffLocked, Converter={StaticResource BoolToVis}}" />
+                    </StackPanel>
+
+                    <StackPanel Visibility="{Binding HasSabreButtons, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Style="{StaticResource PeriLabel}" Text="{x:Static t:Txt.CorsairButtonsHeader}" />
+                        <TextBlock Style="{StaticResource GpuHint}" Text="{x:Static t:Txt.CorsairButtonsNote}" TextWrapping="Wrap" Margin="0,0,0,6" />
+                        <ItemsControl ItemsSource="{Binding SabreButtons}" Focusable="False">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,0,0,6">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="130" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding Label}" VerticalAlignment="Center" />
+                                        <ComboBox Grid.Column="1" ItemsSource="{Binding Functions}" SelectedItem="{Binding Function}" AutomationProperties.Name="{Binding Label}" />
+                                        <Button Grid.Column="2" Content="{x:Static t:Txt.Apply}" Command="{Binding ApplyCommand}" Margin="8,0,0,0" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
             <!-- Attack Shark X11: its own settings (sensor toggles, every DPI stage, deep sleep, key response, buttons, a macro). -->
             <Border Style="{StaticResource Card}" Margin="0,0,8,8" Visibility="{Binding HasShark, Converter={StaticResource BoolToVis}}">
                 <StackPanel>

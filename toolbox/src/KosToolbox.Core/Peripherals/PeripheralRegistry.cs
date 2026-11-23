@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using KosToolbox.Core.Peripherals.AttackShark;
 using KosToolbox.Core.Peripherals.Batteries;
+using KosToolbox.Core.Peripherals.Corsair;
 using KosToolbox.Core.Peripherals.Hid;
 using KosToolbox.Core.Peripherals.Keyboards;
 using KosToolbox.Core.Peripherals.Logitech;
@@ -21,6 +22,8 @@ public static class PeripheralRegistry
     {
         d => RazerCatalog.Find(d.VendorId, d.ProductId) is { } m && RazerDriver.ControlCollection(d) is not null ? new RazerDriver(d, m) : null,
         d => LogitechCatalog.Find(d.VendorId, d.ProductId) is { } m && LogitechCatalog.Collections(d) is var (s, l) && (s ?? l) is not null ? new HidppDriver(d, m) : null,
+        SabreDriver.Claim, // before the battery-only ODM reader: one owner per PID
+        BragiDriver.Claim, // before the battery readers: the Virtuoso and the K65 RGB Mini
         OdmBatteryDriver.Claim,
         WootingDriver.Claim,
         RoyuanDriver.Claim,
@@ -49,6 +52,8 @@ public static class PeripheralRegistry
         ("Logitech HID++", "Logitech G HUB", new[] { "lghub", "lghub_agent" }),
         // AttackShark.exe from the X11 installer (ATTACK SHARK X11 SOFT, read statically; not run): it takes the same one-shot read grant.
         ("Attack Shark", "Attack Shark", new[] { "AttackShark" }),
+        // iCUE and its service: the process names the friend's probe checked for (a Corsair PC with iCUE running).
+        ("Corsair", "iCUE", new[] { "iCUE", "Corsair.Service", "CorsairDeviceControlService", "iCUEDevicePluginHost" }),
     };
 
     /// <summary>The vendor app running now that may overwrite this family's settings, or null.</summary>
