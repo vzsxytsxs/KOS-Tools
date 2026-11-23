@@ -105,7 +105,10 @@ public sealed class StoreInstallViewModel : ObservableObject
     public string? Status { get => _status; private set => Set(ref _status, value); }
     public bool IsError { get => _isError; private set => Set(ref _isError, value); }
     public double Percent { get => _percent; private set => Set(ref _percent, value); }
-    public bool IsBusy { get => _busy; private set { if (Set(ref _busy, value)) CommandManager.InvalidateRequerySuggested(); } }
+    bool _determinate;
+    /// <summary>The bar runs without a percentage while a step has none (the lookup, verification, the install itself); it fills while bytes arrive.</summary>
+    public bool Indeterminate => _busy && !_determinate;
+    public bool IsBusy { get => _busy; private set { if (Set(ref _busy, value)) { Raise(nameof(Indeterminate)); CommandManager.InvalidateRequerySuggested(); } } }
     public string? ServicesNote => StoreDownloader.ServicesDisabled ? Txt.StoreServiceDisabled : null;
 
     /// <summary>Opened from a Setup card that only exists on the Store: fills in its id and looks it up.</summary>
@@ -175,8 +178,13 @@ public sealed class StoreInstallViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            var step = new Progress<string>(s => { Report(s); Percent = 0; });
-            var progress = new Progress<DownloadProgress>(d => { if (d.Total is > 0) Percent = 100.0 * d.Received / d.Total.Value; });
+            var step = new Progress<string>(s => { Report(s); Percent = 0; _determinate = false; Raise(nameof(Indeterminate)); });
+            var progress = new Progress<DownloadProgress>(d =>
+            {
+                if (d.Total is not > 0) return;
+                Percent = 100.0 * d.Received / d.Total.Value;
+                if (!_determinate) { _determinate = true; Raise(nameof(Indeterminate)); }
+            });
             var installed = await Task.Run(() => StoreDownloader.InstallAsync(product, step, progress, ct), ct);
             Percent = 100;
             var frameworks = installed.Count - 1;

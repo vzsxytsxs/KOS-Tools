@@ -1,19 +1,22 @@
 using System.Globalization;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Media;
 
 namespace KosToolbox.Views;
 
-public enum PlotStyle { Lines, Dots, Stem }
+/// <summary>Bars: one filled bar per point, as wide as the spacing of the points (a histogram).</summary>
+public enum PlotStyle { Lines, Dots, Stem, Bars }
 
 /// <summary>
 /// X/Y plot with axes and grid (mouse test, Sleep(1), frame time and ping graphs): up to four series (light, grey, then dashed tones; an optional legend), drawn as lines, dots or stems.
-/// Replacing <see cref="Series"/> redraws.
+/// Replacing <see cref="Series"/> redraws. Moving over the plot shows a crosshair and the values of the point nearest to the cursor (every series
+/// at that X); a click pins it where it is, another click or a right click lets it go.
 /// </summary>
 public sealed class DataPlot : FrameworkElement
 {
     public static readonly DependencyProperty SeriesProperty = DependencyProperty.Register(nameof(Series), typeof(IReadOnlyList<IReadOnlyList<Point>>), typeof(DataPlot),
-        new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
+        new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender, (d, _) => ((DataPlot)d).ClearPin()));
     public static readonly DependencyProperty StyleKindProperty = DependencyProperty.Register(nameof(StyleKind), typeof(PlotStyle), typeof(DataPlot),
         new FrameworkPropertyMetadata(PlotStyle.Lines, FrameworkPropertyMetadataOptions.AffectsRender));
     public static readonly DependencyProperty XTitleProperty = DependencyProperty.Register(nameof(XTitle), typeof(string), typeof(DataPlot),
@@ -75,6 +78,19 @@ public sealed class DataPlot : FrameworkElement
     }
     static readonly Typeface Face = new("Segoe UI");
 
+    // The plot as last drawn, so the mouse can be turned back into data coordinates.
+    Rect _plot;
+    double _x0, _x1, _y0, _y1;
+    List<IReadOnlyList<Point>> _drawn = new();
+    Point? _hover;
+    Point? _pinned; // data coordinates (X, and the Y of the point that was nearest) of the pinned point
+
+    void ClearPin()
+    {
+        _pinned = null;
+        _hover = null;
+    }
+
     static T Frozen<T>(T f) where T : Freezable { f.Freeze(); return f; }
 
     protected override void OnRender(DrawingContext dc)
@@ -91,6 +107,8 @@ public sealed class DataPlot : FrameworkElement
         dc.DrawText(xt, new Point(plot.Right - xt.Width, h - xt.Height - 1));
 
         var series = Series?.Where(s => s.Count > 0).ToList() ?? new();
+        _drawn = series;
+        _plot = plot;
         var marks = Marks ?? Array.Empty<double>();
         if (series.Count == 0 && marks.Count == 0)
         {
@@ -99,11 +117,14 @@ public sealed class DataPlot : FrameworkElement
         }
         var allX = series.SelectMany(s => s.Select(p => p.X)).Concat(marks).ToList();
         double minX = allX.Min(), maxX = allX.Max();
+        var binWidth = StyleKind == PlotStyle.Bars ? BinWidth(series) : 0;
+        if (binWidth > 0) { minX -= binWidth / 2; maxX += binWidth / 2; }
         double minY = series.Count == 0 ? 0 : series.Min(s => s.Min(p => p.Y)), maxY = series.Count == 0 ? 1 : series.Max(s => s.Max(p => p.Y));
-        if (StyleKind == PlotStyle.Stem) { minY = Math.Min(minY, 0); maxY = Math.Max(maxY, 0); }
+        if (StyleKind is PlotStyle.Stem or PlotStyle.Bars) { minY = Math.Min(minY, 0); maxY = Math.Max(maxY, 0); }
         if (double.IsFinite(YMin) && double.IsFinite(YMax) && YMax > YMin) (minY, maxY) = (YMin, YMax);
         var (x0, x1, xs) = Ticks(minX, maxX);
         var (y0, y1, ys) = Ticks(minY, maxY);
+        (_x0, _x1, _y0, _y1) = (x0, x1, y0, y1);
         double X(double v) => plot.Left + (v - x0) / (x1 - x0) * plot.Width;
         double Y(double v) => plot.Bottom - (v - y0) / (y1 - y0) * plot.Height;
 
@@ -138,6 +159,24 @@ public sealed class DataPlot : FrameworkElement
             var points = series[i];
             var brush = new SolidColorBrush(Tone(i));
             brush.Freeze();
+            if (StyleKind == PlotStyle.Bars)
+            {
+                // A histogram: filled bars, see-through when several series overlap, with an outline so each stays readable.
+                var fill = new SolidColorBrush(Color.FromArgb((byte)(series.Count == 1 ? 0xB0 : 0x70 - i * 0x10), Tone(i).R, Tone(i).G, Tone(i).B));
+                fill.Freeze();
+                var outline = new Pen(brush, 1) { DashStyle = Dash(i) };
+                outline.Freeze();
+                var floor = Y(0);
+                foreach (var p in points)
+                {
+                    var left = X(p.X - binWidth / 2) + 0.5;
+                    var width = Math.Max(1, X(p.X + binWidth / 2) - X(p.X - binWidth / 2) - 1);
+                    var top = Y(p.Y);
+                    if (floor - top < 0.5) continue;
+                    dc.DrawRectangle(fill, series.Count == 1 ? null : outline, new Rect(left, top, width, floor - top));
+                }
+                continue;
+            }
             var pen = new Pen(brush, StyleKind == PlotStyle.Dots ? 2.5 : 1.1) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round, LineJoin = PenLineJoin.Round };
             if (StyleKind == PlotStyle.Lines) pen.DashStyle = Dash(i);
             pen.Freeze();
@@ -169,6 +208,119 @@ public sealed class DataPlot : FrameworkElement
         }
         dc.Pop();
         dc.DrawRectangle(null, Border, plot);
+        DrawCursor(dc, plot, Text);
+    }
+
+    /// <summary>The smallest spacing between neighbouring points of the first series: a bar's width.</summary>
+    static double BinWidth(List<IReadOnlyList<Point>> series)
+    {
+        var points = series[0];
+        var best = double.MaxValue;
+        for (var i = 1; i < points.Count; i++)
+        {
+            var d = points[i].X - points[i - 1].X;
+            if (d > 1e-12 && d < best) best = d;
+        }
+        return best == double.MaxValue ? 1 : best;
+    }
+
+    /// <summary>The point of <paramref name="points"/> closest to <paramref name="x"/> (binary search when X only grows, else the closest on screen).</summary>
+    static Point? Nearest(IReadOnlyList<Point> points, double x)
+    {
+        if (points.Count == 0) return null;
+        var sorted = true;
+        for (var i = 1; i < points.Count && sorted; i += Math.Max(1, points.Count / 64)) sorted = points[i].X >= points[i - 1].X;
+        if (!sorted) return points.MinBy(p => Math.Abs(p.X - x));
+        int lo = 0, hi = points.Count - 1;
+        while (hi - lo > 1)
+        {
+            var mid = (lo + hi) / 2;
+            if (points[mid].X < x) lo = mid; else hi = mid;
+        }
+        return Math.Abs(points[lo].X - x) <= Math.Abs(points[hi].X - x) ? points[lo] : points[hi];
+    }
+
+    /// <summary>Pins the point nearest to <paramref name="x"/> (data coordinates), as a click would; for the screenshot probe.</summary>
+    public void PinAtX(double x)
+    {
+        _pinned = _drawn.Count > 0 ? Nearest(_drawn[0], x) : null;
+        InvalidateVisual();
+    }
+
+    double ToDataX(double px) => _x0 + (px - _plot.Left) / _plot.Width * (_x1 - _x0);
+    double ToPixelX(double x) => _plot.Left + (x - _x0) / (_x1 - _x0) * _plot.Width;
+    double ToPixelY(double y) => _plot.Bottom - (y - _y0) / (_y1 - _y0) * _plot.Height;
+
+    /// <summary>A crosshair at the pinned point, else at the point under the mouse, with a box saying what the point is.</summary>
+    void DrawCursor(DrawingContext dc, Rect plot, Func<string, FormattedText> text)
+    {
+        if (_drawn.Count == 0 || _x1 <= _x0 || _y1 <= _y0) return;
+        double? x = _pinned is { } p ? p.X : _hover is { } h && plot.Contains(h) ? ToDataX(h.X) : null;
+        if (x is null) return;
+        var hits = _drawn.Select(s => Nearest(s, x.Value)).ToList();
+        if (hits[0] is not { } first) return;
+        var line = new Pen(new SolidColorBrush(_pinned is null ? Color.FromRgb(0x70, 0x70, 0x70) : Color.FromRgb(0xE6, 0xE6, 0xE6)), 1) { DashStyle = _pinned is null ? DashStyles.Dash : DashStyles.Solid };
+        var cx = Math.Round(ToPixelX(first.X)) + 0.5;
+        dc.PushClip(new RectangleGeometry(plot));
+        dc.DrawLine(line, new Point(cx, plot.Top), new Point(cx, plot.Bottom));
+        var ring = new Pen(new SolidColorBrush(Color.FromRgb(0xF5, 0xF5, 0xF5)), 1.5);
+        for (var i = 0; i < hits.Count; i++)
+            if (hits[i] is { } pt) dc.DrawEllipse(new SolidColorBrush(Color.FromRgb(0x0A, 0x0A, 0x0A)), ring, new Point(ToPixelX(pt.X), ToPixelY(pt.Y)), 3.5, 3.5);
+        dc.Pop();
+
+        var lines = new List<FormattedText> { text($"{(string.IsNullOrEmpty(XTitle) ? "X" : XTitle)}  {Num(first.X)}") };
+        for (var i = 0; i < hits.Count; i++)
+            if (hits[i] is { } pt)
+                lines.Add(text($"{(Legend is { } names && i < names.Count ? names[i] : string.IsNullOrEmpty(YTitle) ? "Y" : YTitle)}  {Num(pt.Y)}"));
+        var width = lines.Max(l => l.Width) + 16;
+        var height = lines.Sum(l => l.Height) + 10;
+        var anchor = _hover is { } m && _pinned is null ? m : new Point(cx, plot.Top + 10);
+        var box = new Rect(Math.Clamp(anchor.X + 14, plot.Left + 2, Math.Max(plot.Left + 2, plot.Right - width - 2)), Math.Clamp(anchor.Y + 14, plot.Top + 2, Math.Max(plot.Top + 2, plot.Bottom - height - 2)), width, height);
+        dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromArgb(0xF2, 0x14, 0x14, 0x14)), new Pen(new SolidColorBrush(Color.FromRgb(0x4A, 0x4A, 0x4A)), 1), box, 4, 4);
+        var y = box.Top + 5;
+        foreach (var l in lines)
+        {
+            l.SetForegroundBrush(Brushes.WhiteSmoke);
+            dc.DrawText(l, new Point(box.Left + 8, y));
+            y += l.Height;
+        }
+    }
+
+    static string Num(double v) => Math.Abs(v) >= 1000 ? v.ToString("#,0.#", CultureInfo.CurrentCulture) : v.ToString("0.##", CultureInfo.CurrentCulture);
+
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        base.OnMouseMove(e);
+        var p = e.GetPosition(this);
+        _hover = _plot.Contains(p) ? p : null;
+        Cursor = _hover is null ? Cursors.Arrow : Cursors.Cross;
+        InvalidateVisual();
+    }
+
+    protected override void OnMouseLeave(MouseEventArgs e)
+    {
+        base.OnMouseLeave(e);
+        _hover = null;
+        InvalidateVisual();
+    }
+
+    protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
+    {
+        base.OnMouseLeftButtonUp(e);
+        var p = e.GetPosition(this);
+        if (!_plot.Contains(p) || _drawn.Count == 0) return;
+        var near = Nearest(_drawn[0], ToDataX(p.X));
+        // Clicking the pinned point again lets it go.
+        _pinned = near is { } n && _pinned is { } old && Math.Abs(ToPixelX(old.X) - ToPixelX(n.X)) < 4 ? null : near;
+        InvalidateVisual();
+    }
+
+    protected override void OnMouseRightButtonUp(MouseButtonEventArgs e)
+    {
+        base.OnMouseRightButtonUp(e);
+        if (_pinned is null) return;
+        _pinned = null;
+        InvalidateVisual();
     }
 
     /// <summary>Axis from a round number below to one above, about five steps of 1, 2 or 5 × 10^n.</summary>

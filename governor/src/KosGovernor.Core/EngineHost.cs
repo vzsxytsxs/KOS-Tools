@@ -250,7 +250,7 @@ internal sealed class Tray : IDisposable
     readonly FirewallPopup _popup;
     readonly System.Collections.Concurrent.ConcurrentQueue<FirewallAsk> _asks = new();
     readonly DarkApps _dark = new(), _folders = new("FolderHook", "No blank between folders", "CabinetWClass"),
-        _menus = new("MenuHook", "Context menu icons", "#32768");
+        _menus = new("MenuHook", "Context menu icons", "Shell_TrayWnd");
     volatile string[] _darkWanted = [], _folderWanted = [], _menuWanted = [];
     IntPtr _hwnd, _icon;
     bool _hotkey;

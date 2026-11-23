@@ -884,7 +884,30 @@
         <Setter Property="FontSize" Value="12" />
     </Style>
 
-    <!-- Column titles of the driver and processor tables; the first title is the content. -->
+    <!-- Column titles of the driver and processor tables; the first title is the content. The driver table's last column (LatencyHeaderDrivers)
+         says which processors a driver ran on; the processor table keeps the column empty so both line up. -->
+    <DataTemplate x:Key="LatencyHeaderDrivers">
+        <Grid Margin="10,4,20,4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2.2*" />
+                <ColumnDefinition Width="0.9*" />
+                <ColumnDefinition Width="1*" />
+                <ColumnDefinition Width="1*" />
+                <ColumnDefinition Width="0.9*" />
+                <ColumnDefinition Width="1*" />
+                <ColumnDefinition Width="1*" />
+                <ColumnDefinition Width="1.7*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Style="{StaticResource LatencyHead}" Text="{Binding}" />
+            <TextBlock Grid.Column="1" Style="{StaticResource LatencyHead}" Text="{x:Static t:Txt.ColIsrs}" />
+            <TextBlock Grid.Column="2" Style="{StaticResource LatencyHead}" Text="{x:Static t:Txt.ColIsrMax}" />
+            <TextBlock Grid.Column="3" Style="{StaticResource LatencyHead}" Text="{x:Static t:Txt.ColIsrTotal}" />
+            <TextBlock Grid.Column="4" Style="{StaticResource LatencyHead}" Text="{x:Static t:Txt.ColDpcs}" />
+            <TextBlock Grid.Column="5" Style="{StaticResource LatencyHead}" Text="{x:Static t:Txt.ColDpcMax}" />
+            <TextBlock Grid.Column="6" Style="{StaticResource LatencyHead}" Text="{x:Static t:Txt.ColDpcTotal}" />
+            <TextBlock Grid.Column="7" Style="{StaticResource LatencyHead}" Text="{x:Static t:Txt.ColRunsOn}" />
+        </Grid>
+    </DataTemplate>
     <DataTemplate x:Key="LatencyHeader">
         <Grid Margin="10,4,20,4">
             <Grid.ColumnDefinitions>
@@ -895,6 +918,7 @@
                 <ColumnDefinition Width="0.9*" />
                 <ColumnDefinition Width="1*" />
                 <ColumnDefinition Width="1*" />
+                <ColumnDefinition Width="1.7*" />
             </Grid.ColumnDefinitions>
             <TextBlock Style="{StaticResource LatencyHead}" Text="{Binding}" />
             <TextBlock Grid.Column="1" Style="{StaticResource LatencyHead}" Text="{x:Static t:Txt.ColIsrs}" />
@@ -916,6 +940,7 @@
                 <ColumnDefinition Width="0.9*" />
                 <ColumnDefinition Width="1*" />
                 <ColumnDefinition Width="1*" />
+                <ColumnDefinition Width="1.7*" />
             </Grid.ColumnDefinitions>
             <TextBlock Text="{Binding Name}" ToolTip="{Binding Name}">
                 <TextBlock.Style>
@@ -934,6 +959,7 @@
             <TextBlock Grid.Column="4" Style="{StaticResource LatencyCell}" Text="{Binding Dpcs}" Foreground="{StaticResource TextSecondaryBrush}" />
             <TextBlock Grid.Column="5" Style="{StaticResource LatencyCell}" Text="{Binding DpcMax}" />
             <TextBlock Grid.Column="6" Style="{StaticResource LatencyCell}" Text="{Binding DpcTotal}" Foreground="{StaticResource TextSecondaryBrush}" />
+            <TextBlock Grid.Column="7" Style="{StaticResource LatencyCell}" Text="{Binding RunsOn}" ToolTip="{Binding RunsOnTip}" />
         </Grid>
     </DataTemplate>
 
@@ -982,6 +1008,7 @@
                     <ItemsControl ItemsSource="{Binding Startup}" Focusable="False" />
                     <TextBlock Style="{StaticResource Secondary}" Text="{Binding StartupNote}" TextWrapping="Wrap" Margin="10,6,20,0" />
                     <TextBlock Style="{StaticResource Secondary}" Text="{Binding BootLogNote}" TextWrapping="Wrap" Margin="10,4,20,0" Visibility="{Binding BootLogNote, Converter={StaticResource NotEmptyToVis}}" />
+                    <ContentControl Content="{Binding Diagnostics}" Focusable="False" Margin="0,10,0,0" />
                 </StackPanel>
             </Border>
 
@@ -1375,7 +1402,7 @@
                            Visibility="{Binding NoDriverNames, Converter={StaticResource NotEmptyToVis}}" />
 
                 <TextBlock Style="{StaticResource SectionTitle}" Text="{x:Static t:Txt.LatencyDrivers}" Margin="2,4,0,4" />
-                <ContentPresenter Content="{x:Static t:Txt.ColDriver}" ContentTemplate="{StaticResource LatencyHeader}" />
+                <ContentPresenter Content="{x:Static t:Txt.ColDriver}" ContentTemplate="{StaticResource LatencyHeaderDrivers}" />
                 <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,0,0,14">
                     <ItemsControl ItemsSource="{Binding Drivers}" Focusable="False" />
                 </Border>

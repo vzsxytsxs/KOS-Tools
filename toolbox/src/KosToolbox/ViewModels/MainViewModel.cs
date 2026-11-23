@@ -44,6 +44,7 @@ public sealed class MainViewModel : ObservableObject
         Action<PageViewModel> select = p => SelectedPage = p;
         var gpu = new GpuPageViewModel(ItemsOf(Core.Catalog.Pages.Gpu), _all.OfType<TweakViewModel>().FirstOrDefault(t => t.Tweak.Id == "wu-drivers"));
         DriversPageViewModel.OpenGpuDriver = () => { gpu.SelectTab("driver"); SelectedPage = gpu; };
+        var diagnostics = _all.OfType<TweakViewModel>().FirstOrDefault(t => t.Tweak.Id == "diagnostics-services");
         var kosState = new KosStatePageViewModel(_all.OfType<TweakViewModel>());
         KosStatePageViewModel.Open = () => SelectedPage = kosState;
         var setup = new SetupPageViewModel();
@@ -63,7 +64,7 @@ public sealed class MainViewModel : ObservableObject
                 new NetworkPageViewModel(),
                 new PeripheralsPageViewModel(), // HID mice, keyboards and other devices: the list and each one's collections
                 new AudioPageViewModel()), // playback and recording devices: default, volume, format, exclusive mode, enhancements
-            new NavListViewModel(select, Txt.NavSystem, new StartupPageViewModel(), new ServicesPageViewModel(ItemsOf(Core.Catalog.Pages.Services)), new DevicesPageViewModel(),
+            new NavListViewModel(select, Txt.NavSystem, new StartupPageViewModel(), new ServicesPageViewModel(ItemsOf(Core.Catalog.Pages.Services).Concat(diagnostics is null ? [] : [diagnostics])), new DevicesPageViewModel(), // the diagnostic services are also here, shared with What's slow
                 new BiosPageViewModel()), // BIOS settings through SCEWIN, with a backup on every write
             new NavListViewModel(select, Txt.NavSoftware, setup,
                 new WindowsUpdatePageViewModel(), // search, install and hide updates while Windows Update stays off
@@ -72,7 +73,7 @@ public sealed class MainViewModel : ObservableObject
                 new CleanupPageViewModel()), // Apps, Storage, Drivers and Ghost devices, as tabs
             new NavListViewModel(select, Txt.NavDiagnose,
                 latency, // DPC/ISR per driver, mouse report rate and Sleep(1) precision
-                new SlowPageViewModel(), // what's frozen, slow or full now, recent hangs and when the sign-in programs started
+                new SlowPageViewModel(diagnostics), // what's frozen, slow or full now, recent hangs and when the sign-in programs started
                 stability), // crashes, driver resets and hardware errors from the System log
             // The other KOS apps: each entry opens the app (or brings it to the front); the page that's open stays.
             new NavListViewModel(select, Txt.NavKosApps,

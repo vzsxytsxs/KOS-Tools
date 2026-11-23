@@ -70,6 +70,10 @@ public class LatencyTests
         Assert.Equal((2L, 2000.0, 2.05), (nv.Dpc.Count, nv.Dpc.MaxUs, nv.Dpc.TotalMs));
         Assert.Equal(0, nv.Isr.Count);
         Assert.Equal((1L, 10.0), (r.Drivers[1].Isr.Count, r.Drivers[1].Isr.MaxUs));
+        // Which processors each driver's routines ran on: nvlddmkm one DPC on CPU 0 and one on CPU 1, ntoskrnl its ISR on CPU 1.
+        Assert.Equal(new[] { new CpuShare(0, 1), new CpuShare(1, 1) }, nv.OnCpus);
+        Assert.Equal(new[] { new CpuShare(1, 1) }, r.Drivers[1].OnCpus);
+        Assert.Null(r.Cpus[0].OnCpus);
         Assert.Equal(new[] { "CPU 0", "CPU 1" }, r.Cpus.Select(x => x.Name));
         Assert.Equal((1L, 1L, 2000.0), (r.Cpus[1].Dpc.Count, r.Cpus[1].Isr.Count, r.Cpus[1].MaxUs));
         Assert.Equal(3, r.HardFaults);

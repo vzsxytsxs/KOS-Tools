@@ -17,12 +17,14 @@ public sealed class SlowPageViewModel : PageViewModel
     string _memory = "", _disksNote = "", _hangsNote = "", _boot = "", _startupNote = "", _bootLogNote = "";
     bool _loading;
 
-    public SlowPageViewModel() : base("slow", Txt.PageSlow, "", Txt.PageSlowSubtitle) // Speed high
+    public SlowPageViewModel(TweakViewModel? diagnostics = null) : base("slow", Txt.PageSlow, "", Txt.PageSlowSubtitle) // Speed high
     {
+        Diagnostics = diagnostics;
         OpenLatencyCommand = new RelayCommand(() => OpenLatency?.Invoke());
         OpenStabilityCommand = new RelayCommand(() => OpenStability?.Invoke());
     }
 
+    public TweakViewModel? Diagnostics { get; }
     public static Action? OpenLatency { get; set; }
     public static Action? OpenStability { get; set; }
     public ICommand OpenLatencyCommand { get; }
@@ -49,6 +51,7 @@ public sealed class SlowPageViewModel : PageViewModel
         Raise(nameof(NoHung));
         try
         {
+            if (Diagnostics is not null) await Diagnostics.RefreshAsync();
             // History and boot first (quick), while the 3 s sample runs alongside.
             var sampleTask = Task.Run(() => Slowness.Sample(SampleLength));
             var (hangs, hangsError) = await Task.Run(() =>

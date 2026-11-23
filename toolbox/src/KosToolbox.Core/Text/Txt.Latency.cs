@@ -14,7 +14,7 @@ public static partial class Txt
         LatencyIsrTip = "Interrupt service routine: a driver's first response to its device's interrupt, above everything else on that processor.",
         LatencyFaultsTip = "Memory a program needed that had to be read back from disk (page file or the program's own files). Many while playing mean too little free memory.",
         LatencyDrivers = "Drivers", LatencyCpus = "Processors", LatencyProcesses = "Hard pagefaults by process",
-        ColDriver = "Driver", ColProcessor = "Processor", ColIsrs = "ISRs", ColIsrMax = "Highest ISR", ColIsrTotal = "ISR total",
+        ColDriver = "Driver", ColRunsOn = "Runs on CPU", ColProcessor = "Processor", ColIsrs = "ISRs", ColIsrMax = "Highest ISR", ColIsrTotal = "ISR total",
         ColDpcs = "DPCs", ColDpcMax = "Highest DPC", ColDpcTotal = "DPC total", ColProcess = "Process", ColHardFaults = "Hard pagefaults",
         LatencyGood = "No driver ran for 1 ms or more at a time, and threads ran soon after their interrupt: nothing here points to audio dropouts or stutter.",
         LatencyTooShort = "Keep it running for a few minutes while you use the PC: short spikes only show up over time.",

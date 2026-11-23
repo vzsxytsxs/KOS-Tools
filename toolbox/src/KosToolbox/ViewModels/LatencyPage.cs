@@ -17,6 +17,20 @@ public sealed class LatencyRowViewModel(LatencyRow row)
     public string DpcMax => row.Dpc.Count == 0 ? "" : Txt.Microseconds(row.Dpc.MaxUs);
     public string DpcTotal => row.Dpc.Count == 0 ? "" : Txt.Milliseconds(row.Dpc.TotalMs);
     public bool IsSlow => row.MaxUs >= LatencyPageViewModel.SlowUs;
+
+    /// <summary>The processors a driver's routines ran on, most first with their share ("3 (62 %) · 4 (30 %) · +2"); empty for a processor row.</summary>
+    public string RunsOn
+    {
+        get
+        {
+            if (row.OnCpus is not { Count: > 0 } on) return "";
+            var total = (double)on.Sum(c => c.Count);
+            var shown = on.Take(4).Select(c => on.Count == 1 ? $"{c.Cpu}" : $"{c.Cpu} ({100 * c.Count / total:0} %)");
+            return string.Join(" · ", shown) + (on.Count > 4 ? $" · +{on.Count - 4}" : "");
+        }
+    }
+
+    public string RunsOnTip => row.OnCpus is { Count: > 0 } on ? string.Join(Environment.NewLine, on.Select(c => $"CPU {c.Cpu}: {c.Count:N0} routines")) : "";
 }
 
 /// <summary>

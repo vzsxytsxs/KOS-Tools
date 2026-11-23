@@ -117,7 +117,9 @@ public sealed class DownloadViewModel(SetupAppViewModel app) : ObservableObject
     string _state = Txt.SetupQueued;
     string? _detail, _signer, _target;
     double _percent;
-    bool _busy = true, _installing, _error, _deleted;
+    bool _busy = true, _installing, _error, _deleted, _determinate;
+    System.Windows.Threading.DispatcherTimer? _clock;
+    readonly System.Diagnostics.Stopwatch _phase = new();
 
     public SetupAppViewModel App { get; } = app;
     public string Name => App.Name;
@@ -135,7 +137,7 @@ public sealed class DownloadViewModel(SetupAppViewModel app) : ObservableObject
     public bool IsBusy
     {
         get => _busy;
-        private set { if (Set(ref _busy, value)) { Raise(nameof(CanCancel)); Raise(nameof(CanRun)); Raise(nameof(CanRetry)); CommandManager.InvalidateRequerySuggested(); } }
+        private set { if (Set(ref _busy, value)) { Raise(nameof(CanCancel)); Raise(nameof(CanRun)); Raise(nameof(CanRetry)); Raise(nameof(Indeterminate)); CommandManager.InvalidateRequerySuggested(); } }
     }
     public bool IsInstalling { get => _installing; set { if (Set(ref _installing, value)) Raise(nameof(CanCancel)); } }
     public bool CanCancel => _busy && !_installing;
@@ -143,11 +145,38 @@ public sealed class DownloadViewModel(SetupAppViewModel app) : ObservableObject
     public bool CanRetry => !_busy && Target is null && !_deleted;
     public string RunText => App.App.Portable ? Txt.Open : Txt.SetupRun;
 
-    public void Step(string state) { State = state; IsError = false; }
+    /// <summary>
+    /// The bar runs (indeterminate) while a step has no percentage: waiting, the signature check, Chocolatey, an installer that is open.
+    /// It fills only while bytes are coming in. Those steps show how long they have been running, so it is visibly alive.
+    /// </summary>
+    public bool Indeterminate => _busy && !_determinate;
+
+    public void Step(string state)
+    {
+        State = state;
+        IsError = false;
+        _determinate = false;
+        _phase.Restart();
+        Raise(nameof(Indeterminate));
+        _clock ??= new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _clock.Tick -= Tick;
+        _clock.Tick += Tick;
+        _clock.Start();
+    }
+
+    void Tick(object? sender, EventArgs e)
+    {
+        if (_determinate || !_busy) { _clock?.Stop(); return; }
+        Detail = _phase.Elapsed.ToString(_phase.Elapsed.TotalHours >= 1 ? @"h\:mm\:ss" : @"m\:ss");
+    }
 
     public void Report(DownloadProgress p)
     {
-        if (p.Total is > 0) Percent = 100.0 * p.Received / p.Total.Value;
+        if (p.Total is > 0)
+        {
+            Percent = 100.0 * p.Received / p.Total.Value;
+            if (!_determinate) { _determinate = true; _clock?.Stop(); Raise(nameof(Indeterminate)); }
+        }
         Detail = Txt.SetupProgress(p.Received, p.Total, p.BytesPerSecond, p.Aria2);
     }
 
@@ -164,6 +193,7 @@ public sealed class DownloadViewModel(SetupAppViewModel app) : ObservableObject
         State = state;
         IsError = error;
         IsInstalling = false;
+        _clock?.Stop();
         IsBusy = false;
         if (!error && Target is not null) Percent = 100;
     }

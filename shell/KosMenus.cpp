@@ -4,8 +4,10 @@
 // (WM_DRAWITEM, seen by a WH_CALLWNDPROCRET hook on the thread showing the menu, only while its menus are open), the icon is drawn
 // in the item's icon column on the menu window's DC (the item's own DC is composed elsewhere and never reaches the screen).
 // Items are matched by their English text (accelerator marks, tabs and a trailing "..." ignored); anything else is left.
-// KOS Engine loads this DLL into File Explorer when the switch is on and Explorer shows a menu (MenuHook, one WM_NULL); the switch is
-// read again for each menu, so off works at once. Only explorer.exe; the hooks are on Explorer's own threads, never system-wide.
+// KOS Engine loads this DLL into File Explorer when the switch is on, as soon as Explorer shows its taskbar (MenuHook, one WM_NULL), so
+// it is there before the first menu. If the DLL arrives while a menu is already open (the engine started after Explorer, or the switch
+// was just turned on) MenuHook is sent to that menu's window and the menu is picked up from there. The switch is read again for each
+// menu, so off works at once. Only explorer.exe; the hooks are on Explorer's own threads, never system-wide.
 #include <windows.h>
 #include <cwchar>
 #include <map>
@@ -188,9 +190,17 @@ namespace
         return CallNextHookEx(nullptr, code, w, l);
     }
 
-    /// A menu shown on this Explorer thread: the draw hook on that thread (once), then the menu redrawn so its first paint has icons.
     /// A menu shown on this Explorer thread: the draw hook on that thread while its menus are open (removed when the last one
-    /// closes), and the first menu redrawn so its first paint has icons.
+    /// closes), and the first menu redrawn so everything already painted of it gets its icons too.
+    void Attach(HWND window)
+    {
+        t_open++;
+        if (t_hook || !SwitchOn()) return;
+        t_hook = SetWindowsHookExW(WH_CALLWNDPROCRET, AfterMessage, g_self, GetCurrentThreadId());
+        TRACE(L"popup %p hooked %d", window, t_hook != nullptr);
+        if (t_hook) RedrawWindow(window, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+    }
+
     void CALLBACK OnPopup(HWINEVENTHOOK, DWORD event, HWND window, LONG, LONG, DWORD, DWORD)
     {
         if (!IsMenuWindow(window)) return;
@@ -199,24 +209,20 @@ namespace
             if (t_open > 0 && --t_open == 0 && t_hook) { UnhookWindowsHookEx(t_hook); t_hook = nullptr; }
             return;
         }
-        t_open++;
-        if (t_hook || !SwitchOn()) return;
-        t_hook = SetWindowsHookExW(WH_CALLWNDPROCRET, AfterMessage, g_self, GetCurrentThreadId());
-        TRACE(L"popup %p hooked %d", window, t_hook != nullptr);
-        if (t_hook) RedrawWindow(window, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
+        Attach(window);
     }
 
-    /// Only in File Explorer (%windir%\explorer.exe), once per process.
-    void Start()
+    /// Only in File Explorer (%windir%\explorer.exe), once per process. True when this call started it.
+    bool Start()
     {
-        if (g_started.exchange(true)) return;
+        if (g_started.exchange(true)) return false;
         wchar_t exe[MAX_PATH], path[MAX_PATH];
         const DWORD length = GetModuleFileNameW(nullptr, exe, MAX_PATH);
         const UINT folder = GetSystemWindowsDirectoryW(path, MAX_PATH);
         if (length == 0 || length >= MAX_PATH || folder == 0 || folder >= MAX_PATH || wcscat_s(path, L"\\explorer.exe") != 0
-            || CompareStringOrdinal(exe, -1, path, -1, TRUE) != CSTR_EQUAL) return;
+            || CompareStringOrdinal(exe, -1, path, -1, TRUE) != CSTR_EQUAL) return false;
         // Explorer's menus keep calling this code: never unloaded (KOS Engine removes its own hook right away).
-        if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN, reinterpret_cast<LPCWSTR>(&Start), &g_self)) return;
+        if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN, reinterpret_cast<LPCWSTR>(&Start), &g_self)) return false;
 #ifdef KOS_SHELL_PROBE
         TRACE(L"self-check %d", MenuSelfCheck());
 #endif
@@ -229,13 +235,19 @@ namespace
                 return 0;
             }, nullptr, 0, nullptr))
             CloseHandle(owner);
+        return true;
     }
 }
 
-/// KOS Engine's thread hook: its WM_NULL starts the menu icons in this process (once), not a message Explorer sends itself.
+/// KOS Engine's thread hook: its WM_NULL starts the menu icons in this process (once), not a message Explorer sends itself. When it
+/// was sent to a menu that is already open (the DLL arrived late), that menu missed its popup event: it is taken up here, on its own thread.
 extern "C" LRESULT CALLBACK MenuHook(int code, WPARAM w, LPARAM l)
 {
-    if (code == HC_ACTION && reinterpret_cast<const CWPSTRUCT*>(l)->message == WM_NULL) Start();
+    if (code == HC_ACTION)
+    {
+        const auto m = reinterpret_cast<const CWPSTRUCT*>(l);
+        if (m->message == WM_NULL && Start() && IsMenuWindow(m->hwnd)) Attach(m->hwnd);
+    }
     return CallNextHookEx(nullptr, code, w, l);
 }
 

@@ -94,7 +94,7 @@ public sealed partial class FramesViewModel
     // ---------- single capture graphs ----------
     public IReadOnlyList<Choice<FrameGraph>> Graphs { get; private set; } = null!;
     public Choice<FrameGraph> Graph { get => _graph; set { if (value is not null && Set(ref _graph, value)) Plot(); } }
-    public PlotStyle PlotStyle => _graph.Value == FrameGraph.Histogram ? PlotStyle.Stem : PlotStyle.Lines;
+    public PlotStyle PlotStyle => _graph.Value == FrameGraph.Histogram ? PlotStyle.Bars : PlotStyle.Lines;
     public string XTitle => Titles(_graph.Value).X;
     public string YTitle => Titles(_graph.Value).Y;
 

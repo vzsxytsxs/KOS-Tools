@@ -12,8 +12,14 @@ public struct RunStats
 /// <summary>Count, longest run (µs) and total time (ms).</summary>
 public sealed record RunTimes(long Count, double MaxUs, double TotalMs);
 
-/// <summary>ISR and DPC times of one driver or one logical processor.</summary>
-public sealed record LatencyRow(string Name, RunTimes Isr, RunTimes Dpc)
+/// <summary>How many ISRs and DPCs of a driver ran on one logical processor.</summary>
+public sealed record CpuShare(int Cpu, long Count);
+
+/// <summary>
+/// ISR and DPC times of one driver or one logical processor. <paramref name="OnCpus"/> (drivers only): the processors its routines
+/// ran on, most routines first.
+/// </summary>
+public sealed record LatencyRow(string Name, RunTimes Isr, RunTimes Dpc, IReadOnlyList<CpuShare>? OnCpus = null)
 {
     public double MaxUs => Math.Max(Isr.MaxUs, Dpc.MaxUs);
 }
@@ -39,6 +45,7 @@ public sealed class LatencyCollector(KernelModules modules, long frequency)
     readonly Dictionary<string, Pair> _drivers = new(StringComparer.OrdinalIgnoreCase);
     readonly Dictionary<int, Pair> _cpus = new();
     readonly Dictionary<string, HashSet<int>> _driverCpus = new(StringComparer.OrdinalIgnoreCase);
+    readonly Dictionary<string, Dictionary<int, long>> _driverCpuCounts = new(StringComparer.OrdinalIgnoreCase);
     readonly Dictionary<int, long> _faults = new();
     RunStats _timer;
 
@@ -63,6 +70,8 @@ public sealed class LatencyCollector(KernelModules modules, long frequency)
                 if (!_cpus.TryGetValue(cpu, out var c)) _cpus[cpu] = c = new();
                 if (!_driverCpus.TryGetValue(driver, out var on)) _driverCpus[driver] = on = new();
                 on.Add(cpu);
+                if (!_driverCpuCounts.TryGetValue(driver, out var counts)) _driverCpuCounts[driver] = counts = new();
+                counts[cpu] = counts.GetValueOrDefault(cpu) + 1;
                 if (opcode == Isr) { d.Isr.Add(ticks); c.Isr.Add(ticks); }
                 else { d.Dpc.Add(ticks); c.Dpc.Add(ticks); }
             }
@@ -85,7 +94,11 @@ public sealed class LatencyCollector(KernelModules modules, long frequency)
         RunStats timer;
         lock (_gate)
         {
-            drivers = _drivers.Select(d => Row(d.Key, d.Value)).OrderByDescending(r => r.MaxUs).ToList();
+            drivers = _drivers.Select(d => Row(d.Key, d.Value) with
+            {
+                OnCpus = _driverCpuCounts.TryGetValue(d.Key, out var counts)
+                    ? counts.OrderByDescending(c => c.Value).ThenBy(c => c.Key).Select(c => new CpuShare(c.Key, c.Value)).ToList() : null,
+            }).OrderByDescending(r => r.MaxUs).ToList();
             cpus = _cpus.OrderBy(c => c.Key).Select(c => Row($"CPU {c.Key}", c.Value)).ToList();
             faults = _faults.ToList();
             timer = _timer;

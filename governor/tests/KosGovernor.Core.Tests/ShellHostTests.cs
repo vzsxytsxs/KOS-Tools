@@ -126,9 +126,11 @@ public class ShellHostTests
         Assert.Equal([@"C:\Windows\explorer.exe"], wanted);
         Assert.Empty(DarkApps.Paths(DarkApps.MenuApps, n => n == "NoBlankFolders" ? 1 : null, @"C:\Windows"));
         string? Never() => throw new InvalidOperationException("command line read");
-        Assert.True(DarkApps.Wants(wanted, @"C:\Windows\explorer.exe", "#32768", Never, @"C:\Windows", "#32768"));
-        Assert.Null(DarkApps.Wants(wanted, @"C:\Windows\explorer.exe", "CabinetWClass", Never, @"C:\Windows", "#32768"));
-        Assert.False(DarkApps.Wants(wanted, @"C:\Windows\notepad.exe", "#32768", Never, @"C:\Windows", "#32768")); // a menu in another app
+        // Started when Explorer shows its taskbar, before any menu; other Explorer windows wait for that one.
+        Assert.True(DarkApps.Wants(wanted, @"C:\Windows\explorer.exe", "Shell_TrayWnd", Never, @"C:\Windows", "Shell_TrayWnd"));
+        Assert.Null(DarkApps.Wants(wanted, @"C:\Windows\explorer.exe", "#32768", Never, @"C:\Windows", "Shell_TrayWnd"));
+        Assert.Null(DarkApps.Wants(wanted, @"C:\Windows\explorer.exe", "CabinetWClass", Never, @"C:\Windows", "Shell_TrayWnd"));
+        Assert.False(DarkApps.Wants(wanted, @"C:\Windows\notepad.exe", "Shell_TrayWnd", Never, @"C:\Windows", "Shell_TrayWnd")); // another app
     }
 
     [Fact]

@@ -19,7 +19,7 @@ namespace KosGovernor.Core;
 /// <item>No other process gets the DLL, games included. Off applies to apps started afterwards: an open window stays dark until it's closed.</item>
 /// <item>A second instance does the same for KOS Shell's folder fix (NoBlankFolders = 1, shell\KosFolders.cpp): File Explorer gets the DLL
 /// through FolderHook once it shows a folder window (CabinetWClass). A third one, for the context menu icons (MenuIcons = 1,
-/// shell\KosMenus.cpp), through MenuHook once Explorer shows a menu (#32768).</item>
+/// shell\KosMenus.cpp), through MenuHook as soon as Explorer shows its taskbar (Shell_TrayWnd), so the first menu already has icons.</item>
 /// </list>
 /// Runs on the tray thread (the window events arrive there).
 /// </summary>
@@ -42,7 +42,7 @@ internal sealed class DarkApps
     /// <summary>The folder fix's switch: File Explorer only.</summary>
     internal static readonly (string Value, string[] Paths)[] FolderApps = [("NoBlankFolders", ["explorer.exe"])];
 
-    /// <summary>The context menu icons' switch: File Explorer only, started at its first menu (#32768).</summary>
+    /// <summary>The context menu icons' switch: File Explorer only, started when its taskbar shows (Shell_TrayWnd).</summary>
     internal static readonly (string Value, string[] Paths)[] MenuApps = [("MenuIcons", ["explorer.exe"])];
 
     /// <summary>The full paths whose switch is 1 (any thread).</summary>

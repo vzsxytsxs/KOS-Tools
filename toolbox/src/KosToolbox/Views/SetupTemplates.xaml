@@ -64,7 +64,7 @@
                         <TextBlock DockPanel.Dock="Right" Style="{StaticResource Secondary}" FontSize="12" Text="{Binding Detail}" Margin="12,0,0,0" VerticalAlignment="Bottom" />
                         <TextBlock Style="{StaticResource CardTitle}" FontSize="13.5" Text="{Binding Name}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
                     </DockPanel>
-                    <ProgressBar Value="{Binding Percent, Mode=OneWay}" Maximum="100" Margin="0,8,0,6" />
+                    <ProgressBar Value="{Binding Percent, Mode=OneWay}" Maximum="100" IsIndeterminate="{Binding Indeterminate}" Margin="0,8,0,6" />
                     <TextBlock FontSize="12" Text="{Binding State}" TextWrapping="Wrap">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource Secondary}">
@@ -266,7 +266,7 @@
                                     </Style>
                                 </TextBlock.Style>
                             </TextBlock>
-                            <ProgressBar Value="{Binding Percent, Mode=OneWay}" Maximum="100" Margin="0,8,0,0" Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" />
+                            <ProgressBar Value="{Binding Percent, Mode=OneWay}" Maximum="100" IsIndeterminate="{Binding Indeterminate}" Margin="0,8,0,0" Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" />
                         </StackPanel>
                     </Border>
                     <Border Style="{StaticResource Card}" Margin="0,0,0,10" Visibility="{Binding HasResults, Converter={StaticResource BoolToVis}}">
