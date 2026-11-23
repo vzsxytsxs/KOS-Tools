@@ -84,4 +84,29 @@ public class VfCurveEditTests
         Assert.NotNull(GpuTuner.Problem(new GpuTuning { PciBusId = supported.BusId, ClockLockMhz = 1950 },
             new GpuState { BusId = supported.BusId, ClockLockProblem = "not exported" }));
     }
+
+    [Fact]
+    public void MinimumClockIsValidatedAgainstTheCardsHighestClock()
+    {
+        var state = new GpuState { BusId = "00000000:01:00.0", ClockLockMhz = 0, MinClockMhz = 0, MaxClockMhz = 2115 };
+        GpuTuning Min(int mhz, int? lockMhz = null) => new() { PciBusId = state.BusId, MinClockMhz = mhz, ClockLockMhz = lockMhz };
+        Assert.Null(GpuTuner.Problem(Min(1245), state));
+        Assert.Null(GpuTuner.Problem(Min(0), state));
+        Assert.Null(GpuTuner.Problem(Min(2115), state));
+        Assert.NotNull(GpuTuner.Problem(Min(50), state));
+        Assert.NotNull(GpuTuner.Problem(Min(2116), state));
+        // One NVML lock: a clock lock and a minimum clock can't both be on, but a lock being turned off with a minimum is fine.
+        Assert.NotNull(GpuTuner.Problem(Min(1245, lockMhz: 1500), state));
+        Assert.Null(GpuTuner.Problem(Min(1245, lockMhz: 0), state));
+        Assert.NotNull(GpuTuner.Problem(Min(1245), new GpuState { BusId = state.BusId, ClockLockProblem = "not exported" }));
+        Assert.NotNull(GpuTuner.Problem(Min(1245), new GpuState { BusId = state.BusId, ClockLockMhz = 0, MinClockMhz = 0 })); // highest clock unknown
+    }
+
+    [Fact]
+    public void AMinimumClockThatDidNotStickIsReported()
+    {
+        var applied = new GpuState { BusId = "00000000:01:00.0", ClockLockMhz = 0, MinClockMhz = 1245, MaxClockMhz = 2115 };
+        Assert.Empty(GpuTuner.Unconfirmed(new GpuTuning { PciBusId = applied.BusId, MinClockMhz = 1245 }, applied));
+        Assert.Single(GpuTuner.Unconfirmed(new GpuTuning { PciBusId = applied.BusId, MinClockMhz = 1500 }, applied));
+    }
 }

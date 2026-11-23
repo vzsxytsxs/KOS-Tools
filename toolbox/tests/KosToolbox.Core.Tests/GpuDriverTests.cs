@@ -36,6 +36,18 @@ public class GpuDriverTests
     }
 
     [Fact]
+    public void NamesTheCardFromThePciIdDatabase()
+    {
+        const string pciIds = "# comment\n1002  Advanced Micro Devices, Inc. [AMD/ATI]\n\t2187  Not an NVIDIA card\n10de  NVIDIA Corporation\n"
+            + "\t1c82  GP107 [GeForce GTX 1050 Ti]\n\t\t1043 8613  subsystem line\n\t2187  TU116 [GeForce GTX 1650 SUPER]\n\t2204  GA102 [GeForce RTX 3090]\n\t10c3  GT218 NoBrackets\n10df  Emulex Corporation\n\t2187  not ours\n";
+        Assert.Equal("GeForce GTX 1650 SUPER", NvidiaDriver.PciName(pciIds, "2187")); // not the AMD or Emulex line with the same id
+        Assert.Equal("GeForce RTX 3090", NvidiaDriver.PciName(pciIds.Replace("\n", "\r\n"), "2204"));
+        Assert.Equal("GT218 NoBrackets", NvidiaDriver.PciName(pciIds, "10C3"));
+        Assert.Null(NvidiaDriver.PciName(pciIds, "ffff"));
+        Assert.Null(NvidiaDriver.PciName(pciIds, "1043")); // a subsystem id isn't a device id
+    }
+
+    [Fact]
     public void ParsesTheVersionList()
     {
         const string json = """

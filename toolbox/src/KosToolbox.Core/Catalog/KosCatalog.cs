@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using KosToolbox.Core.Drivers;
 using KosToolbox.Core.Execution;
 using KosToolbox.Core.Interop;
 using KosToolbox.Core.Text;
@@ -54,7 +55,14 @@ public static partial class KosCatalog
     const string WuUx = @"SOFTWARE\Microsoft\WindowsUpdate\UX\Settings";
     const string DW = "DWord";
     static readonly string[] GameBarExes = { "GameBarPresenceWriter.exe", "bcastdvr.exe", "GamePanel.exe", "GameBar.exe", "GameBarFTServer.exe", "GameBarFT.exe", "XboxGameBarWidgets.exe" };
-    static readonly string[] SearchExes = { "SearchApp.exe", "SearchUI.exe", "SearchHost.exe" };
+    /// <summary>Windows diagnostic scenarios (WDI policy keys) KOS switches off; a property, as static initializers across the partial files have no guaranteed order.</summary>
+    static string[] WdiScenarios => new[]
+    {
+        "{186f47ef-626c-4670-800a-4a30756babad}", "{2698178D-FDAD-40AE-9D3C-1371703ADC5B}", "{67144949-5132-4859-8036-a737b43825d8}", "{86432a0b-3c7d-4ddf-a89c-172faa90485d}",
+        "{9c5a40da-b965-4fc3-8781-88dd50a6299d}", "{a7a5847a-7511-4e4e-90b1-45ad2a002f51}", WdiSlowScenario, "{ecfb03d1-58ee-4cc7-a1b5-9bc6febcb915}",
+    };
+    const string WdiSlowScenario = "{eb73b633-3f4e-4ba0-8f60-8f3c6f53168f}";
+    static readonly string[] SearchExes ={ "SearchApp.exe", "SearchUI.exe", "SearchHost.exe" };
 
     const string ExplorerAdvanced = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced";
     static Target S(string v) => Target.Set(v);
@@ -360,7 +368,17 @@ public static partial class KosCatalog
                 Pages.Windows, Pages.SystemTab, "Diagnostics")
             .Svc("DPS", "2", "4").Svc("diagsvc", "3", "4", optional: true).Svc("WdiServiceHost", "3", "4", optional: true).Svc("WdiSystemHost", "3", "4", optional: true)
             .Add(R(LocalMachine, @"SYSTEM\CurrentControlSet\Control\Session Manager\Power", "SleepStudyDisabled"), (On, Del), (Off, S("1")))
-            .With(t => { t.RequiresReboot = true; t.KosDefault = Off; t.WindowsDefault = On; t.Source = @"RunOnce.cmd (service list); bin\2\TheKOS_reg.reg (SleepStudyDisabled)"; }),
+            // KOS also switches every diagnostic scenario off by policy, and with none left the Diagnostic Policy service starts and exits at once,
+            // so the start types alone did nothing after a restart. Enabled removes those policies (the scenarios run, boot timing is logged again).
+            .With(t =>
+            {
+                foreach (var scenario in WdiScenarios)
+                    t.Add(R(LocalMachine, $@"SOFTWARE\Policies\Microsoft\Windows\WDI\{scenario}", "ScenarioExecutionEnabled"), (On, Del), (Off, S("0")));
+                t.Add(R(LocalMachine, $@"SOFTWARE\Policies\Microsoft\Windows\WDI\{WdiSlowScenario}", "EnabledScenarioExecutionLevel"), (On, Del), (Off, S("1")));
+                // The service stops itself at start (error 4201, instance not found) when the DiagLog trace session it reports from doesn't exist.
+                t.Add(R(LocalMachine, @"SYSTEM\CurrentControlSet\Control\WMI\Autologger\DiagLog", "Start"), (On, S("1")), (Off, S("0")));
+            })
+            .With(t => { t.RequiresReboot = true; t.KosDefault = Off; t.WindowsDefault = On; t.Source = @"RunOnce.cmd (service list); bin\2\TheKOS_reg.reg (SleepStudyDisabled, the WDI scenario policies); ntlite.xml (the DiagLog autologger)"; }),
 
         Choice("windows-search", "Windows Search",
                 "On: the search indexer and the search app. No indexing: the Windows Search service is off; searching still works, more slowly. Off: also blocks the search app (SearchHost.exe renamed to .old, as KOS does, and redirected to a program that does nothing) and hides the taskbar search box. Open-Shell's Start menu search uses neither.",
@@ -1133,6 +1151,8 @@ public static partial class KosCatalog
 
     static List<ActionItem> BuildActions() => new()
     {
+        new() { Id = "bluetooth-driver", Name = Txt.BluetoothDriverName, Description = Txt.BluetoothDriverDescription, Page = Pages.Windows, Tab = Pages.Connectivity, Group = "Wireless",
+            ButtonText = Txt.BluetoothDriverButton, Run = BluetoothDriver.FixAsync, Source = "Microsoft Update Catalog (the adapter's own driver by hardware id), pnputil /add-driver /install" },
         new() { Id = "restart-explorer", Name = "Restart Explorer", Description = "Applies interface settings that depend on Explorer.",
             Page = Pages.Tools, Group = "System", ButtonText = Txt.Restart, Run = RestartExplorerAsync, Source = "Alt-Tab-Settings.bat (taskkill explorer)" },
         new() { Id = "reboot-uefi", Name = "Restart to UEFI settings", Description = "Restarts the computer now, straight into the UEFI (BIOS) setup. Save your work first. Needs a UEFI system.",

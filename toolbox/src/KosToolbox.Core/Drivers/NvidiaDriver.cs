@@ -53,8 +53,12 @@ public static class NvidiaDriver
 {
     const string ProductsUrl = "https://www.nvidia.com/Download/API/lookupValueSearch.aspx?TypeID=3";
     const string SeriesUrl = "https://www.nvidia.com/Download/API/lookupValueSearch.aspx?TypeID=2";
-    const string ReleasesUrl = "https://gfwsl.geforce.com/services_toolkit/services/com/nvidia/services/AjaxDriverService.php?func=DriverManualLookup&psid={0}&pfid={1}&osID=57&languageCode=1033&dch=1&upCRD={2}&sort1=0&numberOfResults=25";
+    const string ReleasesUrl = "https://gfwsl.geforce.com/services_toolkit/services/com/nvidia/services/AjaxDriverService.php?func=DriverManualLookup&psid={0}&pfid={1}&osID=57&languageCode=1033&dch=1&upCRD={2}&sort1=0&numberOfResults={3}";
+    /// <summary>The public PCI ID database: the card's name by its PCI device id, for a PC without an NVIDIA driver (Windows then calls the card "Microsoft Basic Display Adapter").</summary>
+    const string PciIdsUrl = "https://raw.githubusercontent.com/pciutils/pciids/master/pci.ids";
     const string DeviceUrl = "https://gfwsl.geforce.com/nvidia_web_services/controller.gfeclientcontent.NG.php/com.nvidia.services.GFEClientContent_NG.getDispDrvrByDevid/";
+    /// <summary>The newest drivers come back in about 10 s; every driver NVIDIA still lists for the card (hundreds, from the first of its series) takes a minute or two, at about 0.4 s each.</summary>
+    public const int RecentCount = 25, AllCount = 500;
     public const string Publisher = "NVIDIA Corporation";
     // Setup stays under the 30 minutes the unelevated side waits, so a second Install can't overlap a running one.
     static readonly TimeSpan SetupTimeout = TimeSpan.FromMinutes(25), SevenZipTimeout = TimeSpan.FromMinutes(10);
@@ -113,9 +117,10 @@ public static class NvidiaDriver
 
     /// <summary>
     /// Drivers for the first NVIDIA card: by its name in NVIDIA's product list (a version list); when the name doesn't match
-    /// (no driver installed) or that lookup fails, the newest driver by PCI device id.
+    /// (no driver installed) or that lookup fails, the newest driver by PCI device id. <paramref name="all"/>: every driver NVIDIA lists for
+    /// the card, old ones too, instead of the newest <see cref="RecentCount"/>.
     /// </summary>
-    public static async Task<NvidiaLookup> ListAsync(bool studio, CancellationToken ct)
+    public static async Task<NvidiaLookup> ListAsync(bool studio, bool all, CancellationToken ct)
     {
         var adapters = Adapters();
         if (adapters.Count == 0) throw new InvalidOperationException(Txt.NvidiaNoGpu);
@@ -123,7 +128,15 @@ public static class NvidiaDriver
         var laptop = HasBattery();
         try
         {
-            var matches = MatchProducts(ParseLookup(await GetAsync(ProductsUrl, ct)), name);
+            var products = ParseLookup(await GetAsync(ProductsUrl, ct));
+            var matches = MatchProducts(products, name);
+            if (matches.Count == 0)
+            {
+                // No driver, so no name: the PCI id gives the card's real name (GeForce GTX 1650 SUPER), then the full list works.
+                try { if (PciName(await GetAsync(PciIdsUrl, ct, TimeSpan.FromSeconds(60)), deviceId) is { } pciName) matches = MatchProducts(products, pciName); }
+                catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
+                { Log.Warn($"NVIDIA driver lookup: the PCI id database couldn't be read: {ex.Message}"); }
+            }
             if (matches.Count > 0)
             {
                 var product = matches[0];
@@ -132,8 +145,8 @@ public static class NvidiaDriver
                     var notebooks = ParseLookup(await GetAsync(SeriesUrl, ct)).Where(s => s.Name.Contains("(Notebooks)", StringComparison.OrdinalIgnoreCase)).Select(s => s.Value).ToHashSet();
                     product = matches.FirstOrDefault(m => notebooks.Contains(m.Parent) == laptop) ?? product;
                 }
-                var url = string.Format(CultureInfo.InvariantCulture, ReleasesUrl, product.Parent, product.Value, studio ? 1 : 0);
-                var releases = ParseReleases(await GetAsync(url, ct), studio);
+                var url = string.Format(CultureInfo.InvariantCulture, ReleasesUrl, product.Parent, product.Value, studio ? 1 : 0, all ? AllCount : RecentCount);
+                var releases = ParseReleases(await GetAsync(url, ct, all ? TimeSpan.FromMinutes(6) : TimeSpan.FromSeconds(30)), studio);
                 if (releases.Count > 0) return new(name, releases, false);
             }
         }
@@ -145,10 +158,10 @@ public static class NvidiaDriver
         return new(name, latest is null ? new() : new() { latest }, true);
     }
 
-    static async Task<string> GetAsync(string url, CancellationToken ct)
+    static async Task<string> GetAsync(string url, CancellationToken ct, TimeSpan? limit = null)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        timeout.CancelAfter(limit ?? TimeSpan.FromSeconds(30));
         return await Downloader.Http.GetStringAsync(url, timeout.Token).ConfigureAwait(false);
     }
 
@@ -157,6 +170,27 @@ public static class NvidiaDriver
         var crd = studio ? "1" : "0";
         var build = Environment.OSVersion.Version.Build.ToString(CultureInfo.InvariantCulture);
         return $"{{\"dIDa\":[\"{deviceId}_10DE\"],\"osC\":\"10.0\",\"osB\":\"{build}\",\"is6\":\"1\",\"lg\":\"1033\",\"iLp\":\"{(laptop ? 1 : 0)}\",\"prvMd\":\"0\",\"gcV\":\"3.28.0.417\",\"gIsB\":\"0\",\"dch\":\"1\",\"upCRD\":\"{crd}\",\"isCRD\":\"{crd}\"}}";
+    }
+
+    /// <summary>
+    /// The name of an NVIDIA device in pci.ids: under the line "10de  NVIDIA Corporation", "\t2187  TU116 [GeForce GTX 1650 SUPER]" gives
+    /// "GeForce GTX 1650 SUPER" (the part in brackets when there is one). Null when the id isn't listed.
+    /// </summary>
+    internal static string? PciName(string pciIds, string deviceId)
+    {
+        var inNvidia = false;
+        foreach (var raw in pciIds.Split('\n'))
+        {
+            var line = raw.TrimEnd('\r');
+            if (line.Length == 0 || line[0] == '#') continue;
+            if (line[0] != '\t') { inNvidia = line.StartsWith("10de", StringComparison.OrdinalIgnoreCase) && line.Length > 4 && line[4] == ' '; continue; }
+            if (!inNvidia || line.Length < 7 || line[1] == '\t') continue; // not NVIDIA, or a subsystem line
+            if (!line.AsSpan(1, 4).Equals(deviceId, StringComparison.OrdinalIgnoreCase) || line[5] != ' ') continue;
+            var name = line[5..].Trim();
+            var open = name.LastIndexOf('[');
+            return open >= 0 && name.EndsWith(']') ? name[(open + 1)..^1].Trim() : name;
+        }
+        return null;
     }
 
     internal sealed record LookupValue(string Name, int Value, int Parent);

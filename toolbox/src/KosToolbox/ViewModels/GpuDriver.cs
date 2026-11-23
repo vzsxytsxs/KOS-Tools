@@ -44,7 +44,8 @@ public sealed class GpuDriverViewModel : ObservableObject
             try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo((string)p!) { UseShellExecute = true })?.Dispose(); }
             catch (Exception ex) { Toasts.Show(ex.Message, ToastKind.Error); }
         });
-        FindCommand = new AsyncCommand(FindAsync, () => !_busy);
+        FindCommand = new AsyncCommand(() => FindAsync(false), () => !_busy);
+        FindAllCommand = new AsyncCommand(() => FindAsync(true), () => !_busy);
         DownloadCommand = new AsyncCommand(DownloadAsync, () => !_busy && _release is not null);
         UseFileCommand = new AsyncCommand(UseFileAsync, () => !_busy);
         InstallCommand = new AsyncCommand(InstallAsync, () => !_busy && _package is not null && _components.Count > 0);
@@ -154,6 +155,7 @@ public sealed class GpuDriverViewModel : ObservableObject
     /// <summary>Windows Update's driver updates (Windows › System › Updates), here too: they can replace the driver installed here.</summary>
     public TweakViewModel? WindowsUpdateDrivers { get; }
     public ICommand FindCommand { get; }
+    public ICommand FindAllCommand { get; }
     public ICommand DownloadCommand { get; }
     public ICommand UseFileCommand { get; }
     public ICommand InstallCommand { get; }
@@ -166,12 +168,12 @@ public sealed class GpuDriverViewModel : ObservableObject
     public double InstallPercent { get => _installPercent; private set => Set(ref _installPercent, value); }
     public string? InstallStep { get => _installStep; private set => Set(ref _installStep, value); }
 
-    async Task FindAsync()
+    async Task FindAsync(bool all)
     {
         await RunAsync(async () =>
         {
-            Status = Txt.Reading;
-            var lookup = await NvidiaDriver.ListAsync(_studio, CancellationToken.None);
+            Status = all ? Txt.NvidiaReadingAll : Txt.Reading;
+            var lookup = await NvidiaDriver.ListAsync(_studio, all, CancellationToken.None);
             _found = lookup.Releases;
             Releases = _found.Select(r => new OptionItem(r.Url, Txt.NvidiaReleaseLabel(r.Version, r.Date, r.Size))).ToList();
             LookupNote = lookup.ByDeviceId ? Txt.NvidiaByDeviceNote : null;

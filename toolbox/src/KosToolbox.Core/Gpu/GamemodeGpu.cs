@@ -67,6 +67,7 @@ public sealed class GamemodeGpu
             : null,
         LockVoltageUv = s.LockVoltageUv,
         ClockLockMhz = s.ClockLockMhz,
+        MinClockMhz = s.MinClockMhz,
         FanAuto = fan && s.FanProblem is null && s.FanAuto == true,
         FanPercent = fan && s.FanProblem is null && s.FanAuto == false ? s.FanTarget : null,
     };

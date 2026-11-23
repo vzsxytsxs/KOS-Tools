@@ -33,10 +33,10 @@ public sealed partial class GpuPageViewModel : PageViewModel
     IReadOnlyList<InfoRow> _readings = Array.Empty<InfoRow>();
     GpuDevice? _device;
     GpuState? _state;
-    string _power = "", _thermal = "", _core = "", _mem = "", _fan = "";
-    string? _powerError, _thermalError, _coreError, _memError, _fanError, _notice, _driver, _readError, _message;
+    string _power = "", _thermal = "", _core = "", _mem = "", _minClock = "", _fan = "";
+    string? _powerError, _thermalError, _coreError, _memError, _minClockError, _fanError, _notice, _driver, _readError, _message;
     uint? _pPower, _pFan;
-    int? _pThermal, _pCore, _pMem;
+    int? _pThermal, _pCore, _pMem, _pMinClock;
     bool? _pSlowdown;
     string _fanMode = "auto";
     bool _busy, _isError, _reading, _signIn;
@@ -434,6 +434,22 @@ public sealed partial class GpuPageViewModel : PageViewModel
         set { var v = ((int)Math.Round(value)).ToString(); if (_mem != v) MemText = v; }
     }
 
+    public bool MinClockEnabled => _state?.MinClockMhz is not null;
+    public string? MinClockProblem => _state is null || MinClockEnabled ? null : _state.ClockLockProblem;
+    public string MinClockHint => _state?.MaxClockMhz is { } max && MinClockEnabled ? Txt.GpuMinClockHint((int)max) : "";
+    public string? MinClockError { get => _minClockError; private set => Set(ref _minClockError, value); }
+    public string MinClockText { get => _minClock; set { _minClock = value ?? ""; (_pMinClock, MinClockError) = MinClock(_minClock, _state); Changed(); Raise(nameof(MinClockText)); } }
+
+    /// <summary>The minimum clock typed: empty or 0 = off; otherwise 100 up to the card's highest clock.</summary>
+    static (int?, string?) MinClock(string text, GpuState? s)
+    {
+        if (s?.MinClockMhz is null) return (null, null);
+        if (string.IsNullOrWhiteSpace(text)) return (0, null);
+        var top = (int)(s.MaxClockMhz ?? 5000);
+        if (GpuTuner.ParseMhz(text) is not { } v) return (null, Txt.GpuEnterMhz);
+        return v == 0 || v >= 100 && v <= top ? (v, null) : (null, Txt.GpuMinClockOutOfRange(top));
+    }
+
     static (int?, string?) Offset(string text, GpuRange? range)
     {
         if (range is null) return (null, null);
@@ -498,7 +514,7 @@ public sealed partial class GpuPageViewModel : PageViewModel
         }
     }
 
-    bool HasErrors => _powerError is not null || _thermalError is not null || _coreError is not null || _memError is not null || _fanError is not null || _vfError is not null;
+    bool HasErrors => _powerError is not null || _thermalError is not null || _coreError is not null || _memError is not null || _minClockError is not null || _fanError is not null || _vfError is not null;
     public int PendingCount => _state is null ? 0 : Count(Build(full: false));
     public bool HasPending => PendingCount > 0;
     public string PendingText => Txt.GpuPending(PendingCount);
@@ -506,7 +522,7 @@ public sealed partial class GpuPageViewModel : PageViewModel
 
     static int Count(GpuTuning t) => (t.PowerLimitMw is null ? 0 : 1) + (t.TemperatureLimitC is null ? 0 : 1) + (t.ThermalSlowdown is null ? 0 : 1)
         + (t.CoreOffsetMhz is null ? 0 : 1) + (t.MemOffsetMhz is null ? 0 : 1) + (t.CurveChanges?.Count ?? 0)
-        + (t.LockVoltageUv is null ? 0 : 1) + (t.ClockLockMhz is null ? 0 : 1)
+        + (t.LockVoltageUv is null ? 0 : 1) + (t.ClockLockMhz is null ? 0 : 1) + (t.MinClockMhz is null ? 0 : 1)
         + (t.FanAuto || t.FanPercent is not null ? 1 : 0);
 
     void Changed()
@@ -532,6 +548,7 @@ public sealed partial class GpuPageViewModel : PageViewModel
         t.CurveChanges = CurveChanges(full);
         t.LockVoltageUv = CurveLock(full);
         t.ClockLockMhz = ClockLock(full);
+        if (s.MinClockMhz is not null && _pMinClock is { } floor && (full || floor != s.MinClockMhz)) t.MinClockMhz = floor;
         if (s.FanProblem is null)
         {
             if (_fanMode == "auto") t.FanAuto = full || s.FanAuto == false;
@@ -549,13 +566,15 @@ public sealed partial class GpuPageViewModel : PageViewModel
         _thermal = s?.Thermal?.Current.ToString() ?? "";
         _core = s?.Core?.Current.ToString() ?? "";
         _mem = s?.Memory?.Current.ToString() ?? "";
+        _minClock = s?.MinClockMhz?.ToString() ?? "";
         _fan = s?.FanTarget?.ToString() ?? "";
         _pPower = s?.PowerProblem is null ? s?.PowerLimitMw : null;
         _pThermal = s?.Thermal?.Current;
         _pSlowdown = s?.ThermalSlowdown;
         _pCore = s?.Core?.Current;
         _pMem = s?.Memory?.Current;
-        _powerError = _thermalError = _coreError = _memError = _fanError = null;
+        _pMinClock = s?.MinClockMhz;
+        _powerError = _thermalError = _coreError = _memError = _minClockError = _fanError = null;
         LoadVf();
         SetFanMode(CurveEnabledHere ? "curve" : s?.FanAuto == false ? "fixed" : "auto");
         _restoring = false;
@@ -578,6 +597,7 @@ public sealed partial class GpuPageViewModel : PageViewModel
         ThermalSlowdownOn = true;
         if (s.Core is not null) CoreText = "0";
         if (s.Memory is not null) MemText = "0";
+        if (s.MinClockMhz is not null) MinClockText = "0";
         ResetVf();
         if (s.FanProblem is null) SetFanMode("auto");
         Message = null;

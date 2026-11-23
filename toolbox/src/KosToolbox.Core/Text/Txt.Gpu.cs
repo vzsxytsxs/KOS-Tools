@@ -52,6 +52,10 @@ public static partial class Txt
     public const string GpuPowerLimit = "Power limit (W)", GpuCoreOffset = "Core clock offset (MHz)", GpuMemOffset = "Memory clock offset (MHz)", GpuFan = "Fan speed (%)";
     public const string GpuThermalLimit = "Temperature target (°C)", GpuVfCurve = "V/F curve", GpuVfLock = "V/F point lock";
     public const string GpuClockLock = "Clock lock";
+    public const string GpuMinClock = "Minimum clock (MHz)", GpuMinClockUnavailable = "The card's highest graphics clock couldn't be read.",
+        GpuMinClockConflict = "The minimum clock and the clock lock can't both be on: the driver has one lock. Turn the clock lock off (V/F curve) first.";
+    public static string GpuMinClockHint(int max) => $"0 = off, or 100 to {max}. The card's clock never goes below it (it doesn't idle at low clocks, which can stop long DPC times on the display driver); the highest clock stays free. Costs idle power and heat. A restart releases it; \"Apply at sign-in\" sets it again.";
+    public static string GpuMinClockOutOfRange(int max) => $"Enter 0 (off) or a clock from 100 to {max} MHz.";
     public const string GpuClockLockOutOfRange = "The clock lock must be between 100 and 5000 MHz.";
     public const string GpuThermalNote = "The temperature target changes the driver's target, not the card's shutdown threshold.";
     public const string GpuThermalSlowdownWarning = "Not recommended. Off stops the driver from lowering the clocks when the card gets too hot, so it can run past its temperature target. Leave it on.";

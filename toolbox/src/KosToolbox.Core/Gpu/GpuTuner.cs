@@ -73,6 +73,10 @@ public sealed class GpuState
     /// <summary>Clock locked by the toolbox in this boot (0 = none; null = unavailable). NVML does not read the lock back.</summary>
     public int? ClockLockMhz { get; init; }
     public string? ClockLockProblem { get; init; }
+    /// <summary>Minimum graphics clock set by the toolbox in this boot (0 = none; null = unavailable). Shares the one NVML lock with <see cref="ClockLockMhz"/>.</summary>
+    public int? MinClockMhz { get; init; }
+    /// <summary>The highest graphics clock the card supports (the top of a minimum-clock lock); null = not read.</summary>
+    public uint? MaxClockMhz { get; init; }
     public int FanCount { get; init; }
     public uint FanMin { get; init; }
     public uint FanMax { get; init; }
@@ -97,11 +101,13 @@ public sealed class GpuTuning
     public int? LockVoltageUv { get; set; }
     /// <summary>Null = leave unchanged; 0 = unlock; positive = lock the core clock to this value (nvmlDeviceSetGpuLockedClocks).</summary>
     public int? ClockLockMhz { get; set; }
+    /// <summary>Null = leave unchanged; 0 = off; positive = the card's graphics clock never goes below this (the lock runs from it to the card's maximum), so it doesn't idle at low clocks.</summary>
+    public int? MinClockMhz { get; set; }
     public uint? FanPercent { get; set; }
     public bool FanAuto { get; set; }
 
     public override string ToString() =>
-        $"{PciBusId}: power={PowerLimitMw?.ToString() ?? "-"} mW, temp={TemperatureLimitC?.ToString() ?? "-"} °C, slowdown={ThermalSlowdown switch { true => "on", false => "off", null => "-" }}, core={CoreOffsetMhz?.ToString() ?? "-"} MHz, memory={MemOffsetMhz?.ToString() ?? "-"} MHz, VF={CurveChanges?.Count ?? 0} points, lock={LockVoltageUv?.ToString() ?? "-"} uV, clock lock={ClockLockMhz?.ToString() ?? "-"} MHz, fan={(FanAuto ? "auto" : FanPercent?.ToString() ?? "-")}";
+        $"{PciBusId}: power={PowerLimitMw?.ToString() ?? "-"} mW, temp={TemperatureLimitC?.ToString() ?? "-"} °C, slowdown={ThermalSlowdown switch { true => "on", false => "off", null => "-" }}, core={CoreOffsetMhz?.ToString() ?? "-"} MHz, memory={MemOffsetMhz?.ToString() ?? "-"} MHz, VF={CurveChanges?.Count ?? 0} points, lock={LockVoltageUv?.ToString() ?? "-"} uV, clock lock={ClockLockMhz?.ToString() ?? "-"} MHz, min clock={MinClockMhz?.ToString() ?? "-"} MHz, fan={(FanAuto ? "auto" : FanPercent?.ToString() ?? "-")}";
 }
 
 /// <summary>Elevated request from the GPU page: apply and/or turn on (with the values) or turn off applying at logon.</summary>
@@ -473,6 +479,8 @@ public static class GpuTuner
             LockProblem = lockProblem,
             ClockLockMhz = clockLockProblem is null ? ClockLockRecord.Read(busId) : null,
             ClockLockProblem = clockLockProblem,
+            MinClockMhz = clockLockProblem is null ? ClockLockRecord.ReadMin(busId) : null,
+            MaxClockMhz = U(d, "nvmlDeviceGetMaxClockInfo", Nvml.ClockGraphics),
             FanCount = (int)fanCount,
             FanMin = fanMin,
             FanMax = fanMax,
@@ -507,7 +515,7 @@ public static class GpuTuner
     {
         if (!IsBusId(t.PciBusId) || !t.PciBusId.Equals(s.BusId, StringComparison.OrdinalIgnoreCase)) return Txt.GpuInvalidDevice(t.PciBusId);
         if (t.PowerLimitMw is null && t.TemperatureLimitC is null && t.ThermalSlowdown is null && t.CoreOffsetMhz is null && t.MemOffsetMhz is null
-            && t.CurveChanges is null && t.LockVoltageUv is null && t.ClockLockMhz is null && t.FanPercent is null && !t.FanAuto) return Txt.GpuNothingToApply;
+            && t.CurveChanges is null && t.LockVoltageUv is null && t.ClockLockMhz is null && t.MinClockMhz is null && t.FanPercent is null && !t.FanAuto) return Txt.GpuNothingToApply;
         if (t.PowerLimitMw is { } p)
         {
             if (s.PowerProblem is { } e) return e;
@@ -541,6 +549,13 @@ public static class GpuTuner
             if (s.ClockLockMhz is null) return s.ClockLockProblem ?? Txt.GpuLockUnavailable;
             if (clock != 0 && clock is < 100 or > 5000) return Txt.GpuClockLockOutOfRange;
         }
+        if (t.MinClockMhz is { } floor)
+        {
+            if (s.MinClockMhz is null) return s.ClockLockProblem ?? Txt.GpuLockUnavailable;
+            if (s.MaxClockMhz is not { } top) return Txt.GpuMinClockUnavailable;
+            if (floor != 0 && (floor < 100 || floor > top)) return Txt.GpuMinClockOutOfRange((int)top);
+            if (floor != 0 && t.ClockLockMhz is > 0) return Txt.GpuMinClockConflict;
+        }
         if (t.FanAuto && t.FanPercent is not null) return Txt.GpuFanMixed;
         if ((t.FanAuto || t.FanPercent is not null) && s.FanProblem is { } fan) return fan;
         if (t.FanPercent is { } pct && (pct < s.FanMin || pct > s.FanMax)) return Txt.GpuFanOutOfRange(s.FanMin, s.FanMax);
@@ -565,6 +580,7 @@ public static class GpuTuner
             list.Add(Txt.GpuVfCurve);
         if (t.LockVoltageUv is { } voltage && s.LockVoltageUv != voltage) list.Add(Txt.GpuVfLock);
         if (t.ClockLockMhz is { } clock && s.ClockLockMhz != clock) list.Add(Txt.GpuClockLock);
+        if (t.MinClockMhz is { } floor && s.MinClockMhz != floor) list.Add(Txt.GpuMinClock);
         if (t.FanAuto && s.FanAuto == false) list.Add(Txt.GpuFan);
         if (t.FanPercent is { } f && (s.FanAuto == true || s.FanTarget is { } target && target != f)) list.Add(Txt.GpuFan);
         return list;
@@ -629,17 +645,23 @@ public static class GpuTuner
             if (t.MemOffsetMhz is { } m) SetOffset(Nvml.ClockMem, "Mem", m, s.Memory!.ClockOffsetsApi);
             if (t.CurveChanges is { } curve) ApplyNvapi(() => Nvapi.SetCurve(t.PciBusId, curve), $"V/F curve = {curve.Count} points");
             if (t.LockVoltageUv is { } voltage) ApplyNvapi(() => Nvapi.SetLockVoltage(t.PciBusId, voltage), $"V/F lock = {voltage} uV");
-            if (t.ClockLockMhz is { } clock)
+            if (t.ClockLockMhz is not null || t.MinClockMhz is not null)
             {
-                var ok = clock == 0
+                // One NVML lock: a clock lock (low = high) wins, else the minimum clock (up to the card's maximum), else off.
+                var clock = t.ClockLockMhz ?? 0;
+                var floor = clock > 0 ? 0 : t.MinClockMhz ?? 0;
+                var what = clock > 0 ? $"clock lock = {clock} MHz" : floor > 0 ? $"minimum clock = {floor} MHz" : "clock lock = off";
+                var low = clock > 0 ? clock : floor;
+                var high = clock > 0 ? clock : (int)(s.MaxClockMhz ?? 0);
+                var ok = low == 0
                     ? Nvml.Call<Nvml.Dev>("nvmlDeviceResetGpuLockedClocks", f => f(d), out var error) == Nvml.Success
-                    : Nvml.Call<Nvml.DevSetTwoUInt>("nvmlDeviceSetGpuLockedClocks", f => f(d, (uint)clock, (uint)clock), out error) == Nvml.Success;
+                    : Nvml.Call<Nvml.DevSetTwoUInt>("nvmlDeviceSetGpuLockedClocks", f => f(d, (uint)low, (uint)high), out error) == Nvml.Success;
                 if (ok)
                 {
-                    ClockLockRecord.Write(t.PciBusId, clock);
-                    Log.Info($"GPU {t.PciBusId}: clock lock = {(clock == 0 ? "off" : $"{clock} MHz")}");
+                    ClockLockRecord.Write(t.PciBusId, clock, floor);
+                    Log.Info($"GPU {t.PciBusId}: {what}");
                 }
-                else { Log.Warn($"GPU {t.PciBusId}: clock lock = {clock} MHz failed: {error}"); errors.Add(error!); }
+                else { Log.Warn($"GPU {t.PciBusId}: {what} failed: {error}"); errors.Add(error!); }
             }
             for (uint i = 0; i < s.FanCount; i++)
             {

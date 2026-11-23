@@ -1362,6 +1362,7 @@
                             <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.LatencyTimer}" />
                             <TextBlock Text="{Binding TimerValue}" FontSize="20" FontWeight="SemiBold" Margin="0,2,0,0" />
                             <TextBlock Style="{StaticResource Secondary}" Text="{Binding TimerDetail}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                            <v:LatencyBar Value="{Binding TimerUs}" Height="6" Margin="0,8,0,0" />
                         </StackPanel>
                     </Border>
                     <Border Style="{StaticResource LatencyStat}" ToolTip="{x:Static t:Txt.LatencyDpcTip}">
@@ -1369,6 +1370,7 @@
                             <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.LatencyDpc}" />
                             <TextBlock Text="{Binding DpcValue}" FontSize="20" FontWeight="SemiBold" Margin="0,2,0,0" />
                             <TextBlock Style="{StaticResource Secondary}" Text="{Binding DpcDetail}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                            <v:LatencyBar Value="{Binding DpcUs}" Height="6" Margin="0,8,0,0" />
                         </StackPanel>
                     </Border>
                     <Border Style="{StaticResource LatencyStat}" ToolTip="{x:Static t:Txt.LatencyIsrTip}">
@@ -1376,6 +1378,7 @@
                             <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.LatencyIsr}" />
                             <TextBlock Text="{Binding IsrValue}" FontSize="20" FontWeight="SemiBold" Margin="0,2,0,0" />
                             <TextBlock Style="{StaticResource Secondary}" Text="{Binding IsrDetail}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                            <v:LatencyBar Value="{Binding IsrUs}" Height="6" Margin="0,8,0,0" />
                         </StackPanel>
                     </Border>
                     <Border Style="{StaticResource LatencyStat}" ToolTip="{x:Static t:Txt.LatencyFaultsTip}">

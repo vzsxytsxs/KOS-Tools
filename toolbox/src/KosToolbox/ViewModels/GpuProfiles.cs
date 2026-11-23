@@ -21,6 +21,8 @@ public sealed class GpuProfile
     public bool? ThermalSlowdown { get; set; }
     public string? Core { get; set; }
     public string? Mem { get; set; }
+    /// <summary>Minimum graphics clock (MHz); null in profiles saved before it existed (= off).</summary>
+    public string? MinClock { get; set; }
     public string? Fan { get; set; }
     public string FanMode { get; set; } = "auto";
     /// <summary>
@@ -113,6 +115,7 @@ public sealed partial class GpuPageViewModel
         ThermalSlowdown = _pSlowdown,
         Core = _core,
         Mem = _mem,
+        MinClock = _minClock,
         Fan = _fan,
         FanMode = _fanMode,
         // With a pending core offset: the curve as it will be after Apply (shifted along with it, see CurveChanges).
@@ -140,6 +143,7 @@ public sealed partial class GpuPageViewModel
             if (s.ThermalSlowdown is { } slowdown) ThermalSlowdownOn = slowdown;
             if (s.Core is { } core && CoreEnabled) CoreText = core;
             if (s.Mem is { } mem && MemEnabled) MemText = mem;
+            if (MinClockEnabled) MinClockText = s.MinClock ?? "0";
             if (s.VfDeltas is { } deltas && deltas.Count == VfPoints.Count && VfEnabled)
             {
                 _vfActive = s.VfActive;
@@ -342,6 +346,7 @@ public sealed partial class GpuPageViewModel
                 Math.Clamp(deltas.GetValueOrDefault(x.Index, x.DeltaKhz), curve.MinimumDeltaKhz, curve.MaximumDeltaKhz))).ToList();
         if (s.LockVoltageUv is not null) t.LockVoltageUv = p.VfLock ?? 0;
         if (s.ClockLockMhz is not null) t.ClockLockMhz = p.VfClockLock ?? 0;
+        if (s.MinClockMhz is not null) t.MinClockMhz = int.TryParse(p.MinClock, out var floor) ? floor : 0;
         GovernorFanCurve? fan = null;
         if (s.FanProblem is null)
         {

@@ -34,18 +34,30 @@ public static partial class Txt
         OpenGpuDriver = "Open GPU › Driver";
 
     // ---------- GPU › Driver: NVIDIA driver ----------
-    public const string GpuTabDriver = "Driver", NvidiaDriverTitle = "NVIDIA driver", GameReady = "Game Ready", Studio = "Studio", FindDrivers = "Find drivers",
+    public const string GpuTabDriver = "Driver", NvidiaDriverTitle = "NVIDIA driver", GameReady = "Game Ready", Studio = "Studio", FindDrivers = "Find drivers", FindAllDrivers = "All versions",
+        FindAllDriversTip = "Every driver NVIDIA lists for this card, old versions included (Find drivers shows the newest 25). NVIDIA's server answers slowly: it takes a minute or two.",
         DownloadDriver = "Download", UseDownloadedFile = "Use a downloaded file…", ChooseNvidiaPackage = "Choose the NVIDIA driver package (.exe)",
         NvidiaComponentsTitle = "Components", NvidiaComponentsNote = "Display driver and NVI2 are always installed. Everything else is optional.",
         NvidiaAfterInstallTitle = "After installing", CleanInstall = "Clean install (removes the previous driver's settings and profiles)",
         InstallDriver = "Install", NvidiaNoGpu = "No NVIDIA GPU was found.", NvidiaNoReleases = "NVIDIA returned no driver for this GPU.",
-        NvidiaByDeviceNote = "The GPU's name didn't match NVIDIA's product list (no driver installed?): found by its PCI id, so only the newest driver is offered.",
+        NvidiaByDeviceNote = "The GPU's name didn't match NVIDIA's product list (no driver installed?): found by its PCI id, so only the newest driver is offered (the PCI id database couldn't name the card either).",
         NvidiaNotPackage = "That file isn't an NVIDIA driver package (it has no Display.Driver and NVI2 folders).",
         SevenZipMissing = "7-Zip wasn't found (C:\\Program Files\\7-Zip, or the copy in the KOS tools folder): it's needed to read the driver package.",
         NvidiaInstallNote = "The install takes a few minutes; the screen goes black and comes back while the driver changes. Restart Windows when it finishes.";
+    public const string NvidiaReadingAll = "Reading every driver NVIDIA lists for this card… this takes a minute or two.";
     public static string NvidiaReleasesFound(int count, string gpu) => count == 1 ? $"1 driver for {gpu}." : $"{count} drivers for {gpu}.";
     public static string NvidiaReleaseLabel(string version, DateTime? date, string? size) =>
         version + (date is { } d ? $" · {d:d}" : "") + (string.IsNullOrEmpty(size) ? "" : $" · {size}");
+    // ---------- Bluetooth adapter driver (Windows › Connectivity › Wireless) ----------
+    public const string BluetoothDriverName = "Bluetooth adapter driver", BluetoothDriverButton = "Find and install",
+        BluetoothDriverDescription = "For a USB Bluetooth dongle that Windows runs with its generic driver (\"Generic Bluetooth Adapter\"): looks up the dongle's own driver in the Microsoft Update Catalog by its hardware id, downloads it (checked against the catalog's SHA-256 and Microsoft's signature) and installs it for that dongle only. Chips like the Realtek RTL8761 need it to load their firmware: without it the radio is on and finds no devices. KOS leaves Windows Update's driver updates off, so this driver never arrives by itself.",
+        BluetoothDriverNone = "No USB Bluetooth adapter is using the generic Windows driver, so there is nothing to install.",
+        BluetoothDriverBadFile = "The downloaded driver package didn't match the catalog's checksum or Microsoft's signature; it was deleted.",
+        BluetoothDriverNotConfirmed = "The driver was installed, but the adapter still shows the generic driver. Unplug the adapter and plug it back in, or restart Windows.";
+    public static string BluetoothDriverBadUrl(string url) => $"Not a Microsoft download link: {url}";
+    public static string BluetoothDriverNotInCatalog(string id) => $"The Microsoft Update Catalog has no driver for {id}.";
+    public static string BluetoothDriverNoInf(string id) => $"The package has no Bluetooth driver for {id}.";
+    public static string BluetoothDriverInstalled(string model, string version) => $"{(model.Length > 0 ? model : "Bluetooth driver")} {version} installed. The adapter now has its own driver.";
     public static string NvidiaBadUrl(string url) => $"Not an NVIDIA download link: {url}";
     public static string NvidiaNotSigned(string file) => $"{file} isn't signed by NVIDIA Corporation; it wasn't used.";
     public static string SevenZipFailed(int code, string output) => $"7-Zip failed (exit code {code}). {output.Trim()}";

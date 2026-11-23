@@ -468,9 +468,30 @@ public class PeripheralDriversTests
         ds[53] = 0x2A;
         Assert.Equal(new PeripheralBattery(100, true), PlayStationCodec.Decode(0x0CE6, ds));
         var ds4 = new byte[64]; ds4[0] = 0x01; ds4[30] = 0x07; // level 7 on battery
-        Assert.Equal(new PeripheralBattery(75, false), PlayStationCodec.Decode(0x09CC, ds4));
+        Assert.Equal(new PeripheralBattery(87, false), PlayStationCodec.Decode(0x09CC, ds4)); // 7 of 8
         ds4[0] = 0x05;
         Assert.Null(PlayStationCodec.Decode(0x09CC, ds4));
+    }
+
+    [Fact]
+    public void BluetoothDualShockBatteryAndLightBar()
+    {
+        // Over Bluetooth report 01 is the reduced one (byte 30 is 0: it used to read as 5 %); only 11 carries the battery.
+        var reduced = new byte[547]; reduced[0] = 0x01;
+        Assert.Null(PlayStationCodec.Decode(0x09CC, reduced, bluetooth: true));
+        var full = new byte[78]; full[0] = 0x11; full[32] = 0x07; // level 7, no cable
+        Assert.Equal(new PeripheralBattery(87, false), PlayStationCodec.Decode(0x09CC, full, bluetooth: true));
+        full[32] = 0x08;
+        Assert.Equal(new PeripheralBattery(100, false), PlayStationCodec.Decode(0x09CC, full, bluetooth: true)); // 8 is full
+
+        Assert.Equal(0xCBF43926u, PlayStationCodec.Crc32((byte)'1', (byte)'2', "3456789"u8)); // the zlib check value
+        var p = PlayStationCodec.Ds4LightBarBluetooth(0x12AB34);
+        Assert.Equal(77, p.Length);
+        Assert.Equal((byte)0xC4, p[0]);
+        Assert.Equal(new byte[] { 0x06, 0, 0, 0, 0, 0x12, 0xAB, 0x34, 0, 0 }, p[2..12]); // flags, rumble untouched, R G B, no blink
+        // The CRC covers 0xA2, the report id 11 and the first 73 bytes, and sits little endian right after them.
+        Assert.Equal(PlayStationCodec.Crc32(0xA2, 0x11, p.AsSpan(0, 73)), BitConverter.ToUInt32(p, 73));
+        Assert.NotEqual(BitConverter.ToUInt32(p, 73), BitConverter.ToUInt32(PlayStationCodec.Ds4LightBarBluetooth(0x00FF00), 73));
     }
 
     [Fact]

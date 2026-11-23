@@ -94,6 +94,8 @@ public sealed class ElevatedJob
     public DduJob? Ddu { get; set; }
     /// <summary>NVIDIA driver install from a downloaded package (component folders and tweak ids revalidated).</summary>
     public NvidiaInstallJob? NvidiaInstall { get; set; }
+    /// <summary>A Bluetooth adapter's driver package from the Microsoft Update Catalog (signature, hardware id and INF revalidated).</summary>
+    public BluetoothDriverJob? BluetoothDriver { get; set; }
     /// <summary>Items of the KOS state check, by id; the values come from the embedded KOS list or the admin-only last good state.</summary>
     public KosState.KosFixJob? KosFix { get; set; }
     /// <summary>sfc /scannow or DISM /RestoreHealth (only the tool's name; the command line is fixed). Progress and result go to files.</summary>
@@ -104,7 +106,7 @@ public sealed class ElevatedJob
     string Describe() => TweakId ?? ActionId ?? (Writes.Count > 0 ? "startup entries" : null) ?? (TaskChange is not null ? $"task {TaskChange.Path}" : null)
         ?? (Service is not null ? $"service {Service.Name}" : null) ?? (Power.Count > 0 ? "power plan" : null) ?? (PowerPlan is not null ? $"power plan {PowerPlan.Op}" : null) ?? (PrepareLogs ? "log folder" : null)
         ?? (Interrupts is not null ? $"interrupts {Interrupts.InstanceId}" : null) ?? (InterruptBatch is not null ? $"interrupts of {InterruptBatch.Configs.Count} devices, {InterruptBatch.Restart.Count} restarts" : null) ?? (RemoveDevices.Count > 0 ? $"remove {RemoveDevices.Count} devices" : null) ?? (Gpu is not null ? "GPU tuning" : null) ?? (CleanJunk.Count > 0 ? $"cleanup {string.Join(",", CleanJunk)}" : null) ?? (NetAdapter is not null ? $"network adapter {NetAdapter.InstanceId}" : null) ?? (Drivers is not null ? "driver store" : null) ?? (Display is not null ? "display" : null)
-        ?? (Bios is not null ? $"BIOS {Bios.Mode}" : null) ?? (Debloat is not null ? $"debloat {Debloat.App}/{Debloat.Option}" : null) ?? (Ddu is not null ? $"DDU {Ddu.Vendor}" : null) ?? (NvidiaInstall is not null ? "NVIDIA driver install" : null) ?? (KosFix is not null ? $"KOS state ({KosFix.Ids.Count} items)" : null) ?? (Repair is not null ? $"Windows repair ({Repair.Tool})" : null) ?? $"service snapshots ({Snapshot?.Mode})";
+        ?? (Bios is not null ? $"BIOS {Bios.Mode}" : null) ?? (Debloat is not null ? $"debloat {Debloat.App}/{Debloat.Option}" : null) ?? (Ddu is not null ? $"DDU {Ddu.Vendor}" : null) ?? (NvidiaInstall is not null ? "NVIDIA driver install" : null) ?? (BluetoothDriver is not null ? "Bluetooth driver install" : null) ?? (KosFix is not null ? $"KOS state ({KosFix.Ids.Count} items)" : null) ?? (Repair is not null ? $"Windows repair ({Repair.Tool})" : null) ?? $"service snapshots ({Snapshot?.Mode})";
 
     /// <summary>Unelevated side: opens UAC with the request and waits. Returns the elevated process's exit code.</summary>
     public async Task<int> RunElevatedAsync(CancellationToken ct = default)
@@ -155,7 +157,7 @@ public sealed class ElevatedJob
 
     int Kinds() => new[] { TweakId is not null, ActionId is not null, Writes.Count > 0, TaskChange is not null, Service is not null, Power.Count > 0, PowerPlan is not null, Snapshot is not null, PrepareLogs,
         Interrupts is not null, InterruptBatch is not null, RemoveDevices.Count > 0, Gpu is not null, CleanJunk.Count > 0, NetAdapter is not null, Drivers is not null, Display is not null,
-        Bios is not null, Debloat is not null, Ddu is not null, NvidiaInstall is not null, KosFix is not null, Repair is not null }.Count(b => b);
+        Bios is not null, Debloat is not null, Ddu is not null, NvidiaInstall is not null, BluetoothDriver is not null, KosFix is not null, Repair is not null }.Count(b => b);
 
     /// <summary>Refuses mixed requests and anything that is not exactly an allowed value.</summary>
     internal void Validate()
@@ -189,6 +191,7 @@ public sealed class ElevatedJob
         if (Debloat is not null) { KosToolbox.Core.Debloat.DebloatCatalog.Validate(Debloat); return; }
         if (Ddu is not null) { KosToolbox.Core.Drivers.Ddu.Validate(Ddu); return; }
         if (NvidiaInstall is not null) { NvidiaDriver.Validate(NvidiaInstall); return; }
+        if (BluetoothDriver is not null) { KosToolbox.Core.Drivers.BluetoothDriver.Validate(BluetoothDriver); return; }
         if (KosFix is not null) { KosState.KosStateFix.Validate(KosFix); return; }
         if (Repair is not null) { KosState.WindowsRepair.Validate(Repair); return; }
         if (PrepareLogs) { if (Option is not null) throw new InvalidOperationException("Mixed request."); return; }
@@ -285,6 +288,7 @@ public sealed class ElevatedJob
         if (Ddu is not null) { KosToolbox.Core.Drivers.Ddu.Execute(Ddu); return ExitOk; }
         // setup.exe's exit code only goes to the log; the toolbox confirms by reading the installed driver back.
         if (NvidiaInstall is not null) return NvidiaDriver.Execute(NvidiaInstall) == 0 ? ExitOk : ExitScriptCode;
+        if (BluetoothDriver is not null) { KosToolbox.Core.Drivers.BluetoothDriver.Execute(BluetoothDriver); return ExitOk; }
         if (KosFix is not null) return KosState.KosStateFix.Execute(KosFix);
         // The tool's verdict goes to its result file; the exit code only says the request ran.
         if (Repair is not null) { await KosState.WindowsRepair.RunAsync(Repair).ConfigureAwait(false); return ExitOk; }

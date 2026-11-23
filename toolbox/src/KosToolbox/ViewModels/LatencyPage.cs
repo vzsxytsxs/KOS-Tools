@@ -99,6 +99,10 @@ public sealed class LatencyPageViewModel : PageViewModel
     public string DpcDetail => TopDpc?.Name ?? "";
     public string IsrValue => TopIsr is { } d ? Txt.Microseconds(d.Isr.MaxUs) : "–";
     public string IsrDetail => TopIsr?.Name ?? "";
+    // The same figures in µs for the bars under the tiles.
+    public double TimerUs => _report is { TimerSamples: > 0 } r ? r.TimerMaxUs : 0;
+    public double DpcUs => TopDpc?.Dpc.MaxUs ?? 0;
+    public double IsrUs => TopIsr?.Isr.MaxUs ?? 0;
     public string FaultsValue => (_report?.HardFaults ?? 0).ToString("N0");
     public string FaultsDetail => _report?.Faults.FirstOrDefault() is { } f ? Txt.LatencyFaultsTop(f.Process) : "";
 

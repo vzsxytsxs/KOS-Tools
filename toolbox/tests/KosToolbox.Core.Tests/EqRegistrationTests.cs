@@ -151,6 +151,34 @@ public class EqRegistrationTests
     }
 
     [Fact]
+    public void ABluetoothEndpointTakesTheStreamEffectSlot()
+    {
+        // The slot values of a Soundcore Life Q30's A2DP endpoint: Windows' own LFX/GFX, nothing in the endpoint slot.
+        const string VendorEffect = "{11111111-2222-3333-4444-555555555555}";
+        var fx = Fx((5, FxValue.String(DriverLfx)), (6, FxValue.String(DriverGfx)));
+        var plan = EqRegistration.Plan(fx, null, slot: 5);
+        Assert.Null(plan.Refused);
+        Assert.Equal(EqRegistration.ClsidText, After(plan, EqRegistration.FxKey(5))!.Text);
+        Assert.Equal(EqRegistration.ModeDefault, After(plan, EqRegistration.ModesKey(5))!.Text);
+        Assert.DoesNotContain(plan.Changes, c => c.Name == EqRegistration.FxKey(7)); // the endpoint slot stays empty
+        // A driver's own stream effect is refused, and so is its own endpoint effect.
+        Assert.NotNull(EqRegistration.Plan(Fx((5, FxValue.String(VendorEffect))), null, slot: 5).Refused);
+        Assert.NotNull(EqRegistration.Plan(Fx((5, FxValue.String(DriverLfx)), (7, FxValue.String(VendorEffect))), null, slot: 5).Refused);
+        // Windows' own effect hosted by the other equalizer is fine, a driver's isn't.
+        var other = Fx((5, FxValue.String(Other)));
+        Assert.Null(EqRegistration.Plan(other, new Dictionary<string, string> { [EqRegistration.FxKey(5)] = DriverLfx }, slot: 5).Refused);
+        Assert.Contains("hosted by", EqRegistration.Plan(other, new Dictionary<string, string> { [EqRegistration.FxKey(5)] = VendorEffect }, slot: 5).Refused);
+        // Turning it off puts Windows' effect back and removes what KOS added.
+        var now = new Dictionary<string, FxValue>(fx)
+        {
+            [EqRegistration.FxKey(5)] = FxValue.String(EqRegistration.ClsidText), [EqRegistration.ModesKey(5)] = FxValue.Multi([EqRegistration.ModeDefault]),
+        };
+        var undo = EqRegistration.Undo(plan.Changes, now, new List<string>());
+        Assert.Equal(DriverLfx, undo.Single(c => c.Name == EqRegistration.FxKey(5)).After!.Text);
+        Assert.Null(undo.Single(c => c.Name == EqRegistration.ModesKey(5)).After);
+    }
+
+    [Fact]
     public void FxValuesCompareByKindAndText()
     {
         Assert.True(FxValue.Same(FxValue.String(Other.ToLowerInvariant()), FxValue.String(Other)));

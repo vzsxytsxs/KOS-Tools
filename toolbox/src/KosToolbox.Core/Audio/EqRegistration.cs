@@ -105,6 +105,8 @@ public static class EqRegistration
     public const string ModeDefault = "{C18E2F7E-933D-4965-B7D1-1EEF228D2AF3}"; // AUDIO_SIGNALPROCESSINGMODE_DEFAULT
     /// <summary>The other equalizer's stream/mode effect and endpoint effect.</summary>
     public static readonly string[] OtherEqualizer = ["{EACD2258-FCAC-4FF4-B36D-419E924A6D79}", "{EC1CC9CE-FAED-4822-828A-82A81A6F018F}"];
+    /// <summary>Windows' own stream effect ("WM audio LFX APO", WMALFXGFXDSP.dll): what a Bluetooth endpoint has in the stream-effect slot, which KOS Equalizer takes over.</summary>
+    const string WindowsStreamEffect = "{C9453E73-8C5C-4463-9984-AF8BAB2F5447}";
     public const string OtherEqualizerName = "Equalizer APO";
     const string OtherChildKey = @"SOFTWARE\EqualizerAPO\Child APOs";
     const string Endpoints = @"SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio";
@@ -124,7 +126,7 @@ public static class EqRegistration
     /// What turning KOS Equalizer on changes on an endpoint with these FxProperties values. <paramref name="otherChild"/> is the
     /// other equalizer's record of what it wrapped on this endpoint (value name → CLSID, or "!VALUE" for none), null if none.
     /// </summary>
-    public static EqFxPlan Plan(IReadOnlyDictionary<string, FxValue> current, IReadOnlyDictionary<string, string>? otherChild)
+    public static EqFxPlan Plan(IReadOnlyDictionary<string, FxValue> current, IReadOnlyDictionary<string, string>? otherChild, int slot = 7)
     {
         var changes = new List<EqFxChange>();
         var replaces = false;
@@ -135,8 +137,9 @@ public static class EqRegistration
             if (!FxValue.Same(before, after)) changes.Add(new EqFxChange { Name = name, Before = before, After = after });
         }
 
-        // The other equalizer's single-effect slots: what it wrapped goes back (its record), or the slot is emptied.
-        foreach (var pid in new[] { 1, 2, 5, 6 })
+        // The other equalizer's single-effect slots: what it wrapped goes back (its record), or the slot is emptied. The slot KOS
+        // Equalizer takes over is handled below.
+        foreach (var pid in new[] { 1, 2, 5, 6 }.Where(p => p != slot))
             if (Get(FxKey(pid)) is { Kind: RegistryValueKind.String } v && IsOther(v.Text))
             {
                 replaces = true;
@@ -151,6 +154,32 @@ public static class EqRegistration
                 var rest = v.Items.Where(i => !IsOther(i)).ToList();
                 Change(FxKey(pid), rest.Count == 0 ? null : FxValue.Multi(rest));
             }
+
+        if (slot == 5)
+        {
+            // A Bluetooth (A2DP) endpoint: the audio engine never builds the endpoint effect there (the effect stays unloaded while a
+            // stream plays), only the stream effect. KOS Equalizer takes that slot from Windows' own stream effect; a driver's own stream
+            // effect is refused, like a driver's endpoint effect.
+            var sfx = Get(FxKey(5));
+            if (sfx is not null && IsOther(sfx.Text))
+            {
+                replaces = true;
+                if (otherChild?.GetValueOrDefault(FxKey(5)) is { } wrapped && IsClsid(wrapped) && !IsOther(wrapped) && !IsOurs(wrapped)
+                    && !wrapped.Equals(WindowsStreamEffect, StringComparison.OrdinalIgnoreCase))
+                    return new EqFxPlan([], replaces, $"its driver has a stream effect of its own ({wrapped}, hosted by {OtherEqualizerName}); KOS Equalizer doesn't stack with it yet.");
+            }
+            else if (sfx is not null && !IsOurs(sfx.Text) && !string.Equals(sfx.Text?.Trim(), WindowsStreamEffect, StringComparison.OrdinalIgnoreCase))
+                return new EqFxPlan([], replaces, $"its driver has a stream effect of its own ({sfx}); KOS Equalizer doesn't stack with it yet.");
+            var inEndpointSlot = Get(FxKey(7));
+            if (inEndpointSlot is not null && !IsOurs(inEndpointSlot.Text) && !IsOther(inEndpointSlot.Text))
+                return new EqFxPlan([], replaces, $"its driver has an endpoint effect of its own ({inEndpointSlot}); KOS Equalizer doesn't stack with it yet.");
+            var composite5 = changes.FirstOrDefault(c => c.Name == FxKey(15)) is { } c5 ? c5.After : Get(FxKey(15));
+            if (composite5 is not null && composite5.Items.Any(i => !IsOurs(i)))
+                return new EqFxPlan([], replaces, $"its driver has endpoint effects of its own ({composite5}); KOS Equalizer doesn't stack with them yet.");
+            Change(FxKey(5), FxValue.String(ClsidText));
+            if (Get(ModesKey(5)) is null) Change(ModesKey(5), FxValue.Multi([ModeDefault]));
+            return new EqFxPlan(changes, replaces, null);
+        }
 
         // The endpoint-effect slot: KOS Equalizer, unless the driver has an effect of its own there.
         var efx = Get(FxKey(7));
@@ -224,6 +253,25 @@ public static class EqRegistration
 
     static RegistryKey Hklm => RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
 
+    /// <summary>
+    /// Where KOS Equalizer sits on an endpoint: 7, the endpoint effect, on most; 5, the stream effect, on a Bluetooth A2DP endpoint
+    /// (its instance id, endpoint property {b3f8fa53-0004-438e-9003-51a46e139bfc},2, is a BTHENUM one). Measured on a Soundcore Life Q30:
+    /// with the effect in slot 7 the audio engine never loaded it while a stream played; in slot 5 it loaded and applied the curve.
+    /// </summary>
+    public static int EffectSlot(string endpointId) => IsBluetoothA2dp(endpointId) ? 5 : 7;
+
+    static bool IsBluetoothA2dp(string endpointId)
+    {
+        try
+        {
+            var (flow, guid) = Endpoint(endpointId);
+            using var root = Hklm;
+            using var key = root.OpenSubKey($@"{Endpoints}\{flow}\{guid}\Properties");
+            return key?.GetValue("{b3f8fa53-0004-438e-9003-51a46e139bfc},2") is string id && id.Contains("BTHENUM", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (ex is System.Security.SecurityException or UnauthorizedAccessException or IOException or ArgumentException) { return false; }
+    }
+
     /// <summary>The endpoint's FxProperties values; null when the endpoint has no such key (no effects at all).</summary>
     public static Dictionary<string, FxValue>? ReadFx(string endpointId)
     {
@@ -268,7 +316,7 @@ public static class EqRegistration
     {
         var record = Record(LoadJournal(), endpointId);
         var fx = ReadFx(endpointId);
-        if (record is not null && fx is not null && fx.TryGetValue(FxKey(7), out var efx) && IsOurs(efx.Text))
+        if (record is not null && fx is not null && (fx.TryGetValue(FxKey(7), out var efx) && IsOurs(efx.Text) || fx.TryGetValue(FxKey(5), out var sfx) && IsOurs(sfx.Text)))
         {
             var (line, time) = EffectStatus(endpointId);
             // A line from before this turn-on is an earlier run's: not a read-back of this one.
@@ -278,7 +326,7 @@ public static class EqRegistration
         if (record is not null)
             return new EqStatus(EqDeviceState.ChangedSince, "The device's effects were changed since (a driver update?): turn it off, then on again.", record.ReplacedOther);
         if (fx is null) return new EqStatus(EqDeviceState.Unsupported, "This device has no audio effects key.", false);
-        var plan = Plan(fx, ReadOtherChild(endpointId));
+        var plan = Plan(fx, ReadOtherChild(endpointId), EffectSlot(endpointId));
         if (plan.Refused is { } refused) return new EqStatus(EqDeviceState.Unsupported, "This device " + refused, false);
         return new EqStatus(plan.ReplacesOther ? EqDeviceState.OtherEqualizer : EqDeviceState.Off, null, false);
     }
@@ -316,7 +364,7 @@ public static class EqRegistration
         var journal = LoadJournal();
         if (Record(journal, endpointId) is not null) throw new InvalidOperationException("KOS Equalizer is already on for this device.");
         var fx = ReadFx(endpointId) ?? throw new InvalidOperationException("This device has no audio effects key, so an effect can't be added to it.");
-        var plan = Plan(fx, ReadOtherChild(endpointId));
+        var plan = Plan(fx, ReadOtherChild(endpointId), EffectSlot(endpointId));
         if (plan.Refused is { } refused) throw new InvalidOperationException("This device " + refused);
 
         var record = new EqEndpointRecord { EndpointId = endpointId, Name = name, Changes = plan.Changes.ToList(), ReplacedOther = plan.ReplacesOther, Activated = DateTime.UtcNow };

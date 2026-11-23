@@ -442,6 +442,13 @@
                                     <TextBlock Style="{StaticResource GpuHint}" Text="{Binding MemProblem}" Visibility="{Binding MemProblem, Converter={StaticResource NotEmptyToVis}}" />
                                 </StackPanel>
                                 <StackPanel Margin="0,0,0,14">
+                                    <TextBlock Style="{StaticResource GpuFieldLabel}" Text="{x:Static t:Txt.GpuMinClock}" />
+                                    <TextBox Text="{Binding MinClockText, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding MinClockEnabled}" Width="86" HorizontalAlignment="Left" AutomationProperties.Name="{x:Static t:Txt.GpuMinClock}" />
+                                    <TextBlock Style="{StaticResource GpuHint}" Text="{Binding MinClockHint}" />
+                                    <TextBlock Style="{StaticResource GpuError}" Text="{Binding MinClockError}" Visibility="{Binding MinClockError, Converter={StaticResource NotEmptyToVis}}" />
+                                    <TextBlock Style="{StaticResource GpuHint}" Text="{Binding MinClockProblem}" Visibility="{Binding MinClockProblem, Converter={StaticResource NotEmptyToVis}}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,0,14">
                                     <TextBlock Style="{StaticResource GpuFieldLabel}" Text="{x:Static t:Txt.GpuThermalLimit}" />
                                     <Grid>
                                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="10" /><ColumnDefinition Width="86" /></Grid.ColumnDefinitions>
@@ -1153,6 +1160,7 @@
                         <ComboBox ItemsSource="{Binding DriverTypes}" ItemTemplate="{StaticResource OptionText}" SelectedItem="{Binding SelectedDriverType, Mode=TwoWay}"
                                   MinWidth="120" Margin="0,0,8,6" AutomationProperties.Name="{x:Static t:Txt.NvidiaDriverTitle}" />
                         <Button Content="{x:Static t:Txt.FindDrivers}" Command="{Binding FindCommand}" Margin="0,0,8,6" />
+                        <Button Content="{x:Static t:Txt.FindAllDrivers}" Command="{Binding FindAllCommand}" ToolTip="{x:Static t:Txt.FindAllDriversTip}" Margin="0,0,8,6" />
                         <ComboBox ItemsSource="{Binding Releases}" ItemTemplate="{StaticResource OptionText}" SelectedItem="{Binding SelectedRelease, Mode=TwoWay}"
                                   MinWidth="260" Margin="0,0,8,6" AutomationProperties.Name="{x:Static t:Txt.NvidiaDriverTitle}"
                                   Visibility="{Binding HasReleases, Converter={StaticResource BoolToVis}}" />
