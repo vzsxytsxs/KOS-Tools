@@ -32,6 +32,19 @@ public static partial class Txt
     public static string BiosNumberHint(int bytes) => $"Whole number ({bytes} byte{(bytes == 1 ? "" : "s")}). The BIOS checks its own limits when it's written.";
     public const string BiosReadOnlyHint = "Shown only: the toolbox doesn't change this kind of setting.";
     public const string BiosPendingName = "BIOS settings";
+
+    // recommended values
+    public const string BiosRecommended = "Recommended", BiosOnlyNotRecommended = "Not at recommended";
+    public const string BiosRecommendedTooltip = "Marks the KOS recommended value on every setting of this BIOS that has one, except the optional ones. Nothing is written before Apply.";
+    public const string BiosRecommendedUse = "KOS recommended value: click to use it.";
+    public const string BiosRecommendedAlready = "Everything is already at the recommended values.";
+    public const string BiosRecommendedOptional = "Optional, so Recommended leaves it out.";
+    public const string BiosRecommendedNewerRyzen = "Ryzen 7000 and newer lose boost and performance with C-states off, so Auto is recommended here.";
+    public static string BiosRecommendedMarked(int n) => $"{n} recommended setting{(n == 1 ? "" : "s")} marked. Review {(n == 1 ? "it" : "them")} and press Apply.";
+    /// <summary>"Recommended for Intel: 87 settings found in this BIOS, 12 differ (3 optional)."</summary>
+    public static string BiosRecommendedStatus(string processor, int found, int differ, int optional) =>
+        $"Recommended for {processor}: {found} setting{(found == 1 ? "" : "s")} found in this BIOS, {differ} differ{(optional == 0 ? "" : $" ({optional} optional, left out by Recommended)")}.";
+    public const string BiosRecommendedNone = "No recommended list for this processor.";
     public const string BiosPendingFirst = "Apply or discard the pending changes first.";
 
     // validation

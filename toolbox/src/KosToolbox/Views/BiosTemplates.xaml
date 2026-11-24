@@ -10,6 +10,7 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="3" />
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="300" />
                 <ColumnDefinition Width="38" />
             </Grid.ColumnDefinitions>
@@ -20,7 +21,10 @@
                 <TextBlock Style="{StaticResource Secondary}" FontSize="12" Text="{Binding Help}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"
                            ToolTip="{Binding Help}" Visibility="{Binding Help, Converter={StaticResource NotEmptyToVis}}" />
             </StackPanel>
-            <StackPanel Grid.Column="2" VerticalAlignment="Center">
+            <!-- ★ KOS recommended value: click to use it; dimmed when it is already in effect. -->
+            <Button Grid.Column="2" Style="{StaticResource NicRecommended}" Content="{Binding RecommendedLabel}" Command="{Binding UseRecommendedCommand}"
+                    ToolTip="{Binding RecommendedTip}" Visibility="{Binding HasRecommended, Converter={StaticResource BoolToVis}}" />
+            <StackPanel Grid.Column="3" VerticalAlignment="Center">
                 <ComboBox ItemsSource="{Binding Choices}" SelectedItem="{Binding SelectedChoice, Mode=TwoWay}" ItemTemplate="{StaticResource OptionText}"
                           Tag="{x:Static t:Txt.BiosNotSet}" AutomationProperties.Name="{Binding Name}"
                           Visibility="{Binding IsChoice, Converter={StaticResource BoolToVis}}" />
@@ -33,7 +37,7 @@
                 <TextBlock Text="{Binding Error}" Foreground="{StaticResource ErrorBrush}" FontSize="12" Margin="0,3,0,0" TextWrapping="Wrap"
                            Visibility="{Binding HasError, Converter={StaticResource BoolToVis}}" />
             </StackPanel>
-            <Button Grid.Column="3" Style="{StaticResource IconButton}" Content="&#xE7A7;" Width="30" Height="28" FontSize="12" HorizontalAlignment="Right"
+            <Button Grid.Column="4" Style="{StaticResource IconButton}" Content="&#xE7A7;" Width="30" Height="28" FontSize="12" HorizontalAlignment="Right"
                     VerticalAlignment="Center" Command="{Binding DiscardCommand}" ToolTip="{x:Static t:Txt.BiosDiscardSetting}"
                     AutomationProperties.Name="{x:Static t:Txt.BiosDiscardSetting}" Visibility="{Binding CanDiscard, Converter={StaticResource BoolToVis}}" />
         </Grid>
@@ -114,12 +118,15 @@
                         <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
                             <TextBlock Style="{StaticResource CardTitle}" Text="nvram.txt" />
                             <TextBlock Style="{StaticResource Secondary}" Text="{Binding StatusText}" TextWrapping="Wrap" Margin="0,3,0,0" />
+                            <TextBlock Style="{StaticResource Secondary}" Text="{Binding RecommendedText}" TextWrapping="Wrap" Margin="0,3,0,0"
+                                       Visibility="{Binding RecommendedText, Converter={StaticResource NotEmptyToVis}}" />
                             <TextBlock Style="{StaticResource Secondary}" Text="{Binding Problem}" Foreground="{StaticResource WarningBrush}" TextWrapping="Wrap" Margin="0,4,0,0"
                                        Visibility="{Binding Problem, Converter={StaticResource NotEmptyToVis}}" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                             <Button Content="{x:Static t:Txt.BiosOpenTools}" Margin="0,0,8,0" Command="{Binding OpenToolsCommand}"
                                     Visibility="{Binding HasScewin, Converter={StaticResource InverseBoolToVis}}" />
+                            <Button Content="{x:Static t:Txt.BiosRecommended}" Margin="0,0,8,0" Command="{Binding RecommendedCommand}" ToolTip="{x:Static t:Txt.BiosRecommendedTooltip}" />
                             <Button Style="{StaticResource PrimaryButton}" Content="{x:Static t:Txt.BiosRead}" Command="{Binding ReadCommand}" ToolTip="{x:Static t:Txt.BiosReadTooltip}" />
                             <Button Style="{StaticResource IconButton}" Content="&#xE838;" Margin="6,0,0,0" Command="{Binding OpenFolderCommand}"
                                     ToolTip="{Binding Folder}" AutomationProperties.Name="{x:Static t:Txt.OpenFolder}" />
@@ -131,6 +138,7 @@
                     <ContentPresenter Content="{Binding}" ContentTemplate="{StaticResource PageSearch}" VerticalAlignment="Center" />
                     <CheckBox Content="{x:Static t:Txt.BiosOnlyNotDefault}" IsChecked="{Binding OnlyNotDefault}" Margin="16,0,0,0" VerticalAlignment="Center" />
                     <CheckBox Content="{x:Static t:Txt.BiosOnlyPending}" IsChecked="{Binding OnlyPending}" Margin="16,0,0,0" VerticalAlignment="Center" />
+                    <CheckBox Content="{x:Static t:Txt.BiosOnlyNotRecommended}" IsChecked="{Binding OnlyNotRecommended}" Margin="16,0,0,0" VerticalAlignment="Center" />
                     <TextBlock DockPanel.Dock="Right" Style="{StaticResource Secondary}" Text="{Binding CountText}" VerticalAlignment="Center" />
                 </DockPanel>
 

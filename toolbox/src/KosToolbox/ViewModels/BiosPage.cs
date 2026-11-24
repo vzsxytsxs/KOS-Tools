@@ -26,10 +26,12 @@ public sealed class BiosSettingRow : ObservableObject
     string? _pending, _error;
     string _text;
 
-    public BiosSettingRow(BiosPageViewModel page, BiosQuestion question)
+    public BiosSettingRow(BiosPageViewModel page, BiosQuestion question, BiosRecommendation? recommendation = null)
     {
         _page = page;
         Question = question;
+        Recommendation = recommendation;
+        UseRecommendedCommand = new RelayCommand(UseRecommended, () => HasRecommended && !IsRecommended);
         Choices = question.Kind switch
         {
             BiosKind.Options => question.Options.Select(o => new BiosChoice(o.Value, NvramScript.Describe(question, o.Value))).ToList(),
@@ -59,6 +61,28 @@ public sealed class BiosSettingRow : ObservableObject
     public bool HasError => _error is not null;
     public bool CanDiscard => IsPending || HasError;
     public bool IsNotDefault => Question.Editable && Question.Default is not null && !NvramScript.SameValue(Question, Value, Question.Default);
+
+    /// <summary>The KOS recommended value for this setting on this BIOS and processor, if the list has one.</summary>
+    public BiosRecommendation? Recommendation { get; }
+    public bool HasRecommended => Recommendation is not null;
+    public string RecommendedLabel => Recommendation is null ? "" : "★ " + Recommendation.Label;
+    public bool IsRecommended => Recommendation is { } r && NvramScript.SameValue(Question, Value, r.Value);
+    /// <summary>Tooltip of the ★: what clicking does, plus the drawback of an optional setting or why Zen 4 and later get another value.</summary>
+    public string RecommendedTip => string.Join(" ", new[]
+    {
+        Txt.BiosRecommendedUse, Recommendation?.Note, Recommendation is { Optional: true } ? Txt.BiosRecommendedOptional : null,
+        Recommendation is { NewerRyzen: true } ? Txt.BiosRecommendedNewerRyzen : null,
+    }.Where(s => !string.IsNullOrEmpty(s)));
+    public ICommand UseRecommendedCommand { get; }
+    /// <summary>What the Recommended button marks: a recommendation that is not optional and not in effect yet.</summary>
+    internal bool WantsRecommended => Recommendation is { Optional: false } && !IsRecommended;
+
+    public void UseRecommended()
+    {
+        if (Recommendation is not { } r) return;
+        if (IsNumber) { _text = r.Value; _error = null; }
+        SetValue(r.Value);
+    }
 
     /// <summary>"Was: …" with a pending change and "Default: …" when the BIOS reports the default.</summary>
     public string? Note
@@ -140,7 +164,8 @@ public sealed class BiosPageViewModel : PageViewModel
     List<BiosSettingRow> _rows = new();
     ListCollectionView _view = new(new List<BiosSettingRow>());
     string _search = "", _diffFilter = "", _tab = "settings";
-    bool _onlyNotDefault, _onlyPending, _busy, _comparing, _loaded;
+    bool _onlyNotDefault, _onlyPending, _onlyNotRecommended, _busy, _comparing, _loaded;
+    BiosCpu? _cpu;
     int _pendingCount, _errorCount, _checkedCount;
     BiosBackupInfo? _selectedBackup;
     NvramScript? _backupScript;
@@ -156,6 +181,7 @@ public sealed class BiosPageViewModel : PageViewModel
         ApplyCommand = new AsyncCommand(() => WriteAsync(_rows.Where(r => r.IsPending).ToDictionary(r => r.Question.Key, r => r.Pending!)),
             () => !_busy && _pendingCount > 0 && _errorCount == 0);
         DiscardCommand = new RelayCommand(Discard, () => !_busy && (_pendingCount > 0 || _errorCount > 0));
+        RecommendedCommand = new RelayCommand(StageRecommended, () => !_busy && _rows.Any(r => r.HasRecommended));
         ClearSearchCommand = new RelayCommand(() => SearchText = "");
         OpenFolderCommand = new RelayCommand(() => OpenFolder(Scewin.Folder));
         OpenBackupsCommand = new RelayCommand(() => OpenFolder(Scewin.BackupFolder));
@@ -182,6 +208,7 @@ public sealed class BiosPageViewModel : PageViewModel
     public ICommand ReadCommand { get; }
     public ICommand ApplyCommand { get; }
     public ICommand DiscardCommand { get; }
+    public ICommand RecommendedCommand { get; }
     public ICommand ClearSearchCommand { get; }
     public ICommand OpenFolderCommand { get; }
     public ICommand OpenBackupsCommand { get; }
@@ -218,6 +245,21 @@ public sealed class BiosPageViewModel : PageViewModel
     }
     public bool OnlyNotDefault { get => _onlyNotDefault; set { if (Set(ref _onlyNotDefault, value)) RefreshView(); } }
     public bool OnlyPending { get => _onlyPending; set { if (Set(ref _onlyPending, value)) RefreshView(); } }
+    public bool OnlyNotRecommended { get => _onlyNotRecommended; set { if (Set(ref _onlyNotRecommended, value)) RefreshView(); } }
+
+    /// <summary>"Recommended for Intel: 87 settings found in this BIOS, 12 differ (3 optional)."; null before the first read.</summary>
+    public string? RecommendedText
+    {
+        get
+        {
+            if (_script is null || _cpu is null) return null;
+            if (!_cpu.IsAmd && !_cpu.IsIntel) return Txt.BiosRecommendedNone;
+            var found = _rows.Where(r => r.HasRecommended).ToList();
+            var differ = found.Where(r => !r.IsRecommended).ToList();
+            var processor = _cpu.IsIntel ? "Intel" : _cpu.IsNewerRyzen ? "AMD Ryzen 7000 and newer" : "AMD";
+            return Txt.BiosRecommendedStatus(processor, found.Count, differ.Count, differ.Count(r => r.Recommendation!.Optional));
+        }
+    }
 
     // ---------- Backups tab ----------
 
@@ -252,7 +294,7 @@ public sealed class BiosPageViewModel : PageViewModel
     /// </summary>
     async Task LoadAsync(bool announceDiscard)
     {
-        var (scewin, sourceProblem, script, readAt, error, backups) = await Task.Run(() =>
+        var (scewin, sourceProblem, script, readAt, error, backups, cpu, recommended) = await Task.Run(() =>
         {
             var exe = Scewin.Find();
             NvramScript? s = null;
@@ -266,24 +308,27 @@ public sealed class BiosPageViewModel : PageViewModel
             List<BiosBackupInfo> list;
             try { list = Scewin.Backups(); }
             catch (Exception ex) { Log.Error("BIOS: listing the backups failed", ex); list = new(); }
-            return (exe, exe is null ? null : Scewin.SourceProblem(exe), s, at, err, list);
+            var processor = BiosCpu.Current();
+            return (exe, exe is null ? null : Scewin.SourceProblem(exe), s, at, err, list, processor,
+                s is null ? new Dictionary<string, BiosRecommendation>() : BiosRecommended.For(s, processor));
         });
 
         _loaded = true;
         _scewin = scewin;
         _sourceProblem = sourceProblem;
         _loadError = error;
+        _cpu = cpu;
         if (script is null || readAt != _readAt || _script is null)
         {
             var discarded = _pendingCount;
             _script = script;
             _readAt = readAt;
-            _rows = script?.Questions.Select(q => new BiosSettingRow(this, q)).ToList() ?? new();
+            _rows = script?.Questions.Select(q => new BiosSettingRow(this, q, recommended.GetValueOrDefault(q.Key))).ToList() ?? new();
             View = new ListCollectionView(_rows) { Filter = Matches };
             UpdatePending();
             if (announceDiscard && discarded > 0) Toasts.Show(Txt.PendingDiscarded(discarded), ToastKind.Info);
         }
-        foreach (var p in new[] { nameof(HasScewin), nameof(StatusText), nameof(Problem), nameof(EmptyText), nameof(CountText) }) Raise(p);
+        foreach (var p in new[] { nameof(HasScewin), nameof(StatusText), nameof(Problem), nameof(EmptyText), nameof(CountText), nameof(RecommendedText) }) Raise(p);
 
         var keep = _selectedBackup?.Name;
         Backups.Clear();
@@ -299,6 +344,7 @@ public sealed class BiosPageViewModel : PageViewModel
         var r = (BiosSettingRow)o;
         if (_onlyPending && !r.IsPending) return false;
         if (_onlyNotDefault && !r.IsNotDefault) return false;
+        if (_onlyNotRecommended && !(r.HasRecommended && !r.IsRecommended)) return false;
         var q = _search.Trim();
         return q.Length == 0 || MainViewModel.Matches(r.Name, q) || r.Help is { } h && MainViewModel.Matches(h, q);
     }
@@ -316,7 +362,16 @@ public sealed class BiosPageViewModel : PageViewModel
         _errorCount = _rows.Count(r => r.HasError);
         Raise(nameof(HasPending));
         Raise(nameof(PendingText));
+        Raise(nameof(RecommendedText));
         CommandManager.InvalidateRequerySuggested();
+    }
+
+    /// <summary>Marks the recommended values not in effect yet as pending changes (the optional ones stay out); Apply writes them.</summary>
+    void StageRecommended()
+    {
+        var todo = _rows.Where(r => r.WantsRecommended).ToList();
+        foreach (var r in todo) r.UseRecommended();
+        Toasts.Show(todo.Count == 0 ? Txt.BiosRecommendedAlready : Txt.BiosRecommendedMarked(todo.Count), ToastKind.Info);
     }
 
     void Discard()

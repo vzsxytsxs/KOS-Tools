@@ -124,15 +124,19 @@ public static class HardwareInfo
         return $"{t.Cores.Count} ({t.Cores.Count(c => c.EfficiencyClass == classes[0])} performance + {t.Cores.Count(c => c.EfficiencyClass != classes[0])} efficient)";
     }
 
-    static string? Signature()
+    /// <summary>Family, model and stepping from CPUID leaf 1 (extended family and model applied); null without CPUID.</summary>
+    internal static (int Family, int Model, int Stepping, int Eax)? CpuIdSignature()
     {
         if (!X86Base.IsSupported) return null;
         var eax = X86Base.CpuId(1, 0).Eax;
         int stepping = eax & 0xF, model = (eax >> 4) & 0xF, family = (eax >> 8) & 0xF;
         if (family == 0xF) family += (eax >> 20) & 0xFF;
         if (family is 6 or >= 0xF) model += ((eax >> 16) & 0xF) << 4;
-        return $"Family {family:X} · Model {model:X} · Stepping {stepping} (CPUID {eax:X})";
+        return (family, model, stepping, eax);
     }
+
+    static string? Signature() =>
+        CpuIdSignature() is { } s ? $"Family {s.Family:X} · Model {s.Model:X} · Stepping {s.Stepping} (CPUID {s.Eax:X})" : null;
 
     static List<InfoRow> CacheRows(CpuTopology t) => t.Caches.OrderBy(c => c.Level).ThenByDescending(c => c.Type)
         .Select(c => new InfoRow($"L{c.Level}{c.Type switch { 1 => " instruction", 2 => " data", 3 => " trace", _ => "" }}",
