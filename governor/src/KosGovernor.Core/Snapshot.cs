@@ -95,6 +95,42 @@ public sealed class SystemLoad
         return first || dt <= 0 ? 0 : Math.Clamp(100.0 * (dt - di) / dt, 0, 100);
     }
 
+    long[]? _coreIdle, _coreTotal;
+
+    /// <summary>
+    /// Each logical processor's use since the previous call (null on the first, and when Windows doesn't answer): SystemProcessorPerformanceInformation,
+    /// one 48-byte record per processor (idle, kernel including idle, user, DPC, interrupt times).
+    /// </summary>
+    public float[]? CoreLoads()
+    {
+        const int InfoClass = 8, Record = 48;
+        var count = Environment.ProcessorCount;
+        var buffer = Marshal.AllocHGlobal(count * Record);
+        try
+        {
+            if (Native.NtQuerySystemInformation(InfoClass, buffer, count * Record, out var returned) < 0) return null;
+            var n = Math.Min(count, returned / Record);
+            var idle = new long[n];
+            var total = new long[n];
+            for (var i = 0; i < n; i++)
+            {
+                idle[i] = Marshal.ReadInt64(buffer, i * Record);
+                total[i] = Marshal.ReadInt64(buffer, i * Record + 8) + Marshal.ReadInt64(buffer, i * Record + 16);
+            }
+            var (pi, pt) = (_coreIdle, _coreTotal);
+            (_coreIdle, _coreTotal) = (idle, total);
+            if (pi is null || pt is null || pi.Length != n) return null;
+            var loads = new float[n];
+            for (var i = 0; i < n; i++)
+            {
+                var (di, dt) = (idle[i] - pi[i], total[i] - pt[i]);
+                loads[i] = dt <= 0 ? 0 : (float)Math.Clamp(100.0 * (dt - di) / dt, 0, 100);
+            }
+            return loads;
+        }
+        finally { Marshal.FreeHGlobal(buffer); }
+    }
+
     public static (uint LoadPercent, ulong Used, ulong Total) Memory()
     {
         var m = new Native.MemoryStatus { Length = (uint)Marshal.SizeOf<Native.MemoryStatus>() };

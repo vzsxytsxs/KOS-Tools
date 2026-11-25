@@ -9,8 +9,16 @@ public static partial class Txt
     const string OtherEq = EqRegistration.OtherEqualizerName;
 
     public const string PageEqualizer = "Equalizer",
-        PageEqualizerSubtitle = "A parametric or graphic equalizer for each playback device, with a profile for gamemode.";
-    public const string EqNone = "No playback device found.", EqNotConnected = "Not connected";
+        PageEqualizerSubtitle = "A parametric or graphic equalizer for each playback device and microphone, with a profile for gamemode.";
+    public const string EqNone = "No audio device found.", EqNotConnected = "Not connected";
+    // Hearing the microphone through the equalizer.
+    public const string EqMonitorTitle = "Hear this microphone",
+        EqListen = "Listen to myself", EqListenStop = "Stop listening",
+        EqRecord = "Record 5 s and play back", EqRecordStop = "Stop",
+        EqMonitoringLive = "Listening: what the microphone hears plays on the default playback device. Change the equalizer and the sound changes with it.",
+        EqMonitorNote = "Use headphones: through speakers the microphone picks the sound up again and it howls. Plays on the default playback device; nothing is saved.",
+        EqRecordingNow = "Recording... speak now", EqPlayingBack = "Playing your recording";
+    public static string EqMonitorFailed(string why) => $"Couldn't open the microphone: {why}";
 
     // ---------- KOS Equalizer on this device ----------
     public const string EqCardTitle = "KOS Equalizer on this device",

@@ -61,10 +61,20 @@ public sealed class GamemodeSystemSettings
     public RtssOsdItems RtssOsdItems { get; set; } = RtssOsdItems.Default;
     /// <summary>RTSS's frame limiting mode (global profile) while gamemode is on; <see cref="RtssLimiterMode.Own"/> leaves RTSS's setting.</summary>
     public RtssLimiterMode RtssLimiterMode { get; set; }
+    /// <summary>The on-screen display on one line ("FPS 144 | GPU ... | CPU ...") instead of one line per group.</summary>
+    public bool RtssOsdCompact { get; set; }
+    /// <summary>Accent color of the on-screen display's labels; <see cref="RtssOsdColor.None"/> leaves RTSS's own color.</summary>
+    public RtssOsdColor RtssOsdColor { get; set; }
+    /// <summary>How the on-screen display looks: RTSS's plain lines, a Steam-like block, or a benchmark layout with bars and graphs.</summary>
+    public RtssOsdStyle RtssOsdStyle { get; set; }
+    /// <summary>A frame limit per game, in the game's own RTSS profile, while gamemode is on (the global limit above stays for every other game).</summary>
+    public List<RtssGameLimit> RtssGameLimits { get; set; } = new();
+    /// <summary>Starts RTSS (in the tray) when the engine starts, the configuration loads or gamemode turns on and it isn't running: RTSS must be up before a game opens to hook it. Not a gamemode change, so it isn't part of <see cref="Any"/>.</summary>
+    public bool RtssKeepRunning { get; set; }
 
     [JsonIgnore] public bool Any => PowerPlan || StopWindowsUpdate || StopSearch || TransparencyOff || CStatesOff || CleanMemory || BackgroundEfficiency
         || PurgeStandby || KeepAwake || WifiLowLatency || RestrainBackground || LowLatencyAudio || DwmMmcss || ThreadDirector || RtssOsd || RtssFrameLimit > 0
-        || RtssLimiterMode != RtssLimiterMode.Own;
+        || RtssLimiterMode != RtssLimiterMode.Own || RtssGameLimits.Count > 0;
 }
 
 /// <summary>The lines of the RTSS on-screen display.</summary>
@@ -76,8 +86,31 @@ public enum RtssOsdItems
     All = Default | FrametimeGraph,
 }
 
+/// <summary>Accent colors of the on-screen display, after the color variants of TroyMetrics' benchmark overlays (RRGGBB in <see cref="Rtss.AccentHex"/>).</summary>
+public enum RtssOsdColor { None, GhostlyGreen, PureGreen, ElectricBlue, BrightYellow, HotPink, PureOrange }
+
+/// <summary>The look of the on-screen display: <see cref="Classic"/> is RTSS's plain lines; <see cref="Steam"/> a big FPS number over small grey labels (like Steam's performance overlay); <see cref="Benchmark"/> sections with a CPU bar per core and the frame time graph (after TroyMetrics' benchmark overlays).</summary>
+public enum RtssOsdStyle { Classic, Steam, Benchmark }
+
+/// <summary>A frame limit for one game (its executable name, "game.exe") in FPS.</summary>
+public sealed class RtssGameLimit
+{
+    public string Exe { get; set; } = "";
+    public int Fps { get; set; }
+}
+
 /// <summary>RTSS's framerate limiting modes, in the order of its own list (profile property SyncLimiter = value − 1).</summary>
 public enum RtssLimiterMode { Own, Async, FrontEdgeSync, BackEdgeSync, Reflex }
+
+/// <summary>One game's RTSS profile as gamemode found it: <see cref="Created"/> = it didn't exist (copied from the global one), and the limit it set.</summary>
+public sealed class RtssGameState
+{
+    public string Exe { get; set; } = "";
+    public bool Created { get; set; }
+    public uint LimitBefore { get; set; }
+    public uint DenominatorBefore { get; set; } = 1;
+    public uint LimitSet { get; set; }
+}
 
 public sealed class ThrottledProcess
 {
@@ -122,6 +155,8 @@ public sealed class GamemodeSystemState
     /// <summary>RTSS's limiting mode (SyncLimiter) before gamemode, and the one it set.</summary>
     public uint? RtssModeBefore { get; set; }
     public uint? RtssModeSet { get; set; }
+    /// <summary>Per-game RTSS profiles written while gamemode is on; put back (or removed when gamemode created them) on disable.</summary>
+    public List<RtssGameState> RtssGames { get; set; } = new();
 }
 
 /// <summary>Applies and undoes the <see cref="GamemodeSystemSettings"/>. Each step continues even if another fails (it goes to the log).</summary>
@@ -201,6 +236,28 @@ public static class GamemodeSystem
             Save(state);
             Rtss.WriteLimit(want);
             Log.Info($"Gamemode: RTSS frame limit {want} (was {before}).");
+        });
+        Step("RTSS game frame limits", () =>
+        {
+            foreach (var g in s.RtssGameLimits)
+            {
+                if (!Rtss.IsGameName(g.Exe) || g.Fps is < 10 or > 1000) { Log.Warn($"Gamemode: RTSS frame limit for \"{g.Exe}\" left out (not a program name, or not 10–1000 FPS)."); continue; }
+                Step($"RTSS frame limit of {g.Exe}", () =>
+                {
+                    var created = Rtss.EnsureProfile(g.Exe);
+                    var before = Rtss.ReadLimit(g.Exe);
+                    var want = new Rtss.FrameLimit((uint)g.Fps, 1);
+                    if (before == want)
+                    {
+                        if (created) Rtss.DeleteProfile(g.Exe);
+                        return;
+                    }
+                    state.RtssGames.Add(new RtssGameState { Exe = g.Exe, Created = created, LimitBefore = before.Limit, DenominatorBefore = before.Denominator, LimitSet = want.Limit });
+                    Save(state);
+                    Rtss.WriteLimit(want, g.Exe);
+                    Log.Info($"Gamemode: RTSS frame limit of {g.Exe} {want} (was {before}).");
+                });
+            }
         });
         Step("RTSS limiter mode", () =>
         {
@@ -293,6 +350,18 @@ public static class GamemodeSystem
             if (state.RtssModeSet is not { } set || state.RtssModeBefore is not { } before || before > Rtss.MaxMode || Rtss.ReadMode() != set) return;
             Rtss.WriteMode(before);
             Log.Info($"Gamemode: RTSS limiter mode back to {Rtss.ModeName(before)}.");
+        });
+        Step("RTSS game frame limits", () =>
+        {
+            foreach (var g in state.RtssGames.ToList())
+                Step($"RTSS frame limit of {g.Exe}", () =>
+                {
+                    // The journal is admin-only, but the name still goes to the elevated DLL call and a file delete: only a program name.
+                    if (!Rtss.IsGameName(g.Exe) || Rtss.ReadLimit(g.Exe) != new Rtss.FrameLimit(g.LimitSet, 1)) return; // changed since: left as it is
+                    if (g.Created) Rtss.DeleteProfile(g.Exe);
+                    else Rtss.WriteLimit(new Rtss.FrameLimit(g.LimitBefore, g.DenominatorBefore), g.Exe);
+                    Log.Info($"Gamemode: RTSS frame limit of {g.Exe} back.");
+                });
         });
         Step("RTSS frame limit", () =>
         {

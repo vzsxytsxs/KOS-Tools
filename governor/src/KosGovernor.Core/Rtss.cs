@@ -9,8 +9,8 @@ using Microsoft.Win32;
 namespace KosGovernor.Core;
 
 /// <summary>
-/// RivaTuner Statistics Server, when the user installed it: the governor never installs or starts it, and RTSS injects into the
-/// games itself (some anti-cheats refuse that). The on-screen display text goes through RTSS's shared memory, in an OSD slot of its
+/// RivaTuner Statistics Server, when the user installed it: the governor never installs it and starts it only when "Keep RTSS
+/// running" is on, and RTSS injects into the games itself (some anti-cheats refuse that). The on-screen display text goes through RTSS's shared memory, in an OSD slot of its
 /// SDK; the frame limit through the profile functions RTSSHooks64.dll exports, as the SDK's own sample does.
 /// </summary>
 public static class Rtss
@@ -29,7 +29,7 @@ public static class Rtss
     // ---------- on-screen display ----------
 
     /// <summary>Shows the text in the governor's OSD slot. False when RTSS isn't running or every slot is taken.</summary>
-    public static bool ShowOsd(string text) => WithView(m => Write(m, text)) is OsdResult.Written or OsdResult.Busy;
+    public static bool ShowOsd(string text, float[]? cores = null, float graphMaxUs = 50000) => WithView(m => Write(m, text, cores, graphMaxUs)) is OsdResult.Written or OsdResult.Busy;
 
     /// <summary>Gives the governor's OSD slot back (gamemode off, engine exit, and at engine start after a crash).</summary>
     public static int ReleaseOsd() => WithView(Release) ?? 0;
@@ -39,7 +39,7 @@ public static class Rtss
     /// (MSI Afterburner), as the SDK asks. The header comes from a mapping any program in the session could have created
     /// before RTSS: every offset is checked against the view, and the span refuses anything outside it.
     /// </summary>
-    internal static OsdResult Write(Span<byte> mem, string text)
+    internal static OsdResult Write(Span<byte> mem, string text, float[]? cores = null, float graphMaxUs = 50000)
     {
         if (!Layout(mem, out var version, out var offset, out var size, out var count)) return OsdResult.Invalid;
         var slot = -1;
@@ -60,15 +60,19 @@ public static class Rtss
         // The frametime graph: an object in the slot's buffer (v2.12+) that the text places with <OBJ=offset>; without the buffer, no graph line.
         var graph = text.Contains(GraphTag) && version >= EmbeddedObjects && size >= BufferAt + GraphSize ? entry.Slice(BufferAt, GraphSize) : Span<byte>.Empty;
         if (graph.IsEmpty) text = text.Replace(GraphTag + "\n", "").Replace(GraphTag, "");
+        // The CPU bars: a second object further into the buffer, filled with one load per core.
+        var bars = text.Contains(CoresTag) && cores is { Length: > 0 and <= MaxCores } && version >= EmbeddedObjects && size >= BufferAt + CoresAt + GraphSize + cores.Length * 4
+            ? entry.Slice(BufferAt + CoresAt, GraphSize + cores.Length * 4) : Span<byte>.Empty;
+        if (bars.IsEmpty) text = text.Replace(CoresTag + "\n", "").Replace(CoresTag, "");
         if (version >= Locking)
         {
             // Bit 0 is set while RTSS renders the OSD: skip this update rather than wait.
             ref var busy = ref MemoryMarshal.Cast<byte, int>(mem.Slice(BusyAt, 4))[0];
             if ((Interlocked.Or(ref busy, 1) & 1) != 0) return OsdResult.Busy;
-            try { Fill(field, text); FrametimeGraph(graph); }
+            try { Fill(field, text); FrametimeGraph(graph, graphMaxUs); CoreBars(bars, cores); }
             finally { Interlocked.And(ref busy, ~1); }
         }
-        else { Fill(field, text); FrametimeGraph(graph); }
+        else { Fill(field, text); FrametimeGraph(graph, graphMaxUs); CoreBars(bars, cores); }
         Interlocked.Increment(ref MemoryMarshal.Cast<byte, int>(mem.Slice(OsdFrameAt, 4))[0]);
         return OsdResult.Written;
     }
@@ -117,17 +121,32 @@ public static class Rtss
     const uint EmbeddedObjects = 0x0002000C, GraphSignature = 0x47523030, GraphFrametime = 4;
     /// <summary>The graph object sits at offset 0 of the slot's buffer.</summary>
     internal const string GraphTag = "<OBJ=00000000>";
+    /// <summary>The CPU bar chart object sits at offset 0x400 of the buffer (36 bytes of header, then one float per core).</summary>
+    internal const string CoresTag = "<OBJ=00000400>";
+    const int CoresAt = 0x400, MaxCores = 64;
+    const uint GraphFilled = 1;
+
+    /// <summary>A filled graph with one data point per core (0 to 100 %): each point is a bar one character wide, two lines high.</summary>
+    static void CoreBars(Span<byte> obj, float[]? loads)
+    {
+        if (obj.IsEmpty || loads is null) return;
+        var w = MemoryMarshal.Cast<byte, int>(obj);
+        (w[0], w[1], w[2], w[3], w[4], w[5]) = ((int)GraphSignature, GraphSize + loads.Length * 4, -loads.Length, -2, 1, (int)GraphFilled);
+        (w[6], w[7]) = (BitConverter.SingleToInt32Bits(0f), BitConverter.SingleToInt32Bits(100f));
+        w[8] = loads.Length;
+        for (var i = 0; i < loads.Length; i++) w[9 + i] = BitConverter.SingleToInt32Bits(Math.Clamp(loads[i], 0f, 100f));
+    }
 
     /// <summary>
     /// A frametime graph RTSS fills from the game's own frames (no samples from us), 32 characters wide and 3 lines high, 0–50 ms,
     /// as the SDK's sample embeds it.
     /// </summary>
-    static void FrametimeGraph(Span<byte> obj)
+    static void FrametimeGraph(Span<byte> obj, float maxUs)
     {
         if (obj.IsEmpty) return;
         var w = MemoryMarshal.Cast<byte, int>(obj);
         (w[0], w[1], w[2], w[3], w[4], w[5]) = ((int)GraphSignature, GraphSize, -32, -3, 1, (int)GraphFrametime);
-        (w[6], w[7]) = (BitConverter.SingleToInt32Bits(0f), BitConverter.SingleToInt32Bits(50000f));
+        (w[6], w[7]) = (BitConverter.SingleToInt32Bits(0f), BitConverter.SingleToInt32Bits(maxUs));
         w[8] = 0;
     }
 
@@ -135,11 +154,16 @@ public static class Rtss
     /// The OSD text: RTSS fills in &lt;FR&gt; (frames per second), &lt;FT&gt; (frame time) and the frametime graph for each game; the rest
     /// comes from the governor's readings (NVIDIA cards only for the GPU line). Only the chosen <paramref name="items"/>.
     /// </summary>
-    internal static string OsdText(RtssOsdItems items, double cpuPercent, ulong memUsed, ulong memTotal, GpuSensors? gpu)
+    internal static string OsdText(RtssOsdItems items, double cpuPercent, ulong memUsed, ulong memTotal, GpuSensors? gpu, bool compact = false, RtssOsdColor color = RtssOsdColor.None,
+        RtssOsdStyle style = RtssOsdStyle.Classic)
     {
+        if (style != RtssOsdStyle.Classic) return StyledText(style, items, cpuPercent, memUsed, memTotal, gpu, color);
         var c = CultureInfo.InvariantCulture;
         var lines = new List<string>();
-        void Line(string label, List<string> parts) { if (parts.Count > 0) lines.Add(label + string.Join("  ", parts)); }
+        // The accent color is RTSS's text tag <C0=RRGGBB> (a color slot) used with <C0> ... <C> around each label.
+        var accent = AccentHex(color);
+        string Label(string label) => accent is null || label.Length == 0 ? label : $"<C0>{label.TrimEnd()}<C>{label[label.TrimEnd().Length..]}";
+        void Line(string label, List<string> parts) { if (parts.Count > 0) lines.Add(Label(label) + string.Join("  ", parts)); }
         bool Has(RtssOsdItems item) => (items & item) != 0;
 
         var frames = new List<string>();
@@ -155,15 +179,71 @@ public static class Rtss
             if (Has(RtssOsdItems.GpuClock) && g.GraphicsMhz is { } mhz) parts.Add(string.Format(c, "{0} MHz", mhz));
             if (Has(RtssOsdItems.GpuPower) && g.PowerMw is { } mw) parts.Add(string.Format(c, "{0:0} W", mw / 1000.0));
             if (Has(RtssOsdItems.Vram) && g.VramUsed is { } used && g.VramTotal is { } total and > 0)
-                parts.Add(string.Format(c, "VRAM {0:0.0}/{1:0.0} GB", used / 1073741824.0, total / 1073741824.0));
+                parts.Add(Label("VRAM") + string.Format(c, " {0:0.0}/{1:0.0} GB", used / 1073741824.0, total / 1073741824.0));
             Line("GPU  ", parts);
         }
         var system = new List<string>();
-        if (Has(RtssOsdItems.Cpu)) system.Add(string.Format(c, "CPU  {0:0}%", cpuPercent));
-        if (Has(RtssOsdItems.Ram)) system.Add(string.Format(c, "RAM {0:0.0}/{1:0.0} GB", memUsed / 1073741824.0, memTotal / 1073741824.0));
+        if (Has(RtssOsdItems.Cpu)) system.Add(Label("CPU  ") + string.Format(c, "{0:0}%", cpuPercent));
+        if (Has(RtssOsdItems.Ram)) system.Add(Label("RAM ") + string.Format(c, "{0:0.0}/{1:0.0} GB", memUsed / 1073741824.0, memTotal / 1073741824.0));
         Line("", system);
-        return string.Join("\n", lines);
+        // The graph is an object on a line of its own: the compact layout keeps it there.
+        var text = compact ? string.Join("  |  ", lines.Where(l => l != GraphTag)) + (lines.Contains(GraphTag) ? "\n" + GraphTag : "") : string.Join("\n", lines);
+        return accent is null || text.Length == 0 ? text : $"<C0={accent}>{text}";
     }
+
+    /// <summary>
+    /// The Steam-like and benchmark looks. Two color slots: C0 for the labels (the accent, or grey / ghostly green) and C1 for the values (white).
+    /// Sizes are RTSS's size tags (S1=190 is 190 %, S2=60 is 60 %); the bars object needs the per-core loads in <see cref="ShowOsd"/>.
+    /// </summary>
+    internal static string StyledText(RtssOsdStyle style, RtssOsdItems items, double cpuPercent, ulong memUsed, ulong memTotal, GpuSensors? gpu, RtssOsdColor color)
+    {
+        var c = CultureInfo.InvariantCulture;
+        bool Has(RtssOsdItems item) => (items & item) != 0;
+        var steam = style == RtssOsdStyle.Steam;
+        var labelColor = AccentHex(color) ?? (steam ? "A8A8A8" : "A0FFA0");
+        static string L(string s) => $"<C0>{s}<C>";
+        static string V(string s) => $"<C1>{s}<C>";
+        static string Small(string s) => $"<S2=60><S2>{s}<S>";
+        var lines = new List<string>();
+
+        if (Has(RtssOsdItems.Fps))
+        {
+            var head = $"<S1={(steam ? 190 : 230)}><S1>{V("<FR>")}<S> {Small(L("FPS"))}";
+            if (Has(RtssOsdItems.FrameTime)) head += $"   {Small(V("<FT>") + " " + L("ms"))}";
+            lines.Add(head);
+        }
+        else if (Has(RtssOsdItems.FrameTime)) lines.Add($"{L("FRAME TIME")} {V("<FT>")} {L("ms")}");
+        if (Has(RtssOsdItems.FrametimeGraph)) lines.Add(GraphTag);
+
+        if (gpu is { } g)
+        {
+            var parts = new List<string>();
+            if (Has(RtssOsdItems.GpuLoad) && g.GpuLoad is { } load) parts.Add(V(string.Format(c, "{0:0}%", load)));
+            if (Has(RtssOsdItems.GpuTemperature) && g.TemperatureC is { } temp) parts.Add(V(string.Format(c, "{0:0}°C", temp)));
+            if (Has(RtssOsdItems.GpuClock) && g.GraphicsMhz is { } mhz) parts.Add(V(string.Format(c, "{0} MHz", mhz)));
+            if (Has(RtssOsdItems.GpuPower) && g.PowerMw is { } mw) parts.Add(V(string.Format(c, "{0:0} W", mw / 1000.0)));
+            if (parts.Count > 0) lines.Add($"{L("GPU")}  {string.Join("  ", parts)}");
+            if (Has(RtssOsdItems.Vram) && g.VramUsed is { } used && g.VramTotal is { } total and > 0)
+                lines.Add($"{L("VRAM")} {V(string.Format(c, "{0:0.0}/{1:0.0} GB", used / 1073741824.0, total / 1073741824.0))}");
+        }
+        var cpu = Has(RtssOsdItems.Cpu) ? $"{L("CPU")}  {V(string.Format(c, "{0:0}%", cpuPercent))}" : null;
+        var ram = Has(RtssOsdItems.Ram) ? $"{L("RAM")} {V(string.Format(c, "{0:0.0}/{1:0.0} GB", memUsed / 1073741824.0, memTotal / 1073741824.0))}" : null;
+        if (steam) { if (cpu is not null || ram is not null) lines.Add(string.Join("   ", new[] { cpu, ram }.Where(x => x is not null))); }
+        else
+        {
+            if (cpu is not null) { lines.Add(cpu); lines.Add(CoresTag); } // one bar per core under the CPU line
+            if (ram is not null) lines.Add(ram);
+        }
+        var text = string.Join("\n", lines);
+        return text.Length == 0 ? text : $"<C0={labelColor}><C1=FFFFFF>{text}";
+    }
+
+    /// <summary>RRGGBB of an accent color, null for none.</summary>
+    internal static string? AccentHex(RtssOsdColor color) => color switch
+    {
+        RtssOsdColor.GhostlyGreen => "A0FFA0", RtssOsdColor.PureGreen => "00FF00", RtssOsdColor.ElectricBlue => "00A0FF", RtssOsdColor.BrightYellow => "FFFF00",
+        RtssOsdColor.HotPink => "FF69B4", RtssOsdColor.PureOrange => "FF8000", _ => null,
+    };
 
     delegate T ViewFn<T>(Span<byte> mem);
 
@@ -198,17 +278,50 @@ public static class Rtss
         public override string ToString() => Limit == 0 ? "off" : Denominator <= 1 ? $"{Limit} FPS" : string.Format(CultureInfo.InvariantCulture, "{0:0.###} FPS", (double)Limit / Denominator);
     }
 
-    internal static FrameLimit ReadLimit()
+    /// <summary>The limit of a profile: "" = the global one, "game.exe" = that game's own.</summary>
+    internal static FrameLimit ReadLimit(string profile = "")
     {
         using var hooks = new Hooks();
-        hooks.Load("");
+        hooks.Load(profile);
         return new FrameLimit(hooks.Get("FramerateLimit"), hooks.Get("FramerateLimitDenominator"));
     }
 
-    internal static void WriteLimit(FrameLimit limit)
+    internal static void WriteLimit(FrameLimit limit, string profile = "")
     {
         limit = limit with { Denominator = Math.Max(1, limit.Denominator) };
-        WriteGlobal(("FramerateLimitDenominator", limit.Denominator), ("FramerateLimit", limit.Limit));
+        WriteProfile(profile, ("FramerateLimitDenominator", limit.Denominator), ("FramerateLimit", limit.Limit));
+    }
+
+    // ---------- per-game profiles ----------
+
+    static readonly System.Text.RegularExpressions.Regex GameName = new(@"^[A-Za-z0-9][A-Za-z0-9 ._()\-]{0,63}\.exe$", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    /// <summary>A program name RTSS can keep a profile for: letters, digits, spaces and "._()-", ending in .exe, no folders.</summary>
+    public static bool IsGameName(string name) => GameName.IsMatch(name) && !name.Contains("..", StringComparison.Ordinal);
+
+    /// <summary>RTSS's Profiles folder (next to the DLL the engine trusts): "Global", and each game's profile as "game.exe.cfg" (the name the DLL writes).</summary>
+    static string ProfilesFolder() => Path.Combine(Path.GetDirectoryName(HooksDll(out var problem) ?? throw new InvalidOperationException(problem))!, "Profiles");
+
+    /// <summary>
+    /// Makes sure the game has a profile file, copied from the global one when there is none (RTSS keeps every setting in each profile, so a
+    /// fresh one would otherwise start from RTSS's defaults, not the user's overlay). True when it was created.
+    /// </summary>
+    internal static bool EnsureProfile(string exe)
+    {
+        if (!IsGameName(exe)) throw new ArgumentException("Not a program name.", nameof(exe));
+        var folder = ProfilesFolder();
+        var path = Path.Combine(folder, exe + ".cfg");
+        if (File.Exists(path)) return false;
+        File.Copy(Path.Combine(folder, "Global"), path);
+        return true;
+    }
+
+    internal static void DeleteProfile(string exe)
+    {
+        if (!IsGameName(exe)) throw new ArgumentException("Not a program name.", nameof(exe));
+        var path = Path.Combine(ProfilesFolder(), exe + ".cfg");
+        if (File.Exists(path)) File.Delete(path);
+        WithView(RequestProfileUpdate);
     }
 
     /// <summary>The frame limiting mode: profile property SyncLimiter, 0 async, 1 front edge sync, 2 back edge sync, 3 NVIDIA Reflex (RTSS's list order).</summary>
@@ -226,19 +339,21 @@ public static class Rtss
     internal static string ModeName(uint mode) => mode switch { 0 => "async", 1 => "front edge sync", 2 => "back edge sync", 3 => "NVIDIA Reflex", _ => $"mode {mode}" };
 
     /// <summary>Writes the global profile, reads every value back from the file and tells the running games to reload it.</summary>
-    static void WriteGlobal(params (string Name, uint Value)[] values)
+    static void WriteGlobal(params (string Name, uint Value)[] values) => WriteProfile("", values);
+
+    static void WriteProfile(string profile, params (string Name, uint Value)[] values)
     {
         using (var hooks = new Hooks())
         {
-            hooks.Load("");
+            hooks.Load(profile);
             foreach (var (name, value) in values) hooks.Set(name, value);
-            hooks.Save("");
+            hooks.Save(profile);
         }
         using (var hooks = new Hooks())
         {
-            hooks.Load("");
+            hooks.Load(profile);
             foreach (var (name, value) in values)
-                if (hooks.Get(name) is var saved && saved != value) throw new InvalidOperationException($"RTSS's global profile reads {name} = {saved} after writing {value}.");
+                if (hooks.Get(name) is var saved && saved != value) throw new InvalidOperationException($"RTSS's {(profile.Length == 0 ? "global" : profile)} profile reads {name} = {saved} after writing {value}.");
         }
         // Not the DLL's UpdateProfiles: it walks the shared memory without checking it, inside this elevated process.
         WithView(RequestProfileUpdate);
@@ -269,14 +384,29 @@ public static class Rtss
     /// RTSSHooks64.dll, which the elevated engine loads: only from RTSS's install folder (HKLM) under Program Files, and owned by SYSTEM,
     /// TrustedInstaller or Administrators. Null with the reason otherwise.
     /// </summary>
-    internal static string? HooksDll(out string? problem)
+    internal static string? HooksDll(out string? problem) => InstallFile("RTSSHooks64.dll", out problem);
+
+    /// <summary>
+    /// With "Keep RTSS running" on: starts RTSS (as the normal user, like the Start menu would; it sits in the tray) when it isn't
+    /// running, because it has to be up before a game opens to hook it. Null when it runs or was started, else the reason.
+    /// </summary>
+    public static string? EnsureRunning()
+    {
+        if (System.Diagnostics.Process.GetProcessesByName("RTSS").Length > 0) return null;
+        var exe = InstallFile("RTSS.exe", out var problem);
+        if (exe is null) return problem;
+        try { UserLaunch.StartProgram(exe); return null; }
+        catch (Exception ex) { return ex.Message; }
+    }
+
+    static string? InstallFile(string file, out string? problem)
     {
         problem = null;
         string? dir;
         using (var key = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry32).OpenSubKey(@"SOFTWARE\Unwinder\RTSS"))
             dir = key?.GetValue("InstallDir") as string;
         if (string.IsNullOrWhiteSpace(dir)) { problem = "RivaTuner Statistics Server isn't installed"; return null; }
-        var dll = Path.GetFullPath(Path.Combine(dir, "RTSSHooks64.dll"));
+        var dll = Path.GetFullPath(Path.Combine(dir, file));
         var programFiles = new[] { Environment.SpecialFolder.ProgramFilesX86, Environment.SpecialFolder.ProgramFiles }
             .Select(f => Path.TrimEndingDirectorySeparator(Environment.GetFolderPath(f)) + Path.DirectorySeparatorChar);
         if (!programFiles.Any(p => dll.StartsWith(p, StringComparison.OrdinalIgnoreCase))) { problem = $"{dll} isn't under Program Files"; return null; }
@@ -361,10 +491,12 @@ internal sealed class RtssOsd : IDisposable
     bool _disposed, _warned;
     bool? _shown;
     readonly Func<RtssOsdItems> _items;
+    readonly Func<(bool Compact, RtssOsdColor Color, RtssOsdStyle Style)> _style;
 
-    public RtssOsd(Func<RtssOsdItems> items)
+    public RtssOsd(Func<RtssOsdItems> items, Func<(bool Compact, RtssOsdColor Color, RtssOsdStyle Style)>? style = null)
     {
         _items = items;
+        _style = style ?? (() => (false, RtssOsdColor.None, RtssOsdStyle.Classic));
         try { _bus = GpuTuner.FirstLight()?.BusId; }
         catch (Exception ex) { Log.Info($"RTSS on-screen display: no GPU line ({ex.Message})."); }
         _load.CpuPercent(); // baseline
@@ -384,10 +516,12 @@ internal sealed class RtssOsd : IDisposable
                 try { gpu = GpuTuner.ReadSensorsLight(_bus, power: (_items() & RtssOsdItems.GpuPower) != 0); } // NVML only for board power
                 catch { } // a driver reset makes the card unreadable for a moment
             var (_, used, total) = SystemLoad.Memory();
-            var shown = Rtss.ShowOsd(Rtss.OsdText(_items(), _load.CpuPercent(), used, total, gpu));
+            var (compact, color, style) = _style();
+            var cores = style == RtssOsdStyle.Benchmark ? _load.CoreLoads() : null;
+            var shown = Rtss.ShowOsd(Rtss.OsdText(_items(), _load.CpuPercent(), used, total, gpu, compact, color, style), cores, style == RtssOsdStyle.Classic ? 50000 : 25000);
             if (shown == _shown) return;
             _shown = shown;
-            Log.Info(shown ? "RTSS on-screen display: showing." : "RTSS on-screen display: waiting for RTSS (not running, or every OSD slot is taken).");
+            Log.Info(shown ? "RTSS on-screen display: showing." : "RTSS on-screen display: waiting for RTSS (not running, or every OSD slot is taken). Start RTSS before the game, or turn on \"Keep RTSS running\".");
         }
         catch (Exception ex)
         {

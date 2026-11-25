@@ -89,6 +89,27 @@ public static class SystemFixes
         return sync.ExitCode == 0 ? Txt.TimeSynced(servers) : Txt.TimeServiceFixedNoSync(servers);
     }, ct);
 
+    const string SessionManager = @"SYSTEM\CurrentControlSet\Control\Session Manager";
+
+    /// <summary>
+    /// Partition tools (MiniTool Partition Wizard) that must work on the system drive before the restart add their job to the
+    /// session manager's BootExecute list; with the value deleted they stop with "Failed to modify registry". KOS keeps it empty
+    /// (no autochk at boot) so they can, and this puts it back when it was deleted.
+    /// </summary>
+    public static Task<string> FixPartitionToolsAsync(CancellationToken ct) => Task.Run(() => EnsureBootExecute(Registry.LocalMachine, SessionManager), ct);
+
+    /// <summary>Creates BootExecute as an empty REG_MULTI_SZ when it is missing (or not a multi-string); a value that exists stays as it is. Reads it back.</summary>
+    internal static string EnsureBootExecute(RegistryKey root, string path)
+    {
+        using var key = root.CreateSubKey(path, writable: true);
+        if (key.GetValue("BootExecute") is string[]) return Txt.BootExecuteAlreadyThere;
+        key.SetValue("BootExecute", Array.Empty<string>(), RegistryValueKind.MultiString);
+        if (key.GetValue("BootExecute") is not string[] || key.GetValueKind("BootExecute") != RegistryValueKind.MultiString)
+            throw new InvalidOperationException(Txt.BootExecuteNotWritten);
+        Log.Info("BootExecute created as an empty multi-string.");
+        return Txt.BootExecuteFixed;
+    }
+
     /// <summary>
     /// Schedules Microsoft's SecConfig.efi for the next boot to clear the UEFI lock of VBS and Credential Guard (Microsoft's
     /// documented steps): it asks for confirmation at boot. Only when VBS runs although nothing is configured to start it.

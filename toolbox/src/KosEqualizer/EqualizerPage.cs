@@ -94,7 +94,7 @@ public sealed class EqGraphicRow(EqBand band, Action changed) : ObservableObject
 }
 
 /// <summary>
-/// A playback device in KOS Equalizer: whether KOS Equalizer is on for it (read from the system, and again after every click), its
+/// A playback or recording device in KOS Equalizer: whether KOS Equalizer is on for it (read from the system, and again after every click), its
 /// profiles, the active one's editor, import and export, and its Windows audio settings. A device KOS Equalizer is on for that
 /// isn't connected is listed from the registration journal and only offers Turn off.
 /// </summary>
@@ -134,6 +134,73 @@ public sealed class EqDeviceViewModel : ObservableObject
         ImportFileCommand = new AsyncCommand(ImportFileAsync, () => CanEdit);
         ImportPasteCommand = new RelayCommand(() => Import(_pasteText, Txt.EqImportedName, pasted: true), () => CanEdit && _pasteText.Trim().Length > 0);
         ExportCommand = new RelayCommand(Export, () => _profile is not null);
+        ListenCommand = new RelayCommand(() => ToggleMonitor(live: true), () => CanMonitor && (_monitor is null || _live));
+        RecordCommand = new RelayCommand(() => ToggleMonitor(live: false), () => CanMonitor && (_monitor is null || !_live));
+    }
+
+    // ---------- hearing a microphone through the equalizer ----------
+    MicMonitor? _monitor;
+    bool _live;
+    string? _monitorText;
+    double _level;
+    DispatcherTimer? _levelTimer; // made on first use: a device's view model can be built off the UI thread
+
+    /// <summary>A connected microphone: the pinned bar with Listen and Record shows (the sound is the endpoint's, so the equalizer is in it when it is on).</summary>
+    public bool CanMonitor => IsRecording && IsConnected;
+    public ICommand ListenCommand { get; }
+    public ICommand RecordCommand { get; }
+    public string ListenText => _monitor is not null && _live ? Txt.EqListenStop : Txt.EqListen;
+    public string RecordText => _monitor is not null && !_live ? Txt.EqRecordStop : Txt.EqRecord;
+    public string? MonitorText { get => _monitorText; private set => Set(ref _monitorText, value); }
+    public double Level { get => _level; private set => Set(ref _level, value); }
+
+    /// <summary>Starts the live listen (or the 5 s recording and playback); the same button again stops it.</summary>
+    void ToggleMonitor(bool live)
+    {
+        if (_monitor is not null) { StopMonitor(); return; }
+        if (!CanMonitor) return;
+        var monitor = live ? MicMonitor.Listen(Id) : MicMonitor.RecordAndPlay(Id, 5);
+        (_monitor, _live) = (monitor, live);
+        MonitorText = live ? Txt.EqMonitoringLive : Txt.EqRecordingNow;
+        monitor.Progress += text => Dispatcher.BeginInvoke(() => { if (_monitor == monitor) MonitorText = text.StartsWith("Playing", StringComparison.Ordinal) ? Txt.EqPlayingBack : Txt.EqRecordingNow; });
+        monitor.Ended += problem => Dispatcher.BeginInvoke(() =>
+        {
+            if (_monitor != monitor) return; // stopped by the user: already cleaned up
+            _monitor = null;
+            monitor.Dispose();
+            MonitorEnded(problem);
+        });
+        if (_levelTimer is null)
+        {
+            _levelTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(100) };
+            _levelTimer.Tick += (_, _) => Level = _monitor?.Peak ?? 0;
+        }
+        _levelTimer.Start();
+        RaiseMonitor();
+    }
+
+    static Dispatcher Dispatcher => Application.Current.Dispatcher;
+
+    internal void StopMonitor()
+    {
+        if (_monitor is not { } monitor) return;
+        _monitor = null;
+        monitor.Dispose();
+        MonitorEnded(null);
+    }
+
+    void MonitorEnded(string? problem)
+    {
+        _levelTimer?.Stop();
+        Level = 0;
+        MonitorText = problem is null ? null : Txt.EqMonitorFailed(problem);
+        RaiseMonitor();
+    }
+
+    void RaiseMonitor()
+    {
+        foreach (var name in new[] { nameof(ListenText), nameof(RecordText) }) Raise(name);
+        CommandManager.InvalidateRequerySuggested();
     }
 
     // ---------- the list's row (the Audio page's AudioDeviceRow template) ----------
@@ -142,10 +209,12 @@ public sealed class EqDeviceViewModel : ObservableObject
     public AudioDeviceSettingsViewModel? Settings { get; }
     public bool IsConnected => Settings is not null;
     public string Name => Settings?.Name ?? _name;
-    public string Glyph => ""; // speakers
-    public string FlowText => Txt.AudioPlaybackDevice;
+    /// <summary>A recording endpoint's id starts "{0.0.1." (playback "{0.0.0."); also true for a microphone that isn't connected.</summary>
+    public bool IsRecording => Id.StartsWith("{0.0.1.", StringComparison.Ordinal);
+    public string Glyph => IsRecording ? "" : ""; // microphone, speakers
+    public string FlowText => IsRecording ? Txt.AudioRecordingDevice : Txt.AudioPlaybackDevice;
     public string Sub => Txt.EqRowText(Settings?.IsDefault == true, IsConnected, StateShort, Find() is { } entry ? entry.Find(entry.Active)?.Name : null);
-    public bool IsSelected { get => _selected; set => Set(ref _selected, value); }
+    public bool IsSelected { get => _selected; set { if (Set(ref _selected, value) && !value) StopMonitor(); } }
 
     internal EqDeviceViewModel Update(AudioDevice? device)
     {
@@ -563,7 +632,7 @@ public sealed class EqDeviceViewModel : ObservableObject
 }
 
 /// <summary>
-/// KOS Equalizer: the playback devices (and any it's still on for that aren't connected) on the left, the selected one on the right.
+/// KOS Equalizer: the playback and recording devices (and any it's still on for that aren't connected) on the left, the selected one on the right.
 /// A visit only reads: the profiles (%ProgramData%\TheKOS\Audio\equalizer.json), each device and KOS Equalizer's state on it. Each
 /// click changes one thing and reads it back; edits of the numbers are saved and played once they rest for 300 ms.
 /// </summary>
@@ -617,6 +686,9 @@ public sealed class EqualizerPageViewModel : PageViewModel
     }
     public ICommand SelectCommand { get; }
     public IReadOnlyList<EqDeviceViewModel> Devices => _devices;
+    public IReadOnlyList<EqDeviceViewModel> PlaybackDevices => _devices.Where(d => !d.IsRecording).ToList();
+    public IReadOnlyList<EqDeviceViewModel> RecordingDevices => _devices.Where(d => d.IsRecording).ToList();
+    public bool HasRecording => _devices.Any(d => d.IsRecording);
     public bool IsEmpty => _loaded && _devices.Count == 0 && _listError is null;
     public string? ListError { get => _listError; private set => Set(ref _listError, value); }
     public EqDeviceViewModel? Selected
@@ -679,6 +751,9 @@ public sealed class EqualizerPageViewModel : PageViewModel
         }).ToList();
         _loaded = true;
         Raise(nameof(Devices));
+        Raise(nameof(PlaybackDevices));
+        Raise(nameof(RecordingDevices));
+        Raise(nameof(HasRecording));
         Raise(nameof(IsEmpty));
         var next = _selected is { } s && _devices.Contains(s) ? s : _devices.FirstOrDefault(d => d.Settings?.IsDefault == true) ?? _devices.FirstOrDefault();
         var moved = next != _selected;
@@ -686,12 +761,12 @@ public sealed class EqualizerPageViewModel : PageViewModel
         if (next?.Settings is { } settings && (readSelected || moved)) await settings.RefreshAsync();
     }
 
-    /// <summary>Off the UI thread: the playback devices, the journal's devices that aren't among them, and each one's state.</summary>
+    /// <summary>Off the UI thread: the playback and recording devices, the journal's devices that aren't among them, and each one's state.</summary>
     static (List<DeviceRead> Reads, string? Error, bool Gamemode, bool Bypassed) ReadDevices()
     {
         var errors = new List<string>();
         var devices = new List<AudioDevice>();
-        try { devices = ListDevices().Where(d => d.Flow == AudioFlow.Playback).ToList(); }
+        try { devices = ListDevices().Where(d => d.Flow is AudioFlow.Playback or AudioFlow.Recording).ToList(); }
         catch (Exception ex)
         {
             Log.Error("Equalizer: listing the audio devices failed", ex);

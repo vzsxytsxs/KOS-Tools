@@ -275,7 +275,7 @@
         </StackPanel>
     </DataTemplate>
 
-    <!-- KOS Equalizer: playback devices (280 px, scrolling on their own) and the selected one beside them (up to 760 px wide). -->
+    <!-- KOS Equalizer: playback and recording devices (280 px, scrolling on their own) and the selected one beside them (up to 760 px wide). -->
     <DataTemplate DataType="{x:Type vm:EqualizerPageViewModel}">
         <Grid>
             <Grid.ColumnDefinitions><ColumnDefinition Width="280" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
@@ -283,20 +283,42 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
                     <StackPanel Margin="0,4,0,12">
                         <TextBlock Style="{StaticResource HomeHeader}" Text="{x:Static t:Txt.AudioPlaybackHeader}" />
-                        <ItemsControl ItemsSource="{Binding Devices}" ItemTemplate="{StaticResource AudioDeviceRow}" Focusable="False" />
+                        <ItemsControl ItemsSource="{Binding PlaybackDevices}" ItemTemplate="{StaticResource AudioDeviceRow}" Focusable="False" />
+                        <TextBlock Style="{StaticResource HomeHeader}" Text="{x:Static t:Txt.AudioRecordingHeader}" Visibility="{Binding HasRecording, Converter={StaticResource BoolToVis}}" />
+                        <ItemsControl ItemsSource="{Binding RecordingDevices}" ItemTemplate="{StaticResource AudioDeviceRow}" Focusable="False" />
                         <TextBlock Style="{StaticResource Secondary}" Text="{x:Static t:Txt.EqNone}" Margin="16,12" Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVis}}" />
                         <TextBlock Style="{StaticResource Secondary}" Text="{Binding ListError}" Foreground="{StaticResource ErrorBrush}" Margin="16,12"
                                    Visibility="{Binding ListError, Converter={StaticResource NotEmptyToVis}}" />
                     </StackPanel>
                 </ScrollViewer>
             </Border>
-            <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False" Margin="24,0,0,0"
-                          vm:EqView.TopOn="{Binding Selected}">
-                <Grid Margin="0,0,8,0">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" MaxWidth="760" /></Grid.ColumnDefinitions>
-                    <ContentControl Content="{Binding Selected}" Focusable="False" v:Motion.Transition="{Binding Selected}" />
-                </Grid>
-            </ScrollViewer>
+            <Grid Grid.Column="1" Margin="24,0,0,0">
+                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                <!-- A microphone: listen to it live or record and play back, pinned above the editor so it stays in reach while the bands move. -->
+                <Border DataContext="{Binding Selected}" Style="{StaticResource AudioCard}" MaxWidth="760" HorizontalAlignment="Left" Margin="0,0,8,10"
+                        Visibility="{Binding CanMonitor, Converter={StaticResource BoolToVis}}">
+                    <StackPanel>
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Left" Style="{StaticResource CardTitle}" Text="{x:Static t:Txt.EqMonitorTitle}" VerticalAlignment="Center" Margin="0,0,16,0" />
+                            <ProgressBar DockPanel.Dock="Right" Minimum="0" Maximum="1" Value="{Binding Level, Mode=OneWay}" Width="110" Height="6" VerticalAlignment="Center" Margin="12,0,0,0"
+                                         AutomationProperties.Name="Microphone level" />
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="{Binding ListenText}" Command="{Binding ListenCommand}" MinWidth="130" Margin="0,0,8,0" AutomationProperties.Name="{Binding ListenText}" />
+                                <Button Content="{Binding RecordText}" Command="{Binding RecordCommand}" MinWidth="170" AutomationProperties.Name="{Binding RecordText}" />
+                            </StackPanel>
+                        </DockPanel>
+                        <TextBlock Style="{StaticResource Secondary}" Text="{Binding MonitorText}" Margin="0,8,0,0" TextWrapping="Wrap" Visibility="{Binding MonitorText, Converter={StaticResource NotEmptyToVis}}" />
+                        <TextBlock Style="{StaticResource GpuHint}" Text="{x:Static t:Txt.EqMonitorNote}" Margin="0,8,0,0" />
+                    </StackPanel>
+                </Border>
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False"
+                              vm:EqView.TopOn="{Binding Selected}">
+                    <Grid Margin="0,0,8,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" MaxWidth="760" /></Grid.ColumnDefinitions>
+                        <ContentControl Content="{Binding Selected}" Focusable="False" v:Motion.Transition="{Binding Selected}" />
+                    </Grid>
+                </ScrollViewer>
+            </Grid>
         </Grid>
     </DataTemplate>
 </ResourceDictionary>

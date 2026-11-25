@@ -261,6 +261,7 @@ public sealed class Engine
         catch (Exception ex) { Log.Error("The game list can't be read; automatic gamemode is off", ex); _games = new(Array.Empty<GameEntry>(), Array.Empty<GameEntry>()); }
         if (!Config.AutoGamemode.Enabled) _auto.Reset();
         Rebuild();
+        KeepRtss();
         Log.Info($"Configuration loaded: profile \"{Config.Active.Name}\", {_active.Count} rule(s){(Gamemode ? " with gamemode" : "")}, automatic gamemode {(Config.AutoGamemode.Enabled ? "on" : "off")}.");
         ConfigChanged?.Invoke();
     }
@@ -425,6 +426,7 @@ public sealed class Engine
             }
         }
         SyncOsd();
+        if (Gamemode) KeepRtss();
         GamemodeSwitched?.Invoke(Gamemode);
         if (!Gamemode) EndSession(); // after everything is undone: the log read and the file write don't delay the restore
         // The session report and the OSD kept NVML open during gamemode: nothing reads it anymore (~20 MB back).
@@ -459,6 +461,17 @@ public sealed class Engine
         else Log.Info($"Gamemode: DWM {(on ? "in" : "out of")} the MMCSS scheduling class.");
     }
 
+    /// <summary>"Keep RTSS running": starts it when it isn't (once per trigger: closing it by hand isn't fought every second).</summary>
+    void KeepRtss()
+    {
+        if (!Config.Active.System.RtssKeepRunning) return;
+        try
+        {
+            if (Rtss.EnsureRunning() is { } why) Log.Warn($"RTSS wasn't started: {why}.");
+        }
+        catch (Exception ex) { Log.Warn($"RTSS wasn't started: {ex.Message}"); }
+    }
+
     /// <summary>The RTSS on-screen display runs while gamemode is on and the active profile asks for it.</summary>
     void SyncOsd()
     {
@@ -466,7 +479,7 @@ public sealed class Engine
         if (want == (_osd is not null)) return;
         if (want)
         {
-            try { _osd = new RtssOsd(() => Config.Active.System.RtssOsdItems); }
+            try { _osd = new RtssOsd(() => Config.Active.System.RtssOsdItems, () => (Config.Active.System.RtssOsdCompact, Config.Active.System.RtssOsdColor, Config.Active.System.RtssOsdStyle)); }
             catch (Exception ex) { Log.Warn($"RTSS on-screen display didn't start: {ex.Message}"); }
             return;
         }

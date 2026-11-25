@@ -46,6 +46,15 @@ public static class UserLaunch
         Log.Info($"Gamemode: started {commandLine} (pid {pi.dwProcessId})");
     }
 
+    /// <summary>Starts a program (already checked by the caller) as the normal user, without waiting.</summary>
+    internal static void StartProgram(string path)
+    {
+        var pi = Create(path, $"\"{path}\"");
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+        Log.Info($"Started {path} (pid {pi.dwProcessId}) as the normal user.");
+    }
+
     /// <summary>Runs a program as the normal user and waits for it: its exit code, or null when it didn't end in time (it's ended then).</summary>
     internal static uint? Run(string path, string commandLine, int timeoutMs)
     {

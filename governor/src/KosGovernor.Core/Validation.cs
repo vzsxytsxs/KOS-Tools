@@ -52,6 +52,15 @@ public static class Validation
             if (p.System.RtssFrameLimit is < 0 or > 0 and < 10 or > 1000) yield return $"{p.Name}: the RTSS frame limit must be 10–1000 FPS, or 0 to keep RTSS's own.";
             if (!Enum.IsDefined(p.System.RtssLimiterMode)) yield return $"{p.Name}: unknown RTSS limiter mode.";
             if ((p.System.RtssOsdItems & ~RtssOsdItems.All) != 0) yield return $"{p.Name}: unknown RTSS on-screen display item.";
+            if (!Enum.IsDefined(p.System.RtssOsdColor)) yield return $"{p.Name}: unknown RTSS on-screen display color.";
+            if (!Enum.IsDefined(p.System.RtssOsdStyle)) yield return $"{p.Name}: unknown RTSS on-screen display style.";
+            foreach (var g in p.System.RtssGameLimits)
+            {
+                if (!Rtss.IsGameName(g.Exe)) yield return $"{p.Name}: \"{g.Exe}\" isn't a program name for an RTSS profile (for example game.exe).";
+                else if (g.Fps is < 10 or > 1000) yield return $"{p.Name}: {g.Exe}: the frame limit must be 10–1000 FPS.";
+            }
+            var dup = p.System.RtssGameLimits.GroupBy(g => g.Exe, StringComparer.OrdinalIgnoreCase).FirstOrDefault(g => g.Count() > 1);
+            if (dup is not null) yield return $"{p.Name}: {dup.Key} has two RTSS frame limits.";
             foreach (var s in p.OnEnable.Start.Concat(p.OnDisable.Start))
                 if (StartProblem(s) is { } e) yield return $"{p.Name}: {e}";
         }

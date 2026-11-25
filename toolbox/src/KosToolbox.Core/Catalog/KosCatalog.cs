@@ -1179,6 +1179,10 @@ public static partial class KosCatalog
         new() { Id = "fix-time-sync", Name = "Fix time sync", Description = "Registers the Windows Time service again, keeps the server chosen in Time server (NTP) and syncs the clock now.",
             Page = Pages.Tools, Group = "Fixes", ButtonText = "Fix",
             Run = SystemFixes.FixTimeSyncAsync, RunElevated = true, Source = "w32tm /unregister, /register, /config /manualpeerlist, /resync" },
+        new() { Id = "fix-partition-tools", Name = "Fix partition tools (MiniTool)",
+            Description = "For MiniTool Partition Wizard and similar tools that stop with \"Failed to modify registry\" when you move or resize the system drive and choose Restart Now: they add their job to the session manager's BootExecute list, which KOS deleted. This creates it again, empty, so Windows still skips its disk check at boot. A value that already exists stays as it is.",
+            Page = Pages.Tools, Group = "Fixes", ButtonText = "Fix",
+            Run = SystemFixes.FixPartitionToolsAsync, RunElevated = true, Source = @"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\BootExecute (empty REG_MULTI_SZ)" },
         new() { Id = "vbs-uefi-unlock", Name = "Clear the VBS UEFI lock",
             Description = "When VBS or Credential Guard was turned on \"with UEFI lock\", the setting is also stored in the firmware and Windows keeps it on even after the registry turns it off. " +
                 "This schedules Microsoft's SecConfig.efi for the next restart: at boot it asks you to confirm (press the key it shows), then clears the lock. Turn VBS off and restart first; use this only if VBS still runs.",

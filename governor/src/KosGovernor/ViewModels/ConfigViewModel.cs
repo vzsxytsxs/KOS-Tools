@@ -572,7 +572,7 @@ public sealed class ConfigViewModel : ObservableObject
         nameof(SysTransparency), nameof(SysCStates), nameof(SysCleanMemory), nameof(SysBackgroundEfficiency), nameof(SysGameCores), nameof(SysGameCoresSpec),
         nameof(GameCoresOptions), nameof(SysCleanDelay), nameof(SysPurgeStandby), nameof(SysPurgeStandbyMb), nameof(SysPurgeFreeMb), nameof(SysRestrain),
         nameof(SysKeepAwake), nameof(SysDwmMmcss), nameof(SysDirector), nameof(SysHeavyThreads), nameof(SysMoveBackground),
-        nameof(SysNormalizePriorities), nameof(SysAvoidInterrupts), nameof(SysWifi), nameof(SysAudio), nameof(SysRtssOsd), nameof(SysRtssFrameLimit), nameof(RtssOsdOptions), nameof(SysRtssLimiterMode),
+        nameof(SysNormalizePriorities), nameof(SysAvoidInterrupts), nameof(SysWifi), nameof(SysAudio), nameof(SysRtssOsd), nameof(SysRtssFrameLimit), nameof(SysRtssKeepRunning), nameof(RtssOsdOptions), nameof(SysRtssLimiterMode), nameof(SelectedOsdLayout), nameof(SysRtssOsdColor), nameof(RtssGameRows),
         nameof(TimerMode), nameof(TimerResolution), nameof(TimerOn), nameof(TimerNote) };
     GamemodeSystemSettings Sys => _config.Active.System;
 
@@ -688,6 +688,12 @@ public sealed class ConfigViewModel : ObservableObject
     /// <summary>Why the DWM switch can't work on this PC (MMCSS off); null when it can. Read when the page is built.</summary>
     public string? DwmMmcssProblem { get; } = Mmcss.Problem() is { } why ? $"No effect on this PC: {why}. Change it on KOS Toolbox's Windows page." : null;
 
+    public bool SysRtssKeepRunning
+    {
+        get => Sys.RtssKeepRunning;
+        set { if (value != Sys.RtssKeepRunning) SetSystem(s => s.RtssKeepRunning = value, "Saved."); }
+    }
+
     public bool SysRtssOsd
     {
         get => Sys.RtssOsd;
@@ -722,6 +728,88 @@ public sealed class ConfigViewModel : ObservableObject
             else Raise(nameof(SysRtssFrameLimit)); // "0141" shows as 141 again
         }
     }
+
+    /// <summary>A layout of the on-screen display, after the presets of TroyMetrics' benchmark overlays: which items, on one line or several.</summary>
+    public sealed record OsdLayoutOption(string Label, RtssOsdItems Items, bool Compact, RtssOsdStyle Style = RtssOsdStyle.Classic);
+
+    public IReadOnlyList<OsdLayoutOption> OsdLayouts { get; } = new OsdLayoutOption[]
+    {
+        new("Standard", RtssOsdItems.Default, false),
+        new("Minimal (FPS)", RtssOsdItems.Fps, false),
+        new("Compact (one line)", RtssOsdItems.Default, true),
+        new("Frame time focus", RtssOsdItems.Fps | RtssOsdItems.FrameTime | RtssOsdItems.FrametimeGraph | RtssOsdItems.GpuLoad | RtssOsdItems.Cpu, false),
+        new("Full (everything and the graph)", RtssOsdItems.All, false),
+        // Looks of their own: a big FPS number over small grey labels, and sections with a bar per CPU core.
+        new("Steam style", RtssOsdItems.Fps | RtssOsdItems.FrameTime | RtssOsdItems.FrametimeGraph | RtssOsdItems.GpuLoad | RtssOsdItems.GpuTemperature | RtssOsdItems.Vram | RtssOsdItems.Cpu | RtssOsdItems.Ram, false, RtssOsdStyle.Steam),
+        new("Benchmark (TroyMetrics style)", RtssOsdItems.All, false, RtssOsdStyle.Benchmark),
+    };
+
+    /// <summary>The layout the current items and line style match; null when the items were mixed by hand.</summary>
+    public OsdLayoutOption? SelectedOsdLayout
+    {
+        get => OsdLayouts.FirstOrDefault(o => o.Items == Sys.RtssOsdItems && o.Compact == Sys.RtssOsdCompact && o.Style == Sys.RtssOsdStyle);
+        set
+        {
+            if (value is not { } v || v.Items == Sys.RtssOsdItems && v.Compact == Sys.RtssOsdCompact && v.Style == Sys.RtssOsdStyle) return;
+            SetSystem(s => (s.RtssOsdItems, s.RtssOsdCompact, s.RtssOsdStyle) = (v.Items, v.Compact, v.Style), $"Layout: {v.Label}.");
+        }
+    }
+
+    public sealed record OsdColorOption(string Label, RtssOsdColor Value);
+
+    public IReadOnlyList<OsdColorOption> OsdColors { get; } = new OsdColorOption[]
+    {
+        new("RTSS's own color", RtssOsdColor.None), new("Ghostly green", RtssOsdColor.GhostlyGreen), new("Pure green", RtssOsdColor.PureGreen),
+        new("Electric blue", RtssOsdColor.ElectricBlue), new("Bright yellow", RtssOsdColor.BrightYellow), new("Hot pink", RtssOsdColor.HotPink), new("Pure orange", RtssOsdColor.PureOrange),
+    };
+
+    public RtssOsdColor SysRtssOsdColor
+    {
+        get => Sys.RtssOsdColor;
+        set { if (value != Sys.RtssOsdColor) SetSystem(s => s.RtssOsdColor = value, "Saved."); }
+    }
+
+    // ---------- RTSS frame limit per game ----------
+
+    /// <summary>A game's RTSS frame limit: the program name and the limit as typed (saved on Enter or when the box loses focus); Remove drops it.</summary>
+    public sealed class RtssGameRow(string exe, int fps, ConfigViewModel owner) : ObservableObject
+    {
+        public string Exe => exe;
+        public string Fps
+        {
+            get => fps.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            set => owner.SetGameLimit(exe, value, replaceOnly: true);
+        }
+        public ICommand RemoveCommand { get; } = new RelayCommand(() => owner.RemoveGameLimit(exe));
+    }
+
+    public IReadOnlyList<RtssGameRow> RtssGameRows => Sys.RtssGameLimits.OrderBy(g => g.Exe, StringComparer.OrdinalIgnoreCase).Select(g => new RtssGameRow(g.Exe, g.Fps, this)).ToList();
+
+    string _newGameExe = "", _newGameFps = "";
+    public string NewGameExe { get => _newGameExe; set => Set(ref _newGameExe, value ?? ""); }
+    public string NewGameFps { get => _newGameFps; set => Set(ref _newGameFps, value ?? ""); }
+    public ICommand AddGameLimitCommand => new RelayCommand(() =>
+    {
+        if (SetGameLimit(_newGameExe.Trim(), _newGameFps, replaceOnly: false)) { NewGameExe = ""; NewGameFps = ""; }
+    });
+
+    bool SetGameLimit(string exe, string fpsText, bool replaceOnly)
+    {
+        exe = exe.Trim();
+        if (exe.Length > 0 && !exe.Contains('.')) exe += ".exe";
+        if (!Rtss.IsGameName(exe)) { _main.Report("Type the program name of the game, for example game.exe (letters, digits, spaces and . _ ( ) - only).", true); Raise(nameof(RtssGameRows)); return false; }
+        if (!int.TryParse(fpsText.Trim(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var fps) || fps is < 10 or > 1000)
+        { _main.Report("Type the frame limit as a whole number of FPS, 10 to 1000.", true); Raise(nameof(RtssGameRows)); return false; }
+        return Mutate(c =>
+        {
+            var list = c.Active.System.RtssGameLimits;
+            var at = list.FindIndex(g => g.Exe.Equals(exe, StringComparison.OrdinalIgnoreCase));
+            if (at >= 0) list[at].Fps = fps;
+            else if (!replaceOnly) list.Add(new RtssGameLimit { Exe = exe, Fps = fps });
+        }, $"{exe}: {fps} FPS while gamemode is on.");
+    }
+
+    void RemoveGameLimit(string exe) => Mutate(c => c.Active.System.RtssGameLimits.RemoveAll(g => g.Exe.Equals(exe, StringComparison.OrdinalIgnoreCase)), $"{exe}'s frame limit removed.");
 
     public sealed record LimiterOption(string Label, RtssLimiterMode Value);
 
